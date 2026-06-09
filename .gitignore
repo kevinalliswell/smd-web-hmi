@@ -1,0 +1,54 @@
+# ===== Python / 后端 =====
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+backend/.venv/
+.venv/
+venv/
+env/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+.coverage.*
+coverage.xml
+
+# ===== 环境变量与密钥（绝不提交）=====
+.env
+backend/.env
+*.local.env
+
+# ===== 数据库与运行数据 =====
+data/
+backend/data/
+*.db
+*.sqlite
+*.sqlite3
+
+# ===== 前端 / Node =====
+node_modules/
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+dist-ssr/
+*.tsbuildinfo
+
+# ===== 编辑器 / 系统 =====
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
+
+# ===== Claude Code 本地设置 =====
+.claude/settings.local.json
+
+# ===== 日志与导出 =====
+*.log
+logs/
+exports/
+reports_output/

@@ -1,0 +1,2218 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>熔滴炉 Web 上位机 — 交互界面原型 V0.1</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  :root {
+    --bg-base:    #0e1118;
+    --bg-card:    #161b27;
+    --bg-card2:   #1c2233;
+    --bg-hover:   #222840;
+    --border:     #2a3150;
+    --border-hi:  #3a4570;
+    --text-pri:   #e2e8f0;
+    --text-sec:   #8892aa;
+    --text-muted: #4a5570;
+    --accent:     #38bdf8;
+    --accent-dim: #1e4060;
+    --green:      #22c55e;
+    --green-dim:  #14532d;
+    --yellow:     #f59e0b;
+    --yellow-dim: #451a03;
+    --red:        #ef4444;
+    --red-dim:    #450a0a;
+    --orange:     #f97316;
+    --purple:     #a78bfa;
+    --nav-w:      220px;
+    --header-h:   52px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg-base); color: var(--text-pri); font-size: 13px; }
+
+  /* ── LAYOUT ── */
+  #app { display: flex; flex-direction: column; height: 100vh; }
+  #header { display: flex; align-items: center; height: var(--header-h); background: var(--bg-card); border-bottom: 1px solid var(--border); padding: 0 16px; gap: 12px; flex-shrink: 0; z-index: 10; }
+  #body   { display: flex; flex: 1; overflow: hidden; }
+  #nav    { width: var(--nav-w); background: var(--bg-card); border-right: 1px solid var(--border); display: flex; flex-direction: column; overflow-y: auto; flex-shrink: 0; }
+  #main   { flex: 1; overflow-y: auto; padding: 16px; }
+
+  /* ── HEADER ── */
+  .hd-logo { font-weight: 700; font-size: 15px; color: var(--accent); letter-spacing: .5px; white-space: nowrap; }
+  .hd-sep  { width: 1px; height: 24px; background: var(--border); }
+  .hd-badge { display: flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 4px; background: var(--bg-card2); border: 1px solid var(--border); }
+  .hd-badge .dot { width: 7px; height: 7px; border-radius: 50%; }
+  .dot-green { background: var(--green); box-shadow: 0 0 6px var(--green); animation: pulse 2s infinite; }
+  .dot-red   { background: var(--red); box-shadow: 0 0 6px var(--red); animation: pulse 1s infinite; }
+  .dot-yellow{ background: var(--yellow); box-shadow: 0 0 6px var(--yellow); }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.5} }
+  .hd-state { font-size: 12px; font-weight: 600; }
+  .hd-spacer { flex: 1; }
+  .hd-runtime { color: var(--text-sec); font-size: 12px; font-family: monospace; }
+  .hd-user { display: flex; align-items: center; gap: 6px; color: var(--text-sec); font-size: 12px; cursor: pointer; }
+  .hd-user:hover { color: var(--text-pri); }
+  .hd-alarm-bell { position: relative; cursor: pointer; padding: 4px 8px; border-radius: 4px; }
+  .hd-alarm-bell:hover { background: var(--bg-hover); }
+  .alarm-count { position: absolute; top: -2px; right: -2px; background: var(--red); color: #fff; font-size: 10px; font-weight: 700; border-radius: 8px; padding: 1px 4px; }
+
+  /* ── NAV ── */
+  .nav-section { padding: 10px 12px 4px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted); }
+  .nav-item { display: flex; align-items: center; gap: 10px; padding: 9px 14px; cursor: pointer; color: var(--text-sec); border-left: 3px solid transparent; transition: all .15s; }
+  .nav-item:hover { background: var(--bg-hover); color: var(--text-pri); }
+  .nav-item.active { background: var(--accent-dim); color: var(--accent); border-left-color: var(--accent); }
+  .nav-icon { font-size: 15px; width: 18px; text-align: center; }
+  .nav-badge { margin-left: auto; background: var(--red); color: #fff; font-size: 10px; font-weight: 700; border-radius: 8px; padding: 1px 5px; }
+  .nav-footer { margin-top: auto; padding: 12px; border-top: 1px solid var(--border); }
+  .nav-footer-row { display: flex; align-items: center; gap: 6px; color: var(--text-muted); font-size: 11px; margin-bottom: 4px; }
+
+  /* ── PAGES ── */
+  .page { display: none; }
+  .page.active { display: block; }
+  .page-title { font-size: 16px; font-weight: 700; margin-bottom: 14px; color: var(--text-pri); }
+
+  /* ── GRID ── */
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+  .grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+  .col-span-2 { grid-column: span 2; }
+  .col-span-3 { grid-column: span 3; }
+  .col-span-4 { grid-column: span 4; }
+
+  /* ── CARD ── */
+  .card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; padding: 14px; }
+  .card-title { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .8px; color: var(--text-sec); margin-bottom: 10px; display: flex; align-items: center; gap: 6px; }
+  .card-title .indicator { width: 8px; height: 8px; border-radius: 50%; }
+
+  /* ── KPI CARDS ── */
+  .kpi-val  { font-size: 28px; font-weight: 700; line-height: 1; font-family: 'Courier New', monospace; }
+  .kpi-unit { font-size: 13px; color: var(--text-sec); margin-left: 3px; }
+  .kpi-sub  { font-size: 11px; color: var(--text-sec); margin-top: 4px; }
+  .kpi-sv   { font-size: 12px; color: var(--text-sec); margin-top: 2px; }
+
+  /* ── STATUS INDICATORS ── */
+  .status-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  .status-row  { display: flex; align-items: center; gap: 7px; padding: 5px 8px; border-radius: 5px; background: var(--bg-card2); }
+  .status-dot  { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .s-ok    { background: var(--green); }
+  .s-warn  { background: var(--yellow); }
+  .s-fault { background: var(--red); animation: pulse 1s infinite; }
+  .s-off   { background: var(--text-muted); }
+  .status-label { font-size: 11px; color: var(--text-sec); flex: 1; }
+  .status-val   { font-size: 11px; font-weight: 600; }
+  .val-ok    { color: var(--green); }
+  .val-warn  { color: var(--yellow); }
+  .val-fault { color: var(--red); }
+  .val-off   { color: var(--text-muted); }
+
+  /* ── PROCESS STATE ── */
+  .state-flow { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; margin-top: 4px; }
+  .state-node { padding: 4px 10px; border-radius: 4px; font-size: 11px; font-weight: 600; border: 1px solid var(--border); color: var(--text-muted); background: var(--bg-card2); white-space: nowrap; }
+  .state-node.current { border-color: var(--accent); color: var(--accent); background: var(--accent-dim); box-shadow: 0 0 8px rgba(56,189,248,.2); }
+  .state-node.done    { border-color: var(--green-dim); color: var(--green); background: var(--green-dim); }
+  .state-node.fault   { border-color: var(--red); color: var(--red); background: var(--red-dim); animation: pulse 1s infinite; }
+  .state-arrow { color: var(--text-muted); font-size: 11px; }
+
+  /* ── ALARM BANNER ── */
+  .alarm-banner { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-radius: 6px; margin-bottom: 12px; border-left: 4px solid; }
+  .alarm-L3 { background: rgba(239,68,68,.1); border-color: var(--red); }
+  .alarm-L2 { background: rgba(249,115,22,.1); border-color: var(--orange); }
+  .alarm-L1 { background: rgba(245,158,11,.1); border-color: var(--yellow); }
+  .alarm-L0 { background: rgba(56,189,248,.1); border-color: var(--accent); }
+  .alarm-icon { font-size: 18px; }
+  .alarm-msg  { flex: 1; }
+  .alarm-msg-title { font-size: 12px; font-weight: 700; }
+  .alarm-msg-sub   { font-size: 11px; color: var(--text-sec); margin-top: 2px; }
+  .alarm-ack-btn { padding: 4px 10px; border-radius: 4px; border: 1px solid; background: transparent; cursor: pointer; font-size: 11px; font-weight: 600; }
+  .alarm-L3 .alarm-ack-btn { border-color: var(--red); color: var(--red); }
+  .alarm-L3 .alarm-ack-btn:hover { background: var(--red-dim); }
+  .alarm-L2 .alarm-ack-btn { border-color: var(--orange); color: var(--orange); }
+
+  /* ── BUTTONS ── */
+  .btn { display: inline-flex; align-items: center; gap: 5px; padding: 7px 14px; border-radius: 5px; border: none; cursor: pointer; font-size: 12px; font-weight: 600; transition: all .15s; }
+  .btn:disabled { opacity: .4; cursor: not-allowed; }
+  .btn-primary { background: var(--accent); color: #0e1118; }
+  .btn-primary:hover:not(:disabled) { background: #7dd3fc; }
+  .btn-danger  { background: var(--red); color: #fff; }
+  .btn-danger:hover:not(:disabled) { background: #f87171; }
+  .btn-warn    { background: var(--yellow); color: #0e1118; }
+  .btn-warn:hover:not(:disabled) { background: #fcd34d; }
+  .btn-ghost   { background: transparent; color: var(--text-sec); border: 1px solid var(--border); }
+  .btn-ghost:hover:not(:disabled) { background: var(--bg-hover); color: var(--text-pri); }
+  .btn-green   { background: var(--green); color: #0e1118; }
+  .btn-green:hover:not(:disabled) { background: #4ade80; }
+  .btn-sm { padding: 4px 10px; font-size: 11px; }
+  .btn-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+
+  /* ── TABLE ── */
+  .data-table { width: 100%; border-collapse: collapse; }
+  .data-table th { text-align: left; padding: 8px 10px; font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: .5px; border-bottom: 1px solid var(--border); }
+  .data-table td { padding: 8px 10px; border-bottom: 1px solid var(--border); font-size: 12px; vertical-align: middle; }
+  .data-table tr:hover td { background: var(--bg-hover); }
+  .data-table tr:last-child td { border-bottom: none; }
+
+  /* ── ALARM LEVEL BADGES ── */
+  .badge { display: inline-flex; align-items: center; padding: 2px 7px; border-radius: 3px; font-size: 10px; font-weight: 700; }
+  .badge-L3 { background: var(--red-dim);    color: var(--red); }
+  .badge-L2 { background: rgba(249,115,22,.15); color: var(--orange); }
+  .badge-L1 { background: var(--yellow-dim); color: var(--yellow); }
+  .badge-L0 { background: var(--accent-dim); color: var(--accent); }
+  .badge-ok { background: var(--green-dim);  color: var(--green); }
+  .badge-off{ background: rgba(74,85,112,.2); color: var(--text-muted); }
+
+  /* ── CHART CONTAINER ── */
+  .chart-wrap { position: relative; width: 100%; }
+  .chart-toolbar { display: flex; gap: 6px; margin-bottom: 8px; align-items: center; flex-wrap: wrap; }
+  .chart-toolbar-spacer { flex: 1; }
+  .tab-btn { padding: 4px 10px; border-radius: 4px; border: 1px solid var(--border); background: var(--bg-card2); color: var(--text-sec); cursor: pointer; font-size: 11px; font-weight: 600; }
+  .tab-btn.active { background: var(--accent-dim); border-color: var(--accent); color: var(--accent); }
+  .tab-btn:hover:not(.active) { background: var(--bg-hover); color: var(--text-pri); }
+
+  /* ── FORM ── */
+  .form-group { margin-bottom: 12px; }
+  .form-label { display: block; font-size: 11px; font-weight: 600; color: var(--text-sec); margin-bottom: 5px; }
+  .form-input { width: 100%; padding: 7px 10px; background: var(--bg-card2); border: 1px solid var(--border); border-radius: 5px; color: var(--text-pri); font-size: 12px; outline: none; }
+  .form-input:focus { border-color: var(--accent); }
+  .form-input:disabled { opacity: .5; cursor: not-allowed; }
+  .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .form-section { border-top: 1px solid var(--border); padding-top: 12px; margin-top: 12px; }
+  .form-section-title { font-size: 11px; font-weight: 700; color: var(--text-sec); text-transform: uppercase; letter-spacing: .8px; margin-bottom: 10px; }
+
+  /* ── PROGRESS BAR ── */
+  .progress-bar { height: 5px; border-radius: 3px; background: var(--bg-card2); overflow: hidden; margin-top: 6px; }
+  .progress-fill { height: 100%; border-radius: 3px; transition: width .5s; }
+
+  /* ── COMMAND FEEDBACK ── */
+  .cmd-feedback { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: 5px; background: var(--bg-card2); border: 1px solid var(--border); margin-top: 10px; font-size: 12px; }
+  .cmd-accepted { border-color: var(--green); color: var(--green); }
+  .cmd-rejected { border-color: var(--red); color: var(--red); }
+  .cmd-pending  { border-color: var(--yellow); color: var(--yellow); }
+
+  /* ── MODAL ── */
+  .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.7); z-index: 100; justify-content: center; align-items: center; }
+  .modal-overlay.open { display: flex; }
+  .modal { background: var(--bg-card); border: 1px solid var(--border-hi); border-radius: 10px; padding: 24px; max-width: 420px; width: 90%; }
+  .modal-title { font-size: 15px; font-weight: 700; margin-bottom: 8px; }
+  .modal-danger .modal-title { color: var(--red); }
+  .modal-body  { font-size: 13px; color: var(--text-sec); line-height: 1.6; margin-bottom: 20px; }
+  .modal-highlight { color: var(--text-pri); font-weight: 600; }
+  .modal-actions { display: flex; gap: 8px; justify-content: flex-end; }
+  .modal-warn-box { background: var(--red-dim); border: 1px solid var(--red); border-radius: 5px; padding: 8px 10px; margin-bottom: 14px; font-size: 12px; color: var(--red); }
+
+  /* ── TOOLTIP-LIKE REASON ── */
+  .disabled-reason { font-size: 10px; color: var(--text-muted); margin-top: 3px; }
+
+  /* ── DIAG ROW ── */
+  .diag-row { display: flex; justify-content: space-between; align-items: center; padding: 7px 0; border-bottom: 1px solid var(--border); }
+  .diag-row:last-child { border-bottom: none; }
+  .diag-key { font-size: 12px; color: var(--text-sec); }
+  .diag-val { font-size: 12px; font-family: monospace; }
+
+  /* ── TABS ── */
+  .tabs { display: flex; gap: 4px; margin-bottom: 14px; border-bottom: 1px solid var(--border); }
+  .tab { padding: 8px 14px; cursor: pointer; font-size: 12px; font-weight: 600; color: var(--text-sec); border-bottom: 2px solid transparent; margin-bottom: -1px; }
+  .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+  .tab:hover:not(.active) { color: var(--text-pri); }
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
+
+  /* ── ACCORDION ── */
+  .acc-item { border: 1px solid var(--border); border-radius: 6px; margin-bottom: 6px; overflow: hidden; }
+  .acc-header { display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; cursor: pointer; background: var(--bg-card2); font-size: 13px; font-weight: 600; user-select: none; }
+  .acc-header:hover { background: var(--bg-hover); }
+  .acc-body { display: none; padding: 12px 14px; background: var(--bg-card); border-top: 1px solid var(--border); font-size: 12px; line-height: 1.7; color: var(--text-sec); }
+  .acc-item.open .acc-body { display: block; }
+  .acc-arrow { transition: transform .2s; }
+  .acc-item.open .acc-arrow { transform: rotate(90deg); }
+
+  /* ── STAT SUMMARY CARDS ── */
+  .stat-card { background: var(--bg-card2); border: 1px solid var(--border); border-radius: 7px; padding: 12px 16px; text-align: center; }
+  .stat-num  { font-size: 26px; font-weight: 700; font-family: monospace; }
+  .stat-lbl  { font-size: 11px; color: var(--text-sec); margin-top: 2px; }
+
+  /* ── COMPARE TABLE ── */
+  .cmp-table { width: 100%; border-collapse: collapse; }
+  .cmp-table th { padding: 7px 10px; font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; border-bottom: 2px solid var(--border); text-align: left; }
+  .cmp-table td { padding: 7px 10px; font-size: 12px; border-bottom: 1px solid var(--border); }
+  .cmp-table .cmp-key { color: var(--text-sec); font-weight: 600; background: var(--bg-card2); }
+  .cmp-best { color: var(--green); font-weight: 700; }
+
+  /* ── REPORT TEMPLATE CARDS ── */
+  .tpl-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 14px; }
+  .tpl-card { border: 2px solid var(--border); border-radius: 8px; padding: 14px; cursor: pointer; transition: all .15s; }
+  .tpl-card:hover { border-color: var(--accent); background: var(--bg-card2); }
+  .tpl-card.selected { border-color: var(--accent); background: var(--accent-dim); }
+  .tpl-icon { font-size: 24px; margin-bottom: 6px; }
+  .tpl-name { font-size: 13px; font-weight: 700; margin-bottom: 3px; }
+  .tpl-desc { font-size: 11px; color: var(--text-sec); line-height: 1.4; }
+
+  /* ── PROGRESS STEPS ── */
+  .gen-progress { display: none; }
+  .gen-progress.show { display: block; }
+  .gen-steps { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
+  .gen-step { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-radius: 5px; background: var(--bg-card2); font-size: 12px; }
+  .gen-step-icon { font-size: 15px; width: 20px; text-align: center; }
+  .gen-step.done  { color: var(--green); }
+  .gen-step.active { color: var(--yellow); }
+  .gen-step.wait  { color: var(--text-muted); }
+
+  /* ── HELP CARDS ── */
+  .help-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+  .help-card { background: var(--bg-card2); border: 1px solid var(--border); border-radius: 7px; padding: 14px; }
+  .help-card-title { font-size: 13px; font-weight: 700; margin-bottom: 8px; display: flex; align-items: center; gap: 6px; }
+  .help-step { display: flex; gap: 8px; margin-bottom: 7px; font-size: 12px; line-height: 1.5; }
+  .help-step-num { min-width: 20px; height: 20px; border-radius: 50%; background: var(--accent-dim); color: var(--accent); font-size: 11px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .help-step-text { color: var(--text-sec); }
+
+  /* ── SEARCH HIGHLIGHT ── */
+  .search-match { background: rgba(245,158,11,.25); border-radius: 2px; }
+
+  /* ── SCROLLBAR ── */
+  ::-webkit-scrollbar { width: 5px; height: 5px; }
+  ::-webkit-scrollbar-track { background: var(--bg-base); }
+  ::-webkit-scrollbar-thumb { background: var(--border-hi); border-radius: 3px; }
+
+  /* ── ACK STRIKETHROUGH ── */
+  .acked { opacity: .5; text-decoration: line-through; }
+
+  /* ── PARAM CHANGE HIGHLIGHT ── */
+  .param-changed { color: var(--yellow); }
+  .param-prev    { color: var(--text-muted); text-decoration: line-through; margin-right: 4px; font-size: 11px; }
+
+  /* ── SAFETY BANNER ── */
+  .safety-banner { background: var(--red-dim); border: 1px solid var(--red); border-radius: 6px; padding: 10px 14px; display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+  .safety-banner-icon { font-size: 20px; }
+  .safety-banner-text { font-size: 12px; color: var(--red); font-weight: 600; }
+  .safety-banner-sub  { font-size: 11px; color: rgba(239,68,68,.7); margin-top: 2px; }
+</style>
+</head>
+<body>
+<div id="app">
+
+  <!-- ═══════════ HEADER ═══════════ -->
+  <div id="header">
+    <span class="hd-logo">🔥 熔滴炉 Web HMI</span>
+    <div class="hd-sep"></div>
+    <div class="hd-badge">
+      <span class="dot dot-green" id="hd-conn-dot"></span>
+      <span class="hd-state" id="hd-conn-label">STM32 已连接</span>
+    </div>
+    <div class="hd-badge">
+      <span style="font-size:11px;color:var(--text-sec);">试验：</span>
+      <span style="font-size:12px;font-weight:700;color:var(--accent);" id="hd-testid">TEST-2026-042</span>
+    </div>
+    <div class="hd-badge">
+      <span class="dot" id="hd-state-dot" style="background:var(--accent);box-shadow:0 0 6px var(--accent)"></span>
+      <span class="hd-state" id="hd-state-label">Reducing</span>
+    </div>
+    <div class="hd-spacer"></div>
+    <span class="hd-runtime" id="hd-runtime">▶ 02:14:37</span>
+    <div class="hd-sep"></div>
+    <div class="hd-alarm-bell" onclick="navTo('page-alarms')">
+      🔔
+      <span class="alarm-count" id="hd-alarm-count">2</span>
+    </div>
+    <div class="hd-user" onclick="showUserMenu()">
+      👤 <span id="hd-username">operator01</span> <span style="font-size:10px;color:var(--text-muted);">(操作员)</span>
+    </div>
+  </div>
+
+  <div id="body">
+    <!-- ═══════════ NAV ═══════════ -->
+    <div id="nav">
+      <div class="nav-section">监控</div>
+      <div class="nav-item active" id="nav-overview" onclick="navTo('page-overview')">
+        <span class="nav-icon">📊</span> 实时总览
+      </div>
+      <div class="nav-item" id="nav-trend" onclick="navTo('page-trend')">
+        <span class="nav-icon">📈</span> 趋势曲线
+      </div>
+      <div class="nav-section">操作</div>
+      <div class="nav-item" id="nav-test" onclick="navTo('page-test')">
+        <span class="nav-icon">⚗️</span> 当前试验
+      </div>
+      <div class="nav-item" id="nav-alarms" onclick="navTo('page-alarms')">
+        <span class="nav-icon">🚨</span> 报警事件
+        <span class="nav-badge" id="nav-alarm-badge">2</span>
+      </div>
+      <div class="nav-section">数据</div>
+      <div class="nav-item" id="nav-history" onclick="navTo('page-history')">
+        <span class="nav-icon">🗂️</span> 历史试验
+      </div>
+      <div class="nav-section">管理</div>
+      <div class="nav-item" id="nav-params" onclick="navTo('page-params')">
+        <span class="nav-icon">⚙️</span> 参数配置
+      </div>
+      <div class="nav-item" id="nav-diag" onclick="navTo('page-diag')">
+        <span class="nav-icon">🔧</span> 设备诊断
+      </div>
+      <div class="nav-item" id="nav-settings" onclick="navTo('page-settings')">
+        <span class="nav-icon">🛠️</span> 系统设置
+      </div>
+      <div class="nav-section">分析与报告</div>
+      <div class="nav-item" id="nav-analysis" onclick="navTo('page-analysis')">
+        <span class="nav-icon">🔬</span> 数据分析
+      </div>
+      <div class="nav-item" id="nav-report" onclick="navTo('page-report')">
+        <span class="nav-icon">📄</span> 报告生成
+      </div>
+      <div class="nav-section">支持</div>
+      <div class="nav-item" id="nav-help" onclick="navTo('page-help')">
+        <span class="nav-icon">❓</span> 帮助
+      </div>
+      <div class="nav-footer">
+        <div class="nav-footer-row">💾 DB: <span style="color:var(--green);margin-left:4px;">正常</span></div>
+        <div class="nav-footer-row">🖥️ 后端: <span style="color:var(--green);margin-left:4px;">v0.1.0</span></div>
+        <div class="nav-footer-row" id="nav-clock" style="font-family:monospace;"></div>
+      </div>
+    </div>
+
+    <!-- ═══════════ MAIN ═══════════ -->
+    <div id="main">
+
+      <!-- ═══ PAGE: 实时总览 ═══ -->
+      <div class="page active" id="page-overview">
+        <div class="page-title">实时总览</div>
+
+        <!-- Active alarm banner -->
+        <div class="alarm-banner alarm-L2" id="alarm-banner-co">
+          <span class="alarm-icon">⚠️</span>
+          <div class="alarm-msg">
+            <div class="alarm-msg-title">【L2 警告】CO浓度超过提示阈值</div>
+            <div class="alarm-msg-sub">报警码 A-0211 · 发生于 02:08:14 · 状态: Reducing · 未确认</div>
+          </div>
+          <button class="alarm-ack-btn" onclick="ackAlarm('banner-co')">确认</button>
+        </div>
+
+        <!-- Process state flow -->
+        <div class="card" style="margin-bottom:12px;">
+          <div class="card-title">🔄 工艺流程状态</div>
+          <div class="state-flow">
+            <div class="state-node done">Standby</div><div class="state-arrow">›</div>
+            <div class="state-node done">Precheck</div><div class="state-arrow">›</div>
+            <div class="state-node done">LeakCheck</div><div class="state-arrow">›</div>
+            <div class="state-node done">N2Heat</div><div class="state-arrow">›</div>
+            <div class="state-node done">AutoSwitch</div><div class="state-arrow">›</div>
+            <div class="state-node current">Reducing</div><div class="state-arrow">›</div>
+            <div class="state-node">EndHold</div><div class="state-arrow">›</div>
+            <div class="state-node">Purge</div><div class="state-arrow">›</div>
+            <div class="state-node">Cool</div>
+            <div style="margin-left:auto;display:flex;align-items:center;gap:8px;">
+              <span style="font-size:11px;color:var(--text-sec);">人工确认：</span>
+              <span class="badge badge-ok">已确认</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- KPI Row 1: Temperature -->
+        <div class="grid-4" style="margin-bottom:12px;">
+          <div class="card">
+            <div class="card-title"><span class="indicator" style="background:var(--red)"></span>炉温 PV</div>
+            <div class="kpi-val" id="kpi-furnace-pv" style="color:var(--red);">1 <span style="font-size:16px;">548</span></div>
+            <div class="kpi-unit" style="display:inline">°C</div>
+            <div class="kpi-sv">SV: <span id="kpi-furnace-sv">1580</span> °C · 程序段 <span id="kpi-prog-step">4</span></div>
+            <div class="progress-bar" style="margin-top:8px;">
+              <div class="progress-fill" id="prog-temp-bar" style="width:73%;background:var(--red);"></div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-title"><span class="indicator" style="background:var(--orange)"></span>料层温度</div>
+            <div class="kpi-val" id="kpi-burden-temp" style="color:var(--orange);">1 <span style="font-size:16px;">403</span></div>
+            <div class="kpi-unit" style="display:inline">°C</div>
+            <div class="kpi-sv">输出: <span id="kpi-output-pct">84.2</span>%</div>
+            <div class="progress-bar" style="margin-top:8px;">
+              <div class="progress-fill" id="prog-burden-bar" style="width:84%;background:var(--orange);"></div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-title"><span class="indicator" style="background:var(--accent)"></span>N₂ 流量</div>
+            <div style="display:flex;align-items:baseline;gap:4px;">
+              <div class="kpi-val" id="kpi-n2-pv" style="color:var(--accent);">3.2</div>
+              <span class="kpi-unit">L/min</span>
+            </div>
+            <div class="kpi-sv">SP: <span id="kpi-n2-sp">3.0</span> L/min <span class="badge badge-ok" style="margin-left:4px;">稳定</span></div>
+          </div>
+          <div class="card">
+            <div class="card-title"><span class="indicator" style="background:var(--yellow)"></span>CO 流量</div>
+            <div style="display:flex;align-items:baseline;gap:4px;">
+              <div class="kpi-val" id="kpi-co-pv" style="color:var(--yellow);">1.8</div>
+              <span class="kpi-unit">L/min</span>
+            </div>
+            <div class="kpi-sv">SP: <span id="kpi-co-sp">1.8</span> L/min <span class="badge badge-ok" style="margin-left:4px;">稳定</span></div>
+          </div>
+        </div>
+
+        <!-- KPI Row 2: Process measurements -->
+        <div class="grid-4" style="margin-bottom:12px;">
+          <div class="card">
+            <div class="card-title">压差 ΔP</div>
+            <div style="display:flex;align-items:baseline;gap:4px;">
+              <div class="kpi-val" id="kpi-delta-p" style="font-size:22px;">128.4</div>
+              <span class="kpi-unit">Pa</span>
+            </div>
+            <div class="kpi-sub">正常范围: 80~200 Pa</div>
+          </div>
+          <div class="card">
+            <div class="card-title">位移</div>
+            <div style="display:flex;align-items:baseline;gap:4px;">
+              <div class="kpi-val" id="kpi-displacement" style="font-size:22px;">42.7</div>
+              <span class="kpi-unit">mm</span>
+            </div>
+            <div class="kpi-sub">初始: 0 mm</div>
+          </div>
+          <div class="card">
+            <div class="card-title">滴落重量</div>
+            <div style="display:flex;align-items:baseline;gap:4px;">
+              <div class="kpi-val" id="kpi-drip" style="font-size:22px;">3.84</div>
+              <span class="kpi-unit">g</span>
+            </div>
+            <div class="kpi-sub">天平: <span class="badge badge-ok">稳定</span></div>
+          </div>
+          <div class="card">
+            <div class="card-title">配比 CO/(N₂+CO)</div>
+            <div style="display:flex;align-items:baseline;gap:4px;">
+              <div class="kpi-val" id="kpi-ratio" style="font-size:22px;">36.0</div>
+              <span class="kpi-unit">%</span>
+            </div>
+            <div class="kpi-sub">目标: 36%</div>
+          </div>
+        </div>
+
+        <!-- Safety + Execution status -->
+        <div class="grid-2">
+          <div class="card">
+            <div class="card-title">🛡️ 安全状态</div>
+            <div class="status-grid">
+              <div class="status-row"><div class="status-dot s-ok"></div><span class="status-label">安全继电器</span><span class="status-val val-ok">允许</span></div>
+              <div class="status-row"><div class="status-dot s-ok"></div><span class="status-label">急停</span><span class="status-val val-ok">正常</span></div>
+              <div class="status-row"><div class="status-dot s-warn"></div><span class="status-label">CO报警</span><span class="status-val val-warn">超限</span></div>
+              <div class="status-row"><div class="status-dot s-ok"></div><span class="status-label">排风</span><span class="status-val val-ok">运行中</span></div>
+              <div class="status-row"><div class="status-dot s-ok"></div><span class="status-label">独立超温</span><span class="status-val val-ok">正常</span></div>
+              <div class="status-row"><div class="status-dot s-ok"></div><span class="status-label">SCR故障</span><span class="status-val val-ok">无故障</span></div>
+              <div class="status-row"><div class="status-dot s-ok"></div><span class="status-label">密封箱</span><span class="status-val val-ok">正常</span></div>
+              <div class="status-row"><div class="status-dot s-ok"></div><span class="status-label">DI位图</span><span class="status-val" style="font-family:monospace;font-size:10px;color:var(--accent);">0xA4</span></div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-title">🔌 执行状态</div>
+            <div class="status-grid">
+              <div class="status-row"><div class="status-dot s-ok"></div><span class="status-label">CO工艺请求</span><span class="status-val val-ok">激活</span></div>
+              <div class="status-row"><div class="status-dot s-ok"></div><span class="status-label">CO阀位</span><span class="status-val val-ok">开</span></div>
+              <div class="status-row"><div class="status-dot s-off"></div><span class="status-label">N2置换请求</span><span class="status-val val-off">未激活</span></div>
+              <div class="status-row"><div class="status-dot s-ok"></div><span class="status-label">N2阀位</span><span class="status-val val-ok">开</span></div>
+              <div class="status-row"><div class="status-dot s-ok"></div><span class="status-label">排风请求</span><span class="status-val val-ok">激活</span></div>
+              <div class="status-row"><div class="status-dot s-off"></div><span class="status-label">试验结束指示</span><span class="status-val val-off">进行中</span></div>
+              <div class="status-row"><div class="status-dot s-ok"></div><span class="status-label">DO位图</span><span class="status-val" style="font-family:monospace;font-size:10px;color:var(--accent);">0x1B</span></div>
+              <div class="status-row"><div class="status-dot s-ok"></div><span class="status-label">MFC状态</span><span class="status-val val-ok">正常</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══ PAGE: 趋势曲线 ═══ -->
+      <div class="page" id="page-trend">
+        <div class="page-title">趋势曲线</div>
+
+        <div class="card" style="margin-bottom:12px;">
+          <div class="chart-toolbar">
+            <span class="card-title" style="margin:0;">📈 温度曲线</span>
+            <div class="chart-toolbar-spacer"></div>
+            <button class="tab-btn" onclick="setTimeRange('10min',this)">10 min</button>
+            <button class="tab-btn active" onclick="setTimeRange('30min',this)">30 min</button>
+            <button class="tab-btn" onclick="setTimeRange('1h',this)">1 h</button>
+            <button class="tab-btn" onclick="setTimeRange('all',this)">全试验</button>
+            <button class="btn btn-ghost btn-sm" onclick="exportChart()">⬇️ 导出</button>
+          </div>
+          <div class="chart-wrap" style="height:220px;">
+            <canvas id="chart-temp"></canvas>
+          </div>
+          <div style="display:flex;gap:16px;margin-top:8px;flex-wrap:wrap;">
+            <span style="font-size:11px;"><span style="color:#ef4444">■</span> 炉温 PV (°C)</span>
+            <span style="font-size:11px;"><span style="color:#f97316">■</span> 料层温度 (°C)</span>
+            <span style="font-size:11px;"><span style="color:#94a3b8;border-bottom:2px dashed #94a3b8">- -</span> 炉温 SV</span>
+          </div>
+        </div>
+
+        <div class="grid-2">
+          <div class="card">
+            <div class="chart-toolbar">
+              <span class="card-title" style="margin:0;">💨 气体流量</span>
+              <div class="chart-toolbar-spacer"></div>
+            </div>
+            <div class="chart-wrap" style="height:160px;">
+              <canvas id="chart-gas"></canvas>
+            </div>
+            <div style="display:flex;gap:12px;margin-top:6px;flex-wrap:wrap;">
+              <span style="font-size:11px;"><span style="color:#38bdf8">■</span> N₂ PV (L/min)</span>
+              <span style="font-size:11px;"><span style="color:#f59e0b">■</span> CO PV (L/min)</span>
+            </div>
+          </div>
+          <div class="card">
+            <div class="chart-toolbar">
+              <span class="card-title" style="margin:0;">⚖️ 过程量</span>
+            </div>
+            <div class="chart-wrap" style="height:160px;">
+              <canvas id="chart-process"></canvas>
+            </div>
+            <div style="display:flex;gap:12px;margin-top:6px;flex-wrap:wrap;">
+              <span style="font-size:11px;"><span style="color:#a78bfa">■</span> 压差 (Pa)</span>
+              <span style="font-size:11px;"><span style="color:#22c55e">■</span> 位移 (mm)</span>
+              <span style="font-size:11px;"><span style="color:#fb923c">■</span> 重量 (g)</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Stage markers -->
+        <div class="card" style="margin-top:12px;">
+          <div class="card-title">🏷️ 阶段节点标注</div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <div class="hd-badge"><span style="font-size:10px;color:var(--text-sec);">00:00</span><span style="font-size:11px;margin-left:4px;">升温开始</span></div>
+            <div class="hd-badge"><span style="font-size:10px;color:var(--text-sec);">01:12</span><span style="font-size:11px;margin-left:4px;color:var(--accent);">500°C 切气</span></div>
+            <div class="hd-badge"><span style="font-size:10px;color:var(--text-sec);">02:05</span><span style="font-size:11px;margin-left:4px;color:var(--yellow);">AutoSwitch</span></div>
+            <div class="hd-badge" style="border-color:var(--accent)"><span style="font-size:10px;color:var(--accent);">▶ 当前</span><span style="font-size:11px;margin-left:4px;color:var(--accent);">Reducing</span></div>
+            <div class="hd-badge" style="opacity:.4"><span style="font-size:10px;color:var(--text-sec);">—</span><span style="font-size:11px;margin-left:4px;">1580°C 计时</span></div>
+            <div class="hd-badge" style="opacity:.4"><span style="font-size:10px;color:var(--text-sec);">—</span><span style="font-size:11px;margin-left:4px;">Purge</span></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══ PAGE: 当前试验 ═══ -->
+      <div class="page" id="page-test">
+        <div class="page-title">当前试验</div>
+
+        <div class="grid-2" style="margin-bottom:12px;">
+          <!-- Test info -->
+          <div class="card">
+            <div class="card-title">📋 试验信息</div>
+            <div class="diag-row"><span class="diag-key">试验编号</span><span class="diag-val" style="color:var(--accent);">TEST-2026-042</span></div>
+            <div class="diag-row"><span class="diag-key">样品编号</span><span class="diag-val">SMD-ORE-B0042</span></div>
+            <div class="diag-row"><span class="diag-key">操作员</span><span class="diag-val">operator01</span></div>
+            <div class="diag-row"><span class="diag-key">开始时间</span><span class="diag-val">2026-06-09 09:42:11</span></div>
+            <div class="diag-row"><span class="diag-key">运行时长</span><span class="diag-val" id="test-runtime" style="color:var(--green);">02:14:37</span></div>
+            <div class="diag-row"><span class="diag-key">当前状态</span><span class="diag-val"><span class="badge badge-L0">Reducing</span></span></div>
+            <div class="diag-row"><span class="diag-key">试验备注</span><span class="diag-val" style="color:var(--text-sec);">高CO配比试验批次B</span></div>
+          </div>
+          <!-- Pre-check -->
+          <div class="card">
+            <div class="card-title">✅ 启动前检查</div>
+            <div class="status-grid">
+              <div class="status-row"><div class="status-dot s-ok"></div><span class="status-label">控温仪</span><span class="status-val val-ok">已连接</span></div>
+              <div class="status-row"><div class="status-dot s-ok"></div><span class="status-label">N2 MFC</span><span class="status-val val-ok">正常</span></div>
+              <div class="status-row"><div class="status-dot s-ok"></div><span class="status-label">CO MFC</span><span class="status-val val-ok">正常</span></div>
+              <div class="status-row"><div class="status-dot s-ok"></div><span class="status-label">电子天平</span><span class="status-val val-ok">已归零</span></div>
+              <div class="status-row"><div class="status-dot s-ok"></div><span class="status-label">AI 采集</span><span class="status-val val-ok">正常</span></div>
+              <div class="status-row"><div class="status-dot s-ok"></div><span class="status-label">安全继电器</span><span class="status-val val-ok">允许</span></div>
+              <div class="status-row"><div class="status-dot s-ok"></div><span class="status-label">日志存储</span><span class="status-val val-ok">可写</span></div>
+              <div class="status-row"><div class="status-dot s-ok"></div><span class="status-label">RTC</span><span class="status-val val-ok">有效</span></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Control buttons -->
+        <div class="card" style="margin-bottom:12px;">
+          <div class="card-title">🎮 操作控制</div>
+          <div class="btn-row">
+            <div>
+              <button class="btn btn-green" disabled onclick="">▶ 启动试验</button>
+              <div class="disabled-reason">当前试验已在运行中</div>
+            </div>
+            <div>
+              <button class="btn btn-warn" onclick="cmdPause()">⏸ 暂停 / 保持</button>
+            </div>
+            <div>
+              <button class="btn btn-ghost" disabled>▶▶ 继续</button>
+              <div class="disabled-reason">当前未处于保持状态</div>
+            </div>
+            <div>
+              <button class="btn btn-danger" onclick="cmdStop()">⏹ 停止试验</button>
+            </div>
+            <div style="margin-left:auto;display:flex;gap:8px;">
+              <button class="btn btn-ghost" onclick="cmdTare()">⚖️ 天平去皮</button>
+              <button class="btn btn-ghost" onclick="cmdExport()">📤 导出日志</button>
+            </div>
+          </div>
+          <div class="cmd-feedback cmd-accepted" id="cmd-feedback">
+            <span>✅</span> 上一命令：<strong>天平去皮</strong> — 控制板响应：<strong>accepted</strong> · 02:11:03
+          </div>
+        </div>
+
+        <!-- Parameter snapshot -->
+        <div class="card">
+          <div class="card-title">📸 当前参数快照</div>
+          <div class="tabs">
+            <div class="tab active" onclick="switchTab(this,'snap-process')">工艺参数</div>
+            <div class="tab" onclick="switchTab(this,'snap-temp')">控温程序</div>
+            <div class="tab" onclick="switchTab(this,'snap-mfc')">MFC 参数</div>
+            <div class="tab" onclick="switchTab(this,'snap-ver')">版本信息</div>
+          </div>
+          <div class="tab-panel active" id="snap-process">
+            <div class="form-row">
+              <div><div class="form-label">切气温度阈值</div><div style="font-size:13px;">500 °C</div></div>
+              <div><div class="form-label">目标还原温度</div><div style="font-size:13px;">1580 °C</div></div>
+              <div><div class="form-label">还原保温时长</div><div style="font-size:13px;">60 min</div></div>
+              <div><div class="form-label">N2置换判据</div><div style="font-size:13px;">CO &lt; 0.1% · 5 min</div></div>
+              <div><div class="form-label">结束判据</div><div style="font-size:13px;">滴落&gt;3g 且 ΔP稳定</div></div>
+              <div><div class="form-label">参数CRC</div><div style="font-size:13px;font-family:monospace;color:var(--accent);">0xA7F3</div></div>
+            </div>
+          </div>
+          <div class="tab-panel" id="snap-temp">
+            <table class="data-table">
+              <thead><tr><th>段号</th><th>目标温度</th><th>升温速率</th><th>保温时间</th></tr></thead>
+              <tbody>
+                <tr><td>1</td><td>500 °C</td><td>10 °C/min</td><td>0 min</td></tr>
+                <tr><td>2</td><td>1000 °C</td><td>8 °C/min</td><td>10 min</td></tr>
+                <tr><td>3</td><td>1400 °C</td><td>5 °C/min</td><td>0 min</td></tr>
+                <tr><td style="color:var(--accent);font-weight:700;">4 ▶</td><td style="color:var(--accent);">1580 °C</td><td style="color:var(--accent);">3 °C/min</td><td style="color:var(--accent);">60 min</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="tab-panel" id="snap-mfc">
+            <div class="form-row">
+              <div><div class="form-label">N2 设定流量</div><div>3.0 L/min</div></div>
+              <div><div class="form-label">CO 设定流量</div><div>1.8 L/min</div></div>
+              <div><div class="form-label">流量偏差阈值</div><div>±0.2 L/min</div></div>
+              <div><div class="form-label">稳定判据</div><div>偏差 &lt; 5% · 10 s</div></div>
+            </div>
+          </div>
+          <div class="tab-panel" id="snap-ver">
+            <div class="diag-row"><span class="diag-key">固件版本</span><span class="diag-val" style="color:var(--accent);">FW-v2.4.1</span></div>
+            <div class="diag-row"><span class="diag-key">device_profile 版本</span><span class="diag-val">DP-v1.2.0</span></div>
+            <div class="diag-row"><span class="diag-key">参数 CRC</span><span class="diag-val" style="font-family:monospace;">0xA7F3</span></div>
+            <div class="diag-row"><span class="diag-key">AI 标定版本</span><span class="diag-val">CAL-20260601</span></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══ PAGE: 报警事件 ═══ -->
+      <div class="page" id="page-alarms">
+        <div class="page-title">报警事件</div>
+
+        <div style="display:flex;gap:8px;margin-bottom:12px;align-items:center;flex-wrap:wrap;">
+          <button class="tab-btn active" onclick="filterAlarms('all',this)">全部</button>
+          <button class="tab-btn" onclick="filterAlarms('unacked',this)">未确认 (2)</button>
+          <button class="tab-btn" onclick="filterAlarms('L3L2',this)">L2/L3</button>
+          <div style="flex:1;"></div>
+          <input class="form-input" style="width:180px;" placeholder="按试验编号过滤..." />
+          <button class="btn btn-ghost btn-sm">🔇 消音</button>
+        </div>
+
+        <div class="card">
+          <table class="data-table" id="alarm-table">
+            <thead>
+              <tr>
+                <th>时间</th>
+                <th>等级</th>
+                <th>报警码</th>
+                <th>来源</th>
+                <th>说明</th>
+                <th>状态</th>
+                <th>确认状态</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody id="alarm-tbody">
+              <tr id="alm-row-1">
+                <td style="font-family:monospace;color:var(--text-sec);">02:08:14</td>
+                <td><span class="badge badge-L2">L2 警告</span></td>
+                <td style="font-family:monospace;">A-0211</td>
+                <td>STM32</td>
+                <td>CO浓度超过提示阈值，排风系统运行中</td>
+                <td><span class="badge badge-L1">Reducing</span></td>
+                <td><span class="badge badge-L3" id="ack-1">未确认</span></td>
+                <td>
+                  <button class="btn btn-ghost btn-sm" onclick="ackAlarmRow(1)">确认</button>
+                  <button class="btn btn-ghost btn-sm" style="margin-left:4px;">备注</button>
+                </td>
+              </tr>
+              <tr id="alm-row-2">
+                <td style="font-family:monospace;color:var(--text-sec);">01:55:32</td>
+                <td><span class="badge badge-L1">L1 提示</span></td>
+                <td style="font-family:monospace;">A-0102</td>
+                <td>STM32</td>
+                <td>N2流量偏差超阈值，已自动调节</td>
+                <td><span class="badge badge-L0">N2Heat</span></td>
+                <td><span class="badge badge-L3" id="ack-2">未确认</span></td>
+                <td>
+                  <button class="btn btn-ghost btn-sm" onclick="ackAlarmRow(2)">确认</button>
+                  <button class="btn btn-ghost btn-sm" style="margin-left:4px;">备注</button>
+                </td>
+              </tr>
+              <tr id="alm-row-3" class="acked">
+                <td style="font-family:monospace;color:var(--text-sec);">01:30:05</td>
+                <td><span class="badge badge-L0">L0 信息</span></td>
+                <td style="font-family:monospace;">E-0010</td>
+                <td>Web后端</td>
+                <td>状态切换: N2Heat → AutoSwitch</td>
+                <td><span class="badge badge-ok">N2Heat</span></td>
+                <td><span class="badge badge-ok" id="ack-3">已确认 operator01</span></td>
+                <td><span style="font-size:11px;color:var(--text-muted);">01:30:22</span></td>
+              </tr>
+              <tr id="alm-row-4" class="acked">
+                <td style="font-family:monospace;color:var(--text-sec);">00:48:17</td>
+                <td><span class="badge badge-L0">L0 信息</span></td>
+                <td style="font-family:monospace;">E-0005</td>
+                <td>STM32</td>
+                <td>LeakCheck 通过，进入 N2Heat 阶段</td>
+                <td><span class="badge badge-ok">LeakCheck</span></td>
+                <td><span class="badge badge-ok">已确认 operator01</span></td>
+                <td><span style="font-size:11px;color:var(--text-muted);">00:48:30</span></td>
+              </tr>
+              <tr id="alm-row-5" class="acked">
+                <td style="font-family:monospace;color:var(--text-sec);">00:02:44</td>
+                <td><span class="badge badge-L0">L0 信息</span></td>
+                <td style="font-family:monospace;">E-0001</td>
+                <td>Web后端</td>
+                <td>试验 TEST-2026-042 已启动，参数快照已保存</td>
+                <td><span class="badge badge-ok">Standby</span></td>
+                <td><span class="badge badge-ok">系统自动</span></td>
+                <td>—</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:8px;">
+          注：消音不清除报警，不删除事件。报警确认不等于故障复位。原始日志不可删除。
+        </div>
+      </div>
+
+      <!-- ═══ PAGE: 历史试验 ═══ -->
+      <div class="page" id="page-history">
+        <div class="page-title">历史试验</div>
+        <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;align-items:flex-end;">
+          <div class="form-group" style="margin:0;">
+            <div class="form-label">日期范围</div>
+            <input class="form-input" type="date" value="2026-06-01" style="width:130px;">
+          </div>
+          <div class="form-group" style="margin:0;">
+            <div class="form-label">&nbsp;</div>
+            <input class="form-input" type="date" value="2026-06-09" style="width:130px;">
+          </div>
+          <div class="form-group" style="margin:0;">
+            <div class="form-label">状态</div>
+            <select class="form-input" style="width:120px;">
+              <option>全部</option>
+              <option>completed</option>
+              <option>fault_stopped</option>
+              <option>manual_stopped</option>
+            </select>
+          </div>
+          <div class="form-group" style="margin:0;">
+            <div class="form-label">操作员</div>
+            <input class="form-input" placeholder="全部" style="width:120px;">
+          </div>
+          <button class="btn btn-primary" style="align-self:flex-end;">🔍 查询</button>
+          <div style="flex:1;"></div>
+          <button class="btn btn-ghost btn-sm" style="align-self:flex-end;" onclick="exportHistory()">⬇️ 导出 Excel</button>
+        </div>
+        <div class="card">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>试验编号</th><th>样品编号</th><th>操作员</th>
+                <th>开始时间</th><th>时长</th><th>状态</th>
+                <th>最高炉温</th><th>最高料层温</th><th>报警数</th><th>固件版本</th><th>操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td style="color:var(--accent);font-weight:600;">TEST-2026-042</td>
+                <td>SMD-ORE-B0042</td><td>operator01</td>
+                <td>2026-06-09 09:42</td><td style="color:var(--yellow);">进行中</td>
+                <td><span class="badge badge-L0">running</span></td>
+                <td>1548°C</td><td>1403°C</td><td>2</td><td>FW-v2.4.1</td>
+                <td><button class="btn btn-ghost btn-sm">详情</button></td>
+              </tr>
+              <tr>
+                <td style="color:var(--accent);font-weight:600;">TEST-2026-041</td>
+                <td>SMD-ORE-B0041</td><td>operator01</td>
+                <td>2026-06-08 14:20</td><td>04:12:33</td>
+                <td><span class="badge badge-ok">completed</span></td>
+                <td>1583°C</td><td>1428°C</td><td>1</td><td>FW-v2.4.1</td>
+                <td>
+                  <button class="btn btn-ghost btn-sm">详情</button>
+                  <button class="btn btn-ghost btn-sm" style="margin-left:4px;">曲线回放</button>
+                  <button class="btn btn-ghost btn-sm" style="margin-left:4px;">导出</button>
+                </td>
+              </tr>
+              <tr>
+                <td style="color:var(--accent);font-weight:600;">TEST-2026-040</td>
+                <td>SMD-ORE-A0039</td><td>operator02</td>
+                <td>2026-06-07 10:05</td><td>03:58:02</td>
+                <td><span class="badge badge-L3">fault_stopped</span></td>
+                <td>1421°C</td><td>1198°C</td><td>5</td><td>FW-v2.4.1</td>
+                <td>
+                  <button class="btn btn-ghost btn-sm">详情</button>
+                  <button class="btn btn-ghost btn-sm" style="margin-left:4px;">曲线回放</button>
+                  <button class="btn btn-ghost btn-sm" style="margin-left:4px;">导出</button>
+                </td>
+              </tr>
+              <tr>
+                <td style="color:var(--accent);font-weight:600;">TEST-2026-039</td>
+                <td>SMD-ORE-A0038</td><td>operator01</td>
+                <td>2026-06-06 09:30</td><td>05:01:14</td>
+                <td><span class="badge badge-ok">completed</span></td>
+                <td>1582°C</td><td>1441°C</td><td>0</td><td>FW-v2.4.0</td>
+                <td>
+                  <button class="btn btn-ghost btn-sm">详情</button>
+                  <button class="btn btn-ghost btn-sm" style="margin-left:4px;">曲线回放</button>
+                  <button class="btn btn-ghost btn-sm" style="margin-left:4px;">导出</button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- ═══ PAGE: 参数配置 ═══ -->
+      <div class="page" id="page-params">
+        <div class="page-title">参数配置</div>
+
+        <div class="safety-banner">
+          <span class="safety-banner-icon">🔒</span>
+          <div>
+            <div class="safety-banner-text">试验运行中 — 关键工艺参数已锁定</div>
+            <div class="safety-banner-sub">当前状态: Reducing · 参数修改将在试验结束后生效 · 通信参数可调整</div>
+          </div>
+        </div>
+
+        <div class="tabs">
+          <div class="tab active" onclick="switchTab(this,'param-process')">工艺参数</div>
+          <div class="tab" onclick="switchTab(this,'param-temp')">控温程序</div>
+          <div class="tab" onclick="switchTab(this,'param-mfc')">MFC 参数</div>
+          <div class="tab" onclick="switchTab(this,'param-alarm')">报警阈值</div>
+          <div class="tab" onclick="switchTab(this,'param-comm')">通信参数</div>
+        </div>
+
+        <div class="tab-panel active" id="param-process">
+          <div class="card">
+            <div class="form-row">
+              <div class="form-group">
+                <div class="form-label">切气温度阈值 (°C)</div>
+                <input class="form-input" value="500" disabled>
+              </div>
+              <div class="form-group">
+                <div class="form-label">目标还原温度 (°C)</div>
+                <input class="form-input" value="1580" disabled>
+              </div>
+              <div class="form-group">
+                <div class="form-label">还原保温时长 (min)</div>
+                <input class="form-input" value="60" disabled>
+              </div>
+              <div class="form-group">
+                <div class="form-label">CO/(N₂+CO) 目标配比 (%)</div>
+                <input class="form-input" value="36" disabled>
+              </div>
+              <div class="form-group">
+                <div class="form-label">N2置换判据 CO 阈值 (%)</div>
+                <input class="form-input" value="0.1" disabled>
+              </div>
+              <div class="form-group">
+                <div class="form-label">N2置换保持时长 (min)</div>
+                <input class="form-input" value="5" disabled>
+              </div>
+            </div>
+            <div class="btn-row">
+              <button class="btn btn-ghost" disabled>💾 保存修改</button>
+              <button class="btn btn-ghost btn-sm">📤 导出参数</button>
+              <button class="btn btn-ghost btn-sm">📥 导入参数</button>
+              <span style="font-size:11px;color:var(--text-muted);align-self:center;">当前参数CRC: 0xA7F3 · 版本: DP-v1.2.0</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="tab-panel" id="param-temp">
+          <div class="card">
+            <table class="data-table" style="margin-bottom:12px;">
+              <thead><tr><th>段号</th><th>目标温度 (°C)</th><th>升温速率 (°C/min)</th><th>保温时间 (min)</th></tr></thead>
+              <tbody>
+                <tr><td>1</td><td><input class="form-input" value="500" disabled style="width:90px;"></td><td><input class="form-input" value="10" disabled style="width:90px;"></td><td><input class="form-input" value="0" disabled style="width:90px;"></td></tr>
+                <tr><td>2</td><td><input class="form-input" value="1000" disabled style="width:90px;"></td><td><input class="form-input" value="8" disabled style="width:90px;"></td><td><input class="form-input" value="10" disabled style="width:90px;"></td></tr>
+                <tr><td>3</td><td><input class="form-input" value="1400" disabled style="width:90px;"></td><td><input class="form-input" value="5" disabled style="width:90px;"></td><td><input class="form-input" value="0" disabled style="width:90px;"></td></tr>
+                <tr><td>4</td><td><input class="form-input" value="1580" disabled style="width:90px;"></td><td><input class="form-input" value="3" disabled style="width:90px;"></td><td><input class="form-input" value="60" disabled style="width:90px;"></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="tab-panel" id="param-mfc">
+          <div class="card">
+            <div class="form-row">
+              <div class="form-group"><div class="form-label">N2 设定流量 (L/min)</div><input class="form-input" value="3.0" disabled></div>
+              <div class="form-group"><div class="form-label">CO 设定流量 (L/min)</div><input class="form-input" value="1.8" disabled></div>
+              <div class="form-group"><div class="form-label">流量偏差报警阈值</div><input class="form-input" value="±0.2 L/min" disabled></div>
+              <div class="form-group"><div class="form-label">流量稳定判据</div><input class="form-input" value="偏差<5%持续10s" disabled></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="tab-panel" id="param-alarm">
+          <div class="card">
+            <div class="form-row">
+              <div class="form-group"><div class="form-label">炉温上限报警 (°C)</div><input class="form-input" value="1650"></div>
+              <div class="form-group"><div class="form-label">料层温度上限 (°C)</div><input class="form-input" value="1500"></div>
+              <div class="form-group"><div class="form-label">压差上限 (Pa)</div><input class="form-input" value="300"></div>
+              <div class="form-group"><div class="form-label">CO浓度提示阈值 (%)</div><input class="form-input" value="0.5"></div>
+            </div>
+            <div class="btn-row">
+              <button class="btn btn-primary" onclick="showParamSaveConfirm()">💾 保存报警阈值</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="tab-panel" id="param-comm">
+          <div class="card">
+            <div class="form-row">
+              <div class="form-group"><div class="form-label">HostComm 地址</div><input class="form-input" value="192.168.1.100"></div>
+              <div class="form-group"><div class="form-label">端口</div><input class="form-input" value="8080"></div>
+              <div class="form-group"><div class="form-label">心跳周期 (ms)</div><input class="form-input" value="1000"></div>
+              <div class="form-group"><div class="form-label">超时阈值 (ms)</div><input class="form-input" value="3000"></div>
+            </div>
+            <div class="btn-row">
+              <button class="btn btn-primary">💾 保存通信参数</button>
+              <button class="btn btn-ghost">🔗 测试连接</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══ PAGE: 设备诊断 ═══ -->
+      <div class="page" id="page-diag">
+        <div class="page-title">设备诊断</div>
+
+        <div class="grid-2" style="margin-bottom:12px;">
+          <div class="card">
+            <div class="card-title">🔌 STM32 连接状态</div>
+            <div class="diag-row"><span class="diag-key">连接状态</span><span class="diag-val val-ok">● 已连接</span></div>
+            <div class="diag-row"><span class="diag-key">心跳响应时间</span><span class="diag-val">12 ms</span></div>
+            <div class="diag-row"><span class="diag-key">超时次数 (本次试验)</span><span class="diag-val">0</span></div>
+            <div class="diag-row"><span class="diag-key">HostComm 协议版本</span><span class="diag-val" style="color:var(--accent);">待冻结 — 等待供应商</span></div>
+            <div class="diag-row"><span class="diag-key">固件版本</span><span class="diag-val">FW-v2.4.1</span></div>
+            <div class="diag-row"><span class="diag-key">device_profile 版本</span><span class="diag-val">DP-v1.2.0</span></div>
+            <div class="diag-row"><span class="diag-key">参数 CRC</span><span class="diag-val" style="font-family:monospace;">0xA7F3</span></div>
+            <div class="diag-row"><span class="diag-key">RTC 有效</span><span class="diag-val val-ok">是</span></div>
+            <div class="diag-row"><span class="diag-key">控制板运行时间</span><span class="diag-val" style="font-family:monospace;">08:14:37</span></div>
+          </div>
+
+          <div class="card">
+            <div class="card-title">🖥️ 系统资源</div>
+            <div class="diag-row"><span class="diag-key">数据库状态</span><span class="diag-val val-ok">正常</span></div>
+            <div class="diag-row"><span class="diag-key">磁盘剩余空间</span><span class="diag-val">48.2 GB</span></div>
+            <div class="diag-row"><span class="diag-key">当前 WebSocket 连接数</span><span class="diag-val">1</span></div>
+            <div class="diag-row"><span class="diag-key">后端版本</span><span class="diag-val">v0.1.0-dev</span></div>
+            <div class="diag-row"><span class="diag-key">前端版本</span><span class="diag-val">v0.1.0-dev</span></div>
+            <div class="diag-row"><span class="diag-key">日志写入状态</span><span class="diag-val val-ok">可写</span></div>
+            <div class="diag-row"><span class="diag-key">WebSocket 状态</span><span class="diag-val val-ok">已连接</span></div>
+          </div>
+        </div>
+
+        <div class="grid-2">
+          <div class="card">
+            <div class="card-title">📡 子系统通信</div>
+            <div class="status-grid">
+              <div class="status-row"><div class="status-dot s-ok"></div><span class="status-label">控温仪</span><span class="status-val val-ok">响应正常</span></div>
+              <div class="status-row"><div class="status-dot s-ok"></div><span class="status-label">N2 MFC</span><span class="status-val val-ok">响应正常</span></div>
+              <div class="status-row"><div class="status-dot s-ok"></div><span class="status-label">CO MFC</span><span class="status-val val-ok">响应正常</span></div>
+              <div class="status-row"><div class="status-dot s-ok"></div><span class="status-label">电子天平</span><span class="status-val val-ok">响应正常</span></div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-title">🔢 DI/DO 状态</div>
+            <div class="diag-row"><span class="diag-key">DI 位图</span><span class="diag-val" style="font-family:monospace;color:var(--accent);">0xA4 = 1010 0100</span></div>
+            <div class="diag-row"><span class="diag-key">DO 位图</span><span class="diag-val" style="font-family:monospace;color:var(--accent);">0x1B = 0001 1011</span></div>
+            <div class="diag-row"><span class="diag-key">安全继电器</span><span class="diag-val val-ok">允许</span></div>
+            <div class="diag-row"><span class="diag-key">CO 阀位反馈</span><span class="diag-val val-ok">开</span></div>
+            <div class="diag-row"><span class="diag-key">N2 阀位反馈</span><span class="diag-val val-ok">开</span></div>
+          </div>
+        </div>
+
+        <div style="margin-top:12px;padding:10px 14px;background:var(--red-dim);border:1px solid var(--red);border-radius:6px;font-size:12px;color:var(--red);">
+          ⚠️ 诊断页面不提供强制打开CO阀、绕过安全继电器或强制恢复加热许可功能。所有维护命令均记录操作日志。
+        </div>
+      </div>
+
+      <!-- ═══ PAGE: 系统设置 ═══ -->
+      <div class="page" id="page-settings">
+        <div class="page-title">系统设置</div>
+
+        <div class="tabs">
+          <div class="tab active" onclick="switchTab(this,'set-user')">用户管理</div>
+          <div class="tab" onclick="switchTab(this,'set-backup')">备份与恢复</div>
+          <div class="tab" onclick="switchTab(this,'set-report')">报表设置</div>
+          <div class="tab" onclick="switchTab(this,'set-version')">版本信息</div>
+        </div>
+
+        <div class="tab-panel active" id="set-user">
+          <div class="card">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+              <span class="card-title" style="margin:0;">用户列表</span>
+              <button class="btn btn-primary btn-sm">＋ 新增用户</button>
+            </div>
+            <table class="data-table">
+              <thead><tr><th>用户名</th><th>显示名</th><th>角色</th><th>状态</th><th>最近登录</th><th>操作</th></tr></thead>
+              <tbody>
+                <tr><td>admin</td><td>管理员</td><td><span class="badge badge-L2">管理员</span></td><td><span class="badge badge-ok">启用</span></td><td>2026-06-09 09:40</td><td><button class="btn btn-ghost btn-sm">编辑</button></td></tr>
+                <tr><td>operator01</td><td>操作员01</td><td><span class="badge badge-L0">操作员</span></td><td><span class="badge badge-ok">启用</span></td><td>2026-06-09 09:42</td><td><button class="btn btn-ghost btn-sm">编辑</button></td></tr>
+                <tr><td>operator02</td><td>操作员02</td><td><span class="badge badge-L0">操作员</span></td><td><span class="badge badge-ok">启用</span></td><td>2026-06-07 10:02</td><td><button class="btn btn-ghost btn-sm">编辑</button></td></tr>
+                <tr><td>observer01</td><td>观察员</td><td><span class="badge badge-off">观察员</span></td><td><span class="badge badge-ok">启用</span></td><td>2026-06-08 16:30</td><td><button class="btn btn-ghost btn-sm">编辑</button></td></tr>
+                <tr><td>maintain01</td><td>维护工程师</td><td><span class="badge badge-L1">维护员</span></td><td><span class="badge badge-off">禁用</span></td><td>2026-05-20 09:00</td><td><button class="btn btn-ghost btn-sm">编辑</button></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="tab-panel" id="set-backup">
+          <div class="card">
+            <div class="form-section-title">数据库备份</div>
+            <div class="form-row" style="margin-bottom:10px;">
+              <div class="form-group"><div class="form-label">备份路径</div><input class="form-input" value="D:\SMD-Backup\"></div>
+              <div class="form-group"><div class="form-label">备份周期</div>
+                <select class="form-input"><option>每日</option><option>每周</option><option>手动</option></select>
+              </div>
+            </div>
+            <div class="btn-row">
+              <button class="btn btn-primary">💾 立即备份</button>
+              <button class="btn btn-ghost">📂 浏览备份文件</button>
+              <button class="btn btn-warn" onclick="confirmRestore()">🔄 从备份恢复</button>
+            </div>
+            <div style="margin-top:10px;font-size:11px;color:var(--text-muted);">最近备份: 2026-06-09 06:00:00 · 大小: 128 MB</div>
+          </div>
+        </div>
+
+        <div class="tab-panel" id="set-report">
+          <div class="card">
+            <div class="form-row">
+              <div class="form-group"><div class="form-label">导出路径</div><input class="form-input" value="D:\SMD-Reports\"></div>
+              <div class="form-group"><div class="form-label">默认导出格式</div>
+                <select class="form-input"><option>Excel (.xlsx)</option><option>CSV (.csv)</option><option>PDF (后续增强)</option></select>
+              </div>
+            </div>
+            <div class="btn-row"><button class="btn btn-primary">💾 保存</button></div>
+          </div>
+        </div>
+
+        <div class="tab-panel" id="set-version">
+          <div class="card">
+            <div class="diag-row"><span class="diag-key">前端版本</span><span class="diag-val">v0.1.0-dev</span></div>
+            <div class="diag-row"><span class="diag-key">后端版本</span><span class="diag-val">v0.1.0-dev</span></div>
+            <div class="diag-row"><span class="diag-key">STM32 固件版本</span><span class="diag-val">FW-v2.4.1</span></div>
+            <div class="diag-row"><span class="diag-key">device_profile 版本</span><span class="diag-val">DP-v1.2.0</span></div>
+            <div class="diag-row"><span class="diag-key">HostComm 协议版本</span><span class="diag-val" style="color:var(--yellow);">待冻结 (等待控制板供应商)</span></div>
+            <div class="diag-row"><span class="diag-key">操作系统</span><span class="diag-val">Windows 10 IoT LTSC</span></div>
+            <div class="diag-row"><span class="diag-key">部署日期</span><span class="diag-val">2026-06-01</span></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══ PAGE: 数据分析 ═══ -->
+      <div class="page" id="page-analysis">
+        <div class="page-title">数据分析</div>
+
+        <div class="tabs">
+          <div class="tab active" onclick="switchTab(this,'ana-query')">高级查询</div>
+          <div class="tab" onclick="switchTab(this,'ana-stats')">统计分析</div>
+          <div class="tab" onclick="switchTab(this,'ana-compare')">试验对比</div>
+        </div>
+
+        <!-- ── 高级查询 ── -->
+        <div class="tab-panel active" id="ana-query">
+          <!-- Summary stats -->
+          <div class="grid-4" style="margin-bottom:12px;">
+            <div class="stat-card"><div class="stat-num" style="color:var(--accent);">42</div><div class="stat-lbl">总试验次数</div></div>
+            <div class="stat-card"><div class="stat-num" style="color:var(--green);">38</div><div class="stat-lbl">正常完成</div></div>
+            <div class="stat-card"><div class="stat-num" style="color:var(--red);">3</div><div class="stat-lbl">故障终止</div></div>
+            <div class="stat-card"><div class="stat-num" style="color:var(--yellow);">1</div><div class="stat-lbl">手动停止</div></div>
+          </div>
+
+          <!-- Advanced filters -->
+          <div class="card" style="margin-bottom:12px;">
+            <div class="card-title">🔍 高级筛选条件</div>
+            <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:10px;">
+              <div class="form-group" style="margin:0;"><div class="form-label">试验编号</div><input class="form-input" placeholder="TEST-2026-..." id="q-testid"></div>
+              <div class="form-group" style="margin:0;"><div class="form-label">样品编号</div><input class="form-input" placeholder="SMD-ORE-..." id="q-sampleid"></div>
+              <div class="form-group" style="margin:0;"><div class="form-label">操作员</div>
+                <select class="form-input" id="q-operator"><option value="">全部</option><option>operator01</option><option>operator02</option></select></div>
+              <div class="form-group" style="margin:0;"><div class="form-label">结果状态</div>
+                <select class="form-input" id="q-status"><option value="">全部</option><option>completed</option><option>fault_stopped</option><option>manual_stopped</option></select></div>
+              <div class="form-group" style="margin:0;"><div class="form-label">开始日期</div><input class="form-input" type="date" value="2026-05-01" id="q-date-from"></div>
+              <div class="form-group" style="margin:0;"><div class="form-label">结束日期</div><input class="form-input" type="date" value="2026-06-09" id="q-date-to"></div>
+              <div class="form-group" style="margin:0;"><div class="form-label">最高炉温 ≥ (°C)</div><input class="form-input" type="number" placeholder="不限" id="q-temp-min"></div>
+              <div class="form-group" style="margin:0;"><div class="form-label">滴落重量 ≥ (g)</div><input class="form-input" type="number" placeholder="不限" id="q-drip-min"></div>
+            </div>
+            <div class="btn-row">
+              <button class="btn btn-primary" onclick="runQuery()">🔍 查询</button>
+              <button class="btn btn-ghost" onclick="clearQuery()">✕ 清除</button>
+              <div style="flex:1;"></div>
+              <button class="btn btn-ghost btn-sm" onclick="exportQuery('csv')">⬇️ CSV</button>
+              <button class="btn btn-ghost btn-sm" onclick="exportQuery('excel')">⬇️ Excel</button>
+              <span style="font-size:11px;color:var(--text-muted);align-self:center;" id="q-result-count">显示 42 条记录</span>
+            </div>
+          </div>
+
+          <!-- Results table with comparison checkboxes -->
+          <div class="card">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+              <span style="font-size:11px;color:var(--text-sec);">勾选最多 3 条记录后点击"对比所选"</span>
+              <button class="btn btn-ghost btn-sm" id="btn-compare-sel" onclick="goCompare()" style="margin-left:8px;" disabled>📊 对比所选</button>
+            </div>
+            <table class="data-table" id="query-table">
+              <thead>
+                <tr>
+                  <th style="width:32px;"></th>
+                  <th>试验编号 ↕</th><th>样品编号</th><th>操作员</th>
+                  <th>开始时间 ↕</th><th>时长</th><th>状态</th>
+                  <th>最高炉温 ↕</th><th>最高料层温 ↕</th><th>滴落重量 ↕</th><th>报警数</th>
+                </tr>
+              </thead>
+              <tbody id="query-tbody">
+                <tr>
+                  <td><input type="checkbox" class="cmp-chk" onchange="updateCmpBtn()"></td>
+                  <td style="color:var(--accent);">TEST-2026-041</td><td>SMD-ORE-B0041</td><td>operator01</td>
+                  <td>2026-06-08 14:20</td><td>04:12:33</td><td><span class="badge badge-ok">completed</span></td>
+                  <td>1583°C</td><td>1428°C</td><td>5.21 g</td><td>1</td>
+                </tr>
+                <tr>
+                  <td><input type="checkbox" class="cmp-chk" onchange="updateCmpBtn()"></td>
+                  <td style="color:var(--accent);">TEST-2026-040</td><td>SMD-ORE-A0039</td><td>operator02</td>
+                  <td>2026-06-07 10:05</td><td>03:58:02</td><td><span class="badge badge-L3">fault_stopped</span></td>
+                  <td>1421°C</td><td>1198°C</td><td>1.80 g</td><td>5</td>
+                </tr>
+                <tr>
+                  <td><input type="checkbox" class="cmp-chk" onchange="updateCmpBtn()"></td>
+                  <td style="color:var(--accent);">TEST-2026-039</td><td>SMD-ORE-A0038</td><td>operator01</td>
+                  <td>2026-06-06 09:30</td><td>05:01:14</td><td><span class="badge badge-ok">completed</span></td>
+                  <td>1582°C</td><td>1441°C</td><td>5.67 g</td><td>0</td>
+                </tr>
+                <tr>
+                  <td><input type="checkbox" class="cmp-chk" onchange="updateCmpBtn()"></td>
+                  <td style="color:var(--accent);">TEST-2026-038</td><td>SMD-ORE-A0037</td><td>operator01</td>
+                  <td>2026-06-05 14:10</td><td>04:44:08</td><td><span class="badge badge-ok">completed</span></td>
+                  <td>1580°C</td><td>1415°C</td><td>4.93 g</td><td>2</td>
+                </tr>
+                <tr>
+                  <td><input type="checkbox" class="cmp-chk" onchange="updateCmpBtn()"></td>
+                  <td style="color:var(--accent);">TEST-2026-037</td><td>SMD-ORE-B0036</td><td>operator02</td>
+                  <td>2026-06-04 09:00</td><td>04:28:51</td><td><span class="badge badge-ok">completed</span></td>
+                  <td>1581°C</td><td>1432°C</td><td>5.10 g</td><td>1</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- ── 统计分析 ── -->
+        <div class="tab-panel" id="ana-stats">
+          <div class="grid-4" style="margin-bottom:12px;">
+            <div class="stat-card"><div class="stat-num" style="color:var(--green);">90.5%</div><div class="stat-lbl">试验成功率</div></div>
+            <div class="stat-card"><div class="stat-num" style="color:var(--red);">1578</div><div class="stat-lbl">平均最高炉温 (°C)</div></div>
+            <div class="stat-card"><div class="stat-num" style="color:var(--orange);">4.82</div><div class="stat-lbl">平均滴落重量 (g)</div></div>
+            <div class="stat-card"><div class="stat-num" style="color:var(--accent);">04:22</div><div class="stat-lbl">平均试验时长</div></div>
+          </div>
+
+          <div class="grid-2" style="margin-bottom:12px;">
+            <div class="card">
+              <div class="card-title">📊 每月试验结果分布</div>
+              <div class="chart-wrap" style="height:200px;"><canvas id="chart-monthly"></canvas></div>
+            </div>
+            <div class="card">
+              <div class="card-title">⚖️ 滴落重量分布 (g)</div>
+              <div class="chart-wrap" style="height:200px;"><canvas id="chart-drip-hist"></canvas></div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-title">🌡️ 最高炉温 vs 滴落重量 散点图</div>
+            <div class="chart-toolbar">
+              <span style="font-size:11px;color:var(--text-sec);">筛选：</span>
+              <button class="tab-btn active" onclick="scatterFilter('all',this)">全部</button>
+              <button class="tab-btn" onclick="scatterFilter('completed',this)">仅完成</button>
+              <div class="chart-toolbar-spacer"></div>
+              <span style="font-size:11px;color:var(--text-sec);">● 完成 &nbsp; ● 故障</span>
+            </div>
+            <div class="chart-wrap" style="height:200px;"><canvas id="chart-scatter"></canvas></div>
+          </div>
+        </div>
+
+        <!-- ── 试验对比 ── -->
+        <div class="tab-panel" id="ana-compare">
+          <div style="display:flex;gap:8px;margin-bottom:12px;align-items:center;">
+            <span style="font-size:13px;font-weight:600;">对比试验：</span>
+            <span class="badge badge-L0" style="padding:4px 10px;">TEST-2026-041</span>
+            <span class="badge badge-L1" style="padding:4px 10px;">TEST-2026-039</span>
+            <span class="badge badge-off" style="padding:4px 10px;">TEST-2026-037</span>
+            <button class="btn btn-ghost btn-sm" onclick="showToast('请在「高级查询」勾选后点击对比所选')">更换对比组</button>
+          </div>
+
+          <div class="card" style="margin-bottom:12px;">
+            <div class="card-title">🌡️ 炉温曲线对比</div>
+            <div class="chart-wrap" style="height:200px;"><canvas id="chart-cmp-temp"></canvas></div>
+            <div style="display:flex;gap:14px;margin-top:6px;font-size:11px;">
+              <span><span style="color:#38bdf8">■</span> TEST-2026-041</span>
+              <span><span style="color:#22c55e">■</span> TEST-2026-039</span>
+              <span><span style="color:#f59e0b">■</span> TEST-2026-037</span>
+            </div>
+          </div>
+
+          <div class="card" style="margin-bottom:12px;">
+            <div class="card-title">📋 关键指标对比</div>
+            <table class="cmp-table">
+              <thead>
+                <tr>
+                  <th>指标</th>
+                  <th style="color:#38bdf8;">TEST-2026-041</th>
+                  <th style="color:#22c55e;">TEST-2026-039</th>
+                  <th style="color:#f59e0b;">TEST-2026-037</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr><td class="cmp-key">样品编号</td><td>SMD-ORE-B0041</td><td>SMD-ORE-A0038</td><td>SMD-ORE-B0036</td></tr>
+                <tr><td class="cmp-key">操作员</td><td>operator01</td><td>operator01</td><td>operator02</td></tr>
+                <tr><td class="cmp-key">试验结果</td><td><span class="badge badge-ok">completed</span></td><td><span class="badge badge-ok">completed</span></td><td><span class="badge badge-ok">completed</span></td></tr>
+                <tr><td class="cmp-key">试验时长</td><td>04:12:33</td><td>05:01:14</td><td>04:28:51</td></tr>
+                <tr><td class="cmp-key">最高炉温</td><td class="cmp-best">1583°C</td><td>1582°C</td><td>1581°C</td></tr>
+                <tr><td class="cmp-key">最高料层温</td><td>1428°C</td><td class="cmp-best">1441°C</td><td>1432°C</td></tr>
+                <tr><td class="cmp-key">滴落重量</td><td>5.21 g</td><td class="cmp-best">5.67 g</td><td>5.10 g</td></tr>
+                <tr><td class="cmp-key">报警次数</td><td>1</td><td class="cmp-best">0</td><td>1</td></tr>
+                <tr><td class="cmp-key">固件版本</td><td>FW-v2.4.1</td><td>FW-v2.4.0</td><td>FW-v2.4.0</td></tr>
+                <tr><td class="cmp-key">参数CRC</td><td style="font-family:monospace;">0xA7F3</td><td style="font-family:monospace;">0xA7F3</td><td style="font-family:monospace;">0xA6E1</td></tr>
+              </tbody>
+            </table>
+            <div style="margin-top:8px;font-size:11px;color:var(--text-muted);">绿色高亮 = 该指标最优值</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══ PAGE: 报告生成 ═══ -->
+      <div class="page" id="page-report">
+        <div class="page-title">报告生成</div>
+
+        <div class="grid-2" style="margin-bottom:12px;">
+          <!-- Left: config -->
+          <div>
+            <div class="card" style="margin-bottom:12px;">
+              <div class="card-title">📋 选择报告模板</div>
+              <div class="tpl-grid">
+                <div class="tpl-card selected" id="tpl-standard" onclick="selectTpl('standard')">
+                  <div class="tpl-icon">📊</div>
+                  <div class="tpl-name">标准试验报告</div>
+                  <div class="tpl-desc">包含试验概况、温度曲线、气体制度、滴落数据和事件日志</div>
+                </div>
+                <div class="tpl-card" id="tpl-summary" onclick="selectTpl('summary')">
+                  <div class="tpl-icon">⚡</div>
+                  <div class="tpl-name">快速摘要</div>
+                  <div class="tpl-desc">单页关键数据：结果、最高温度、滴落重量、报警统计</div>
+                </div>
+                <div class="tpl-card" id="tpl-full" onclick="selectTpl('full')">
+                  <div class="tpl-icon">📦</div>
+                  <div class="tpl-name">完整数据包</div>
+                  <div class="tpl-desc">全部曲线数据、参数快照、事件日志、操作记录，适合存档</div>
+                </div>
+              </div>
+            </div>
+
+            <div class="card" style="margin-bottom:12px;">
+              <div class="card-title">🗂️ 选择试验范围</div>
+              <div class="form-row" style="margin-bottom:8px;">
+                <div class="form-group" style="margin:0;">
+                  <div class="form-label">选择方式</div>
+                  <select class="form-input" id="rpt-mode" onchange="toggleRptMode()">
+                    <option value="single">单次试验</option>
+                    <option value="range">日期范围</option>
+                    <option value="multi">多选试验</option>
+                  </select>
+                </div>
+                <div class="form-group" style="margin:0;">
+                  <div class="form-label">输出格式</div>
+                  <select class="form-input" id="rpt-format">
+                    <option>Excel (.xlsx)</option>
+                    <option>CSV (.csv)</option>
+                    <option disabled>PDF (后续增强)</option>
+                  </select>
+                </div>
+              </div>
+              <div id="rpt-single-row">
+                <div class="form-group" style="margin:0;">
+                  <div class="form-label">试验编号</div>
+                  <select class="form-input">
+                    <option>TEST-2026-042 (进行中)</option>
+                    <option selected>TEST-2026-041</option>
+                    <option>TEST-2026-040</option>
+                    <option>TEST-2026-039</option>
+                    <option>TEST-2026-038</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <div class="card">
+              <div class="card-title">☑️ 报告内容选项</div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
+                <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;"><input type="checkbox" checked> 试验概况与参数快照</label>
+                <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;"><input type="checkbox" checked> 温度曲线（PNG 嵌入）</label>
+                <label style="display:flex;align-items:center;gap=6px;font-size:12px;cursor:pointer;"><input type="checkbox" checked> 气体流量曲线</label>
+                <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;"><input type="checkbox" checked> 过程量曲线</label>
+                <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;"><input type="checkbox" checked> 报警事件列表</label>
+                <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;"><input type="checkbox" checked> 操作员操作日志</label>
+                <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;"><input type="checkbox"> 原始曲线数据（CSV附表）</label>
+                <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;"><input type="checkbox"> 设备版本与CRC信息</label>
+              </div>
+              <div class="btn-row" style="margin-top:14px;">
+                <button class="btn btn-primary" onclick="generateReport()">🔄 生成报告</button>
+                <button class="btn btn-ghost" onclick="previewReport()">👁️ 预览</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Right: progress + history -->
+          <div>
+            <div class="card" style="margin-bottom:12px;" id="rpt-progress-card">
+              <div class="card-title">⚙️ 生成进度</div>
+              <div id="rpt-idle" style="color:var(--text-muted);font-size:12px;padding:8px 0;">点击「生成报告」开始</div>
+              <div class="gen-progress" id="rpt-gen">
+                <div style="font-size:12px;color:var(--text-sec);margin-bottom:8px;" id="rpt-gen-title">正在生成：TEST-2026-041 标准试验报告</div>
+                <div class="progress-bar" style="margin-bottom:10px;"><div class="progress-fill" id="rpt-gen-bar" style="width:0%;background:var(--accent);"></div></div>
+                <div class="gen-steps">
+                  <div class="gen-step wait" id="gs-1"><span class="gen-step-icon">📂</span> 读取试验数据</div>
+                  <div class="gen-step wait" id="gs-2"><span class="gen-step-icon">📈</span> 渲染曲线图</div>
+                  <div class="gen-step wait" id="gs-3"><span class="gen-step-icon">📝</span> 填充报告模板</div>
+                  <div class="gen-step wait" id="gs-4"><span class="gen-step-icon">💾</span> 写入文件</div>
+                  <div class="gen-step wait" id="gs-5"><span class="gen-step-icon">✅</span> 完成</div>
+                </div>
+              </div>
+            </div>
+
+            <div class="card">
+              <div class="card-title">📁 报告历史</div>
+              <table class="data-table">
+                <thead><tr><th>时间</th><th>试验</th><th>模板</th><th>格式</th><th>操作者</th><th>操作</th></tr></thead>
+                <tbody id="rpt-history-tbody">
+                  <tr>
+                    <td style="font-family:monospace;font-size:11px;color:var(--text-sec);">06-09 08:00</td>
+                    <td style="color:var(--accent);">TEST-2026-041</td>
+                    <td>标准报告</td>
+                    <td><span class="badge badge-ok">xlsx</span></td>
+                    <td>operator01</td>
+                    <td><button class="btn btn-ghost btn-sm" onclick="showToast('文件已下载')">⬇️</button></td>
+                  </tr>
+                  <tr>
+                    <td style="font-family:monospace;font-size:11px;color:var(--text-sec);">06-08 17:30</td>
+                    <td style="color:var(--accent);">TEST-2026-040</td>
+                    <td>快速摘要</td>
+                    <td><span class="badge badge-ok">xlsx</span></td>
+                    <td>operator02</td>
+                    <td><button class="btn btn-ghost btn-sm" onclick="showToast('文件已下载')">⬇️</button></td>
+                  </tr>
+                  <tr>
+                    <td style="font-family:monospace;font-size:11px;color:var(--text-sec);">06-07 18:05</td>
+                    <td style="color:var(--accent);">TEST-2026-039</td>
+                    <td>完整数据包</td>
+                    <td><span class="badge badge-ok">csv</span></td>
+                    <td>operator01</td>
+                    <td><button class="btn btn-ghost btn-sm" onclick="showToast('文件已下载')">⬇️</button></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══ PAGE: 帮助 ═══ -->
+      <div class="page" id="page-help">
+        <div class="page-title">帮助</div>
+
+        <div class="tabs">
+          <div class="tab active" onclick="switchTab(this,'help-quickref')">快速参考</div>
+          <div class="tab" onclick="switchTab(this,'help-alarmcodes')">报警代码表</div>
+          <div class="tab" onclick="switchTab(this,'help-statemachine')">状态机说明</div>
+          <div class="tab" onclick="switchTab(this,'help-faq')">操作规程</div>
+        </div>
+
+        <!-- 快速参考 -->
+        <div class="tab-panel active" id="help-quickref">
+          <div class="help-grid">
+            <div class="help-card">
+              <div class="help-card-title">▶️ 启动一次试验</div>
+              <div class="help-step"><span class="help-step-num">1</span><span class="help-step-text">确认设备就绪：控温仪、MFC、天平、安全继电器均显示「正常/允许」</span></div>
+              <div class="help-step"><span class="help-step-num">2</span><span class="help-step-text">进入「当前试验」页，填写样品编号和试验备注</span></div>
+              <div class="help-step"><span class="help-step-num">3</span><span class="help-step-text">确认启动前检查全部通过（8项绿色）</span></div>
+              <div class="help-step"><span class="help-step-num">4</span><span class="help-step-text">点击「启动试验」，系统自动分配 test_id 并保存参数快照</span></div>
+              <div class="help-step"><span class="help-step-num">5</span><span class="help-step-text">切换至「实时总览」监控状态机推进，关注安全状态栏</span></div>
+            </div>
+            <div class="help-card">
+              <div class="help-card-title">⏹ 正常停止试验</div>
+              <div class="help-step"><span class="help-step-num">1</span><span class="help-step-text">确认试验已满足结束判据（滴落重量达标且 ΔP 稳定）</span></div>
+              <div class="help-step"><span class="help-step-num">2</span><span class="help-step-text">在「当前试验」点击「停止试验」，阅读二次确认提示</span></div>
+              <div class="help-step"><span class="help-step-num">3</span><span class="help-step-text">确认后控制板进入 Purge → Cool 流程，CO 自动关闭</span></div>
+              <div class="help-step"><span class="help-step-num">4</span><span class="help-step-text">观察状态机进入 Cool，待「实时总览」显示设备冷却完成</span></div>
+              <div class="help-step"><span class="help-step-num">5</span><span class="help-step-text">进入「报告生成」导出本次试验报告</span></div>
+            </div>
+            <div class="help-card">
+              <div class="help-card-title">🚨 报警处理流程</div>
+              <div class="help-step"><span class="help-step-num">1</span><span class="help-step-text">顶部橙色/红色横幅显示报警内容，查看等级和报警码</span></div>
+              <div class="help-step"><span class="help-step-num">2</span><span class="help-step-text">进入「报警事件」查看完整报警信息和建议处置</span></div>
+              <div class="help-step"><span class="help-step-num">3</span><span class="help-step-text">排查现场后，点击「确认」记录确认人和时间</span></div>
+              <div class="help-step"><span class="help-step-num">4</span><span class="help-step-text">若为 L3 故障，等故障消除后在「当前试验」点击故障复位</span></div>
+              <div class="help-step"><span class="help-step-num">5</span><span class="help-step-text">注：消音不清除报警；报警确认不等于故障复位</span></div>
+            </div>
+            <div class="help-card">
+              <div class="help-card-title">📊 导出历史数据</div>
+              <div class="help-step"><span class="help-step-num">1</span><span class="help-step-text">进入「数据分析 → 高级查询」设置筛选条件</span></div>
+              <div class="help-step"><span class="help-step-num">2</span><span class="help-step-text">点击「查询」确认结果集后，点击「导出 Excel/CSV」</span></div>
+              <div class="help-step"><span class="help-step-num">3</span><span class="help-step-text">如需图文报告，进入「报告生成」选择模板和试验编号</span></div>
+              <div class="help-step"><span class="help-step-num">4</span><span class="help-step-text">导出文件默认保存至系统设置中配置的报表路径</span></div>
+            </div>
+            <div class="help-card">
+              <div class="help-card-title">⚙️ 修改工艺参数</div>
+              <div class="help-step"><span class="help-step-num">1</span><span class="help-step-text">需要管理员权限；试验运行中关键参数被锁定</span></div>
+              <div class="help-step"><span class="help-step-num">2</span><span class="help-step-text">进入「参数配置」，选择对应标签页</span></div>
+              <div class="help-step"><span class="help-step-num">3</span><span class="help-step-text">修改参数后点击保存，系统记录修改前后值和操作者</span></div>
+              <div class="help-step"><span class="help-step-num">4</span><span class="help-step-text">下发控制板后必须确认回读结果与设定值一致</span></div>
+            </div>
+            <div class="help-card">
+              <div class="help-card-title">🔧 通信中断处理</div>
+              <div class="help-step"><span class="help-step-num">1</span><span class="help-step-text">顶部状态栏显示「STM32 通信中断」红色徽标</span></div>
+              <div class="help-step"><span class="help-step-num">2</span><span class="help-step-text">STM32 本地安全流程不受影响，请先检查现场设备安全</span></div>
+              <div class="help-step"><span class="help-step-num">3</span><span class="help-step-text">进入「设备诊断」查看心跳和 HostComm 状态</span></div>
+              <div class="help-step"><span class="help-step-num">4</span><span class="help-step-text">检查以太网连接和 STM32 工控机 IP 配置</span></div>
+              <div class="help-step"><span class="help-step-num">5</span><span class="help-step-text">后端自动重连；恢复后数据从设备日志补齐</span></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 报警代码表 -->
+        <div class="tab-panel" id="help-alarmcodes">
+          <div style="display:flex;gap:8px;margin-bottom:10px;align-items:center;">
+            <input class="form-input" placeholder="搜索报警码或关键字…" style="width:240px;" id="alarm-search" oninput="searchAlarmCodes()">
+            <select class="form-input" style="width:120px;" onchange="filterAlarmLevel(this.value)">
+              <option value="">全部等级</option>
+              <option value="L3">L3 危险</option>
+              <option value="L2">L2 警告</option>
+              <option value="L1">L1 提示</option>
+              <option value="L0">L0 信息</option>
+            </select>
+          </div>
+          <div class="card">
+            <table class="data-table" id="alarm-code-table">
+              <thead><tr><th>报警码</th><th>等级</th><th>来源</th><th>说明</th><th>触发条件</th><th>建议处置</th></tr></thead>
+              <tbody>
+                <tr><td style="font-family:monospace;">F-0001</td><td><span class="badge badge-L3">L3 危险</span></td><td>STM32</td><td>CO浓度超高限报警</td><td>CO浓度 &gt; 1.0%</td><td>立即停止CO供应，排风，人员撤离</td></tr>
+                <tr><td style="font-family:monospace;">F-0002</td><td><span class="badge badge-L3">L3 危险</span></td><td>STM32</td><td>安全继电器跳闸</td><td>硬接线安全条件不满足</td><td>检查急停、联锁条件，排除故障后手动复位</td></tr>
+                <tr><td style="font-family:monospace;">F-0003</td><td><span class="badge badge-L3">L3 危险</span></td><td>STM32</td><td>炉温超独立超温保护</td><td>独立超温仪触发</td><td>断电冷却，检查控温仪和SCR</td></tr>
+                <tr><td style="font-family:monospace;">F-0004</td><td><span class="badge badge-L3">L3 危险</span></td><td>STM32</td><td>密封箱超压</td><td>箱内压差异常</td><td>停止气体供应，检查密封和泄漏</td></tr>
+                <tr><td style="font-family:monospace;">A-0101</td><td><span class="badge badge-L2">L2 警告</span></td><td>STM32</td><td>CO MFC故障</td><td>MFC通信超时或读数异常</td><td>检查MFC连接和供电，停止CO操作</td></tr>
+                <tr><td style="font-family:monospace;">A-0102</td><td><span class="badge badge-L1">L1 提示</span></td><td>STM32</td><td>N2流量偏差超阈值</td><td>实际流量偏差 &gt; ±0.2 L/min 持续 &gt; 30s</td><td>检查N2供应和MFC，观察是否自动恢复</td></tr>
+                <tr><td style="font-family:monospace;">A-0211</td><td><span class="badge badge-L2">L2 警告</span></td><td>STM32</td><td>CO浓度超提示阈值</td><td>CO浓度 &gt; 0.5%</td><td>确认排风系统运行，检查现场环境</td></tr>
+                <tr><td style="font-family:monospace;">A-0301</td><td><span class="badge badge-L2">L2 警告</span></td><td>STM32</td><td>SCR故障</td><td>SCR反馈异常</td><td>停止加热，检查SCR和控温仪</td></tr>
+                <tr><td style="font-family:monospace;">A-0401</td><td><span class="badge badge-L1">L1 提示</span></td><td>STM32</td><td>天平通信异常</td><td>天平响应超时</td><td>检查天平连接，可继续试验但需人工记录重量</td></tr>
+                <tr><td style="font-family:monospace;">W-0501</td><td><span class="badge badge-L1">L1 提示</span></td><td>Web后端</td><td>STM32心跳延迟</td><td>心跳响应 &gt; 500ms</td><td>检查网络连接质量</td></tr>
+                <tr><td style="font-family:monospace;">W-0502</td><td><span class="badge badge-L2">L2 警告</span></td><td>Web后端</td><td>STM32通信中断</td><td>连续超时 &gt; 3次</td><td>检查以太网和STM32状态，等待自动重连</td></tr>
+                <tr><td style="font-family:monospace;">W-0601</td><td><span class="badge badge-L1">L1 提示</span></td><td>Web后端</td><td>数据库写入延迟</td><td>写入耗时 &gt; 100ms</td><td>检查磁盘剩余空间</td></tr>
+                <tr><td style="font-family:monospace;">E-0001</td><td><span class="badge badge-L0">L0 信息</span></td><td>Web后端</td><td>试验已启动</td><td>start_test 命令执行成功</td><td>无需处置</td></tr>
+                <tr><td style="font-family:monospace;">E-0005</td><td><span class="badge badge-L0">L0 信息</span></td><td>STM32</td><td>LeakCheck 通过</td><td>泄漏检查合格</td><td>无需处置</td></tr>
+                <tr><td style="font-family:monospace;">E-0010</td><td><span class="badge badge-L0">L0 信息</span></td><td>Web后端</td><td>状态机切换</td><td>流程状态变化</td><td>无需处置，可在曲线页查看节点</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div style="font-size:11px;color:var(--text-muted);margin-top:8px;">注：F-xxxx = 危险故障码，A-xxxx = 报警码，W-xxxx = 上位机警告，E-xxxx = 事件信息。详细代码表等待控制板供应商冻结后更新。</div>
+        </div>
+
+        <!-- 状态机说明 -->
+        <div class="tab-panel" id="help-statemachine">
+          <div class="card" style="margin-bottom:12px;">
+            <div class="card-title">🔄 工艺状态机流转图</div>
+            <div style="overflow-x:auto;padding:10px 0;">
+              <svg viewBox="0 0 860 200" xmlns="http://www.w3.org/2000/svg" style="width:100%;min-width:600px;font-family:system-ui,sans-serif;">
+                <defs>
+                  <marker id="arr" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+                    <polygon points="0 0, 8 3, 0 6" fill="#4a5570"/>
+                  </marker>
+                  <marker id="arr-red" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+                    <polygon points="0 0, 8 3, 0 6" fill="#ef4444"/>
+                  </marker>
+                </defs>
+                <!-- Main flow -->
+                <g>
+                  <!-- Standby -->
+                  <rect x="10" y="75" width="80" height="34" rx="5" fill="#1e2436" stroke="#2a3150" stroke-width="1.5"/>
+                  <text x="50" y="97" text-anchor="middle" fill="#8892aa" font-size="11">Standby</text>
+                  <!-- arrow -->
+                  <line x1="90" y1="92" x2="108" y2="92" stroke="#4a5570" stroke-width="1.5" marker-end="url(#arr)"/>
+                  <!-- Precheck -->
+                  <rect x="110" y="75" width="80" height="34" rx="5" fill="#1e2436" stroke="#2a3150" stroke-width="1.5"/>
+                  <text x="150" y="97" text-anchor="middle" fill="#8892aa" font-size="11">Precheck</text>
+                  <line x1="190" y1="92" x2="208" y2="92" stroke="#4a5570" stroke-width="1.5" marker-end="url(#arr)"/>
+                  <!-- LeakCheck -->
+                  <rect x="210" y="75" width="82" height="34" rx="5" fill="#1e2436" stroke="#2a3150" stroke-width="1.5"/>
+                  <text x="251" y="97" text-anchor="middle" fill="#8892aa" font-size="11">LeakCheck</text>
+                  <line x1="292" y1="92" x2="308" y2="92" stroke="#4a5570" stroke-width="1.5" marker-end="url(#arr)"/>
+                  <!-- N2Heat -->
+                  <rect x="310" y="75" width="75" height="34" rx="5" fill="#1e2436" stroke="#2a3150" stroke-width="1.5"/>
+                  <text x="347" y="97" text-anchor="middle" fill="#8892aa" font-size="11">N2Heat</text>
+                  <line x1="385" y1="92" x2="403" y2="92" stroke="#4a5570" stroke-width="1.5" marker-end="url(#arr)"/>
+                  <!-- AutoSwitch -->
+                  <rect x="405" y="75" width="84" height="34" rx="5" fill="#1e2436" stroke="#2a3150" stroke-width="1.5"/>
+                  <text x="447" y="97" text-anchor="middle" fill="#8892aa" font-size="11">AutoSwitch</text>
+                  <line x1="489" y1="92" x2="507" y2="92" stroke="#4a5570" stroke-width="1.5" marker-end="url(#arr)"/>
+                  <!-- Reducing (current) -->
+                  <rect x="509" y="71" width="80" height="42" rx="5" fill="#1e4060" stroke="#38bdf8" stroke-width="2"/>
+                  <text x="549" y="97" text-anchor="middle" fill="#38bdf8" font-size="12" font-weight="bold">Reducing</text>
+                  <text x="549" y="108" text-anchor="middle" fill="#38bdf8" font-size="9">▶ 当前</text>
+                  <line x1="589" y1="92" x2="607" y2="92" stroke="#4a5570" stroke-width="1.5" marker-end="url(#arr)"/>
+                  <!-- EndHold -->
+                  <rect x="609" y="75" width="72" height="34" rx="5" fill="#1e2436" stroke="#2a3150" stroke-width="1.5"/>
+                  <text x="645" y="97" text-anchor="middle" fill="#8892aa" font-size="11">EndHold</text>
+                  <line x1="681" y1="92" x2="699" y2="92" stroke="#4a5570" stroke-width="1.5" marker-end="url(#arr)"/>
+                  <!-- Purge -->
+                  <rect x="701" y="75" width="65" height="34" rx="5" fill="#1e2436" stroke="#2a3150" stroke-width="1.5"/>
+                  <text x="733" y="97" text-anchor="middle" fill="#8892aa" font-size="11">Purge</text>
+                  <line x1="766" y1="92" x2="784" y2="92" stroke="#4a5570" stroke-width="1.5" marker-end="url(#arr)"/>
+                  <!-- Cool -->
+                  <rect x="786" y="75" width="60" height="34" rx="5" fill="#1e2436" stroke="#2a3150" stroke-width="1.5"/>
+                  <text x="816" y="97" text-anchor="middle" fill="#8892aa" font-size="11">Cool</text>
+                </g>
+                <!-- Fault paths -->
+                <g>
+                  <!-- Fault node -->
+                  <rect x="380" y="148" width="60" height="34" rx="5" fill="#450a0a" stroke="#ef4444" stroke-width="1.5"/>
+                  <text x="410" y="170" text-anchor="middle" fill="#ef4444" font-size="11">Fault</text>
+                  <!-- Arrows to Fault from key states -->
+                  <line x1="549" y1="113" x2="549" y2="155" stroke="#ef4444" stroke-width="1" stroke-dasharray="4,3"/>
+                  <line x1="549" y1="155" x2="440" y2="165" stroke="#ef4444" stroke-width="1" stroke-dasharray="4,3" marker-end="url(#arr-red)"/>
+                  <line x1="347" y1="109" x2="347" y2="145" stroke="#ef4444" stroke-width="1" stroke-dasharray="4,3"/>
+                  <line x1="347" y1="145" x2="380" y2="162" stroke="#ef4444" stroke-width="1" stroke-dasharray="4,3" marker-end="url(#arr-red)"/>
+                  <!-- Fault → Purge arrow -->
+                  <line x1="440" y1="165" x2="733" y2="165" stroke="#ef4444" stroke-width="1" stroke-dasharray="4,3"/>
+                  <line x1="733" y1="165" x2="733" y2="109" stroke="#ef4444" stroke-width="1" stroke-dasharray="4,3" marker-end="url(#arr-red)"/>
+                  <text x="586" y="180" text-anchor="middle" fill="#ef4444" font-size="9">故障后强制 Purge</text>
+                </g>
+                <!-- Labels -->
+                <text x="430" y="18" text-anchor="middle" fill="#4a5570" font-size="10">500°C: N2→CO切气</text>
+                <line x1="430" y1="22" x2="447" y2="72" stroke="#4a5570" stroke-width="1" stroke-dasharray="3,3"/>
+                <text x="549" y="18" text-anchor="middle" fill="#4a5570" font-size="10">1580°C: 还原计时</text>
+                <line x1="549" y1="22" x2="549" y2="70" stroke="#4a5570" stroke-width="1" stroke-dasharray="3,3"/>
+              </svg>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-title">📝 各状态说明</div>
+            <table class="data-table">
+              <thead><tr><th>状态</th><th>中文</th><th>触发条件</th><th>离开条件</th><th>CO状态</th></tr></thead>
+              <tbody>
+                <tr><td><span class="badge badge-off">Standby</span></td><td>待机</td><td>上电初始</td><td>操作员 start_test</td><td>关</td></tr>
+                <tr><td><span class="badge badge-off">Precheck</span></td><td>启动前检查</td><td>start_test 命令</td><td>全部检查项通过</td><td>关</td></tr>
+                <tr><td><span class="badge badge-off">LeakCheck</span></td><td>泄漏检查</td><td>Precheck 通过</td><td>泄漏检查合格</td><td>关</td></tr>
+                <tr><td><span class="badge badge-off">N2Heat</span></td><td>N2升温</td><td>LeakCheck 通过</td><td>炉温达到 500°C</td><td>关，N2开</td></tr>
+                <tr><td><span class="badge badge-off">AutoSwitch</span></td><td>自动切气</td><td>炉温 ≥ 500°C</td><td>CO稳定建立</td><td>切换中</td></tr>
+                <tr><td><span class="badge badge-L0">Reducing</span></td><td>还原阶段</td><td>CO流量稳定</td><td>还原结束判据或停止命令</td><td>开</td></tr>
+                <tr><td><span class="badge badge-off">EndHold</span></td><td>结束保持</td><td>滴落重量达标</td><td>保持时间结束</td><td>开</td></tr>
+                <tr><td><span class="badge badge-L1">Purge</span></td><td>N2置换</td><td>停止命令 / 故障</td><td>CO浓度低于阈值 5min</td><td>关</td></tr>
+                <tr><td><span class="badge badge-off">Cool</span></td><td>冷却</td><td>Purge 完成</td><td>炉温低于目标</td><td>关</td></tr>
+                <tr><td><span class="badge badge-L3">Fault</span></td><td>故障</td><td>安全条件不满足</td><td>故障消除 + 手动复位</td><td>强制关</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- 操作规程 -->
+        <div class="tab-panel" id="help-faq">
+          <div class="acc-item open" id="acc-1">
+            <div class="acc-header" onclick="toggleAcc('acc-1')">
+              <span>🔒 CO 相关操作安全规定</span>
+              <span class="acc-arrow">▶</span>
+            </div>
+            <div class="acc-body">
+              <strong>所有 CO 相关操作必须严格遵守以下规定：</strong><br>
+              1. CO 工艺请求只能由 STM32 状态机在安全条件满足时自动发起，上位机不提供手动强制打开 CO 阀的功能。<br>
+              2. 若安全继电器不允许，CO 相关操作按钮将自动禁用，并显示禁用原因。<br>
+              3. 涉及 CO 流量变更的操作，必须通过参数下发（管理员权限），由控制板状态机执行，不可直接修改 MFC。<br>
+              4. 排风系统必须在 CO 工艺开始前处于运行状态，否则无法通过 Precheck。<br>
+              5. 发生 CO 浓度报警时，操作员必须现场确认排风和气体供应状态，不得仅凭上位机确认报警后继续操作。
+            </div>
+          </div>
+          <div class="acc-item" id="acc-2">
+            <div class="acc-header" onclick="toggleAcc('acc-2')">
+              <span>⚠️ 上位机断线时的操作规程</span>
+              <span class="acc-arrow">▶</span>
+            </div>
+            <div class="acc-body">
+              上位机（Web 浏览器或后端服务）断线时：<br>
+              1. STM32 本地自动安全流程不受影响，设备将继续按状态机运行。<br>
+              2. 操作员应立即前往炉旁，通过控制板本地显示或指示灯确认设备安全状态。<br>
+              3. 不得依赖 Web 上位机完成安全动作或紧急停止；安全停止应通过硬件急停按钮实现。<br>
+              4. 后端服务重启后会自动重连，并从控制板日志补齐断线期间数据。<br>
+              5. 若长时间无法恢复上位机连接，应记录纸质操作记录，并在恢复后在备注中补录。
+            </div>
+          </div>
+          <div class="acc-item" id="acc-3">
+            <div class="acc-header" onclick="toggleAcc('acc-3')">
+              <span>🔑 权限与账号管理规定</span>
+              <span class="acc-arrow">▶</span>
+            </div>
+            <div class="acc-body">
+              <strong>角色权限说明：</strong><br>
+              • <strong>观察员</strong>：只读查看实时状态、历史试验和报表，不可执行任何操作命令。<br>
+              • <strong>操作员</strong>：可启动/停止/暂停试验、确认报警、天平去皮、导出日志。<br>
+              • <strong>管理员</strong>：可修改参数配置、管理用户、导入设备 profile。<br>
+              • <strong>维护员</strong>：可访问设备诊断、导出通信日志，不可绕过安全回路。<br><br>
+              <strong>账号安全要求：</strong><br>
+              • 不得共用账号；每个操作员使用独立账号登录。<br>
+              • 离开操作台时应退出登录。<br>
+              • 账号密码修改需通知管理员记录。
+            </div>
+          </div>
+          <div class="acc-item" id="acc-4">
+            <div class="acc-header" onclick="toggleAcc('acc-4')">
+              <span>💾 数据备份与恢复规程</span>
+              <span class="acc-arrow">▶</span>
+            </div>
+            <div class="acc-body">
+              1. 系统默认每日凌晨 6:00 自动备份数据库至「系统设置 → 备份路径」。<br>
+              2. 重要试验结束后应手动触发一次备份。<br>
+              3. 原始曲线数据和事件日志不允许在界面直接删除；报表文件可重新生成。<br>
+              4. 从备份恢复必须在试验停止状态下进行，恢复操作由管理员执行，并记录恢复原因。<br>
+              5. 数据保存年限遵守实验室数据管理要求（待制定后更新）。
+            </div>
+          </div>
+          <div class="acc-item" id="acc-5">
+            <div class="acc-header" onclick="toggleAcc('acc-5')">
+              <span>📞 技术支持与联系方式</span>
+              <span class="acc-arrow">▶</span>
+            </div>
+            <div class="acc-body">
+              <strong>上位机软件问题：</strong> 联系上位机开发团队<br>
+              <strong>STM32 控制板问题：</strong> 联系控制板供应商（HostComm 协议待冻结后补充联系方式）<br>
+              <strong>设备安全问题：</strong> 立即联系实验室安全员<br><br>
+              <strong>上报 Bug 时请提供：</strong><br>
+              • 浏览器版本和操作系统<br>
+              • 发生时间和当前试验编号<br>
+              • 「设备诊断」页面截图<br>
+              • 描述操作步骤和实际现象
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /main -->
+  </div><!-- /body -->
+</div><!-- /app -->
+
+<!-- ═══ MODAL: Stop Confirm ═══ -->
+<div class="modal-overlay" id="modal-stop">
+  <div class="modal modal-danger">
+    <div class="modal-title">⏹ 确认停止试验？</div>
+    <div class="modal-warn-box">⚠️ 此操作将触发受控停止流程，STM32将进入Purge阶段，最终关闭CO，不可撤销。</div>
+    <div class="modal-body">
+      试验编号：<span class="modal-highlight">TEST-2026-042</span><br>
+      当前状态：<span class="modal-highlight">Reducing · 已运行 02:14:37</span><br><br>
+      请确认您已知晓：停止试验将中止当前还原阶段，产生 <span class="modal-highlight">manual_stopped</span> 记录。
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('modal-stop')">取消</button>
+      <button class="btn btn-danger" onclick="executeStop()">✅ 确认停止</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ MODAL: Pause Confirm ═══ -->
+<div class="modal-overlay" id="modal-pause">
+  <div class="modal">
+    <div class="modal-title">⏸ 确认暂停 / 保持？</div>
+    <div class="modal-body">
+      将向控制板发送 <span class="modal-highlight">pause_hold</span> 请求。STM32将切换到Hold状态，保持当前温度和气体制度，等待手动继续。
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('modal-pause')">取消</button>
+      <button class="btn btn-warn" onclick="executePause()">⏸ 确认暂停</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ MODAL: Tare Confirm ═══ -->
+<div class="modal-overlay" id="modal-tare">
+  <div class="modal">
+    <div class="modal-title">⚖️ 确认天平去皮？</div>
+    <div class="modal-body">
+      将向控制板发送 <span class="modal-highlight">tare_balance</span> 请求，天平当前读数 <span class="modal-highlight">3.84 g</span> 将被清零。
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('modal-tare')">取消</button>
+      <button class="btn btn-primary" onclick="executeTare()">✅ 确认去皮</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ MODAL: Export ═══ -->
+<div class="modal-overlay" id="modal-export">
+  <div class="modal">
+    <div class="modal-title">📤 导出试验日志</div>
+    <div class="modal-body">
+      导出试验 <span class="modal-highlight">TEST-2026-042</span> 当前数据（截至当前时刻），包含曲线数据、事件日志和参数快照。<br><br>
+      格式：<select class="form-input" style="width:130px;margin-top:6px;"><option>Excel (.xlsx)</option><option>CSV (.csv)</option></select>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('modal-export')">取消</button>
+      <button class="btn btn-primary" onclick="executeExport()">⬇️ 导出</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ─── Navigation ───────────────────────────────────────────────────
+function navTo(pageId) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.getElementById(pageId).classList.add('active');
+  const navId = 'nav-' + pageId.replace('page-','');
+  const navEl = document.getElementById(navId);
+  if (navEl) navEl.classList.add('active');
+}
+
+// ─── Tab switching ────────────────────────────────────────────────
+function switchTab(tabEl, panelId) {
+  const parent = tabEl.closest('.page, .card');
+  parent.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  parent.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  tabEl.classList.add('active');
+  document.getElementById(panelId).classList.add('active');
+}
+
+// ─── Modals ───────────────────────────────────────────────────────
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+function openModal(id)  { document.getElementById(id).classList.add('open'); }
+
+function cmdStop()   { openModal('modal-stop'); }
+function cmdPause()  { openModal('modal-pause'); }
+function cmdTare()   { openModal('modal-tare'); }
+function cmdExport() { openModal('modal-export'); }
+
+function executeStop() {
+  closeModal('modal-stop');
+  const fb = document.getElementById('cmd-feedback');
+  fb.className = 'cmd-feedback cmd-pending';
+  fb.innerHTML = '<span>⏳</span> 已发送：<strong>stop_test</strong> — 等待控制板响应…';
+  setTimeout(() => {
+    fb.className = 'cmd-feedback cmd-accepted';
+    fb.innerHTML = '<span>✅</span> 上一命令：<strong>stop_test</strong> — 控制板响应：<strong>accepted</strong> · 进入 Purge 流程';
+    document.getElementById('hd-state-label').textContent = 'Purge';
+    document.getElementById('hd-state-dot').style.background = 'var(--yellow)';
+    document.getElementById('hd-state-dot').style.boxShadow = '0 0 6px var(--yellow)';
+  }, 1800);
+}
+
+function executePause() {
+  closeModal('modal-pause');
+  const fb = document.getElementById('cmd-feedback');
+  fb.className = 'cmd-feedback cmd-pending';
+  fb.innerHTML = '<span>⏳</span> 已发送：<strong>pause_hold</strong> — 等待控制板响应…';
+  setTimeout(() => {
+    fb.className = 'cmd-feedback cmd-accepted';
+    fb.innerHTML = '<span>✅</span> 上一命令：<strong>pause_hold</strong> — 控制板响应：<strong>accepted</strong> · 已进入 Hold 状态';
+  }, 1200);
+}
+
+function executeTare() {
+  closeModal('modal-tare');
+  const fb = document.getElementById('cmd-feedback');
+  fb.className = 'cmd-feedback cmd-accepted';
+  fb.innerHTML = '<span>✅</span> 上一命令：<strong>tare_balance</strong> — 控制板响应：<strong>accepted</strong> · 天平已清零';
+  document.getElementById('kpi-drip').textContent = '0.00';
+}
+
+function executeExport() {
+  closeModal('modal-export');
+  showToast('导出请求已提交，文件将保存到 D:\\SMD-Reports\\');
+}
+
+// ─── Alarm ACK ────────────────────────────────────────────────────
+function ackAlarm(bannerId) {
+  document.getElementById('alarm-banner-co').style.display = 'none';
+  updateAlarmCount(-1);
+  ackAlarmRow(1);
+}
+function ackAlarmRow(n) {
+  const badge = document.getElementById('ack-'+n);
+  if (badge && badge.textContent.includes('未确认')) {
+    badge.className = 'badge badge-ok';
+    badge.textContent = '已确认 operator01';
+    document.getElementById('alm-row-'+n).classList.add('acked');
+    updateAlarmCount(-1);
+  }
+}
+function updateAlarmCount(delta) {
+  const el = document.getElementById('hd-alarm-count');
+  const badge = document.getElementById('nav-alarm-badge');
+  let n = parseInt(el.textContent) + delta;
+  if (n < 0) n = 0;
+  el.textContent = n;
+  badge.textContent = n;
+  if (n === 0) { el.style.display = 'none'; badge.style.display = 'none'; }
+}
+
+function filterAlarms(type, btn) {
+  document.querySelectorAll('.chart-toolbar .tab-btn, #page-alarms .tab-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+}
+
+// ─── Chart time range ──────────────────────────────────────────────
+function setTimeRange(range, btn) {
+  document.querySelectorAll('#page-trend .tab-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+}
+function exportChart() { showToast('曲线数据已导出到 D:\\SMD-Reports\\'); }
+function exportHistory(){ showToast('历史试验数据导出中…'); }
+function showParamSaveConfirm(){ showToast('参数已保存，下次试验启动时生效'); }
+function confirmRestore(){ showToast('请先停止试验后再执行数据库恢复操作'); }
+
+// ─── Toast ────────────────────────────────────────────────────────
+function showToast(msg) {
+  const t = document.createElement('div');
+  t.style.cssText = 'position:fixed;bottom:24px;right:24px;background:#1e2436;border:1px solid var(--border-hi);color:var(--text-pri);padding:10px 16px;border-radius:6px;font-size:13px;z-index:200;box-shadow:0 4px 16px rgba(0,0,0,.4);max-width:340px;';
+  t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(), 3000);
+}
+function showUserMenu(){ showToast('用户设置：operator01 (操作员)'); }
+
+// ─── Clock & runtime ──────────────────────────────────────────────
+let runtimeSec = 8077; // 02:14:37
+function fmtTime(s) {
+  const h = String(Math.floor(s/3600)).padStart(2,'0');
+  const m = String(Math.floor((s%3600)/60)).padStart(2,'0');
+  const ss = String(s%60).padStart(2,'0');
+  return `${h}:${m}:${ss}`;
+}
+setInterval(()=>{
+  runtimeSec++;
+  const rt = fmtTime(runtimeSec);
+  document.getElementById('hd-runtime').textContent = '▶ ' + rt;
+  const te = document.getElementById('test-runtime');
+  if (te) te.textContent = rt;
+  const now = new Date();
+  document.getElementById('nav-clock').textContent =
+    now.toTimeString().slice(0,8);
+}, 1000);
+document.getElementById('nav-clock').textContent = new Date().toTimeString().slice(0,8);
+
+// ─── Simulated live data ──────────────────────────────────────────
+function rnd(base, range) { return +(base + (Math.random()-0.5)*range).toFixed(1); }
+setInterval(()=>{
+  const fpv = rnd(1548, 4);
+  document.getElementById('kpi-furnace-pv').innerHTML = Math.floor(fpv/1000).toString() + ' <span style="font-size:16px;">' + String(Math.round(fpv)%1000 + 1000).slice(1) + '</span>';
+  document.getElementById('kpi-burden-temp').innerHTML = '1 <span style="font-size:16px;">' + (Math.round(rnd(1403,6)) - 1000) + '</span>';
+  document.getElementById('kpi-n2-pv').textContent = rnd(3.2, 0.1);
+  document.getElementById('kpi-co-pv').textContent = rnd(1.8, 0.05);
+  document.getElementById('kpi-delta-p').textContent = rnd(128, 5);
+  document.getElementById('kpi-displacement').textContent = rnd(42.7, 0.3);
+  document.getElementById('kpi-output-pct').textContent = rnd(84.2, 1.5);
+}, 2000);
+
+// ─── Charts ───────────────────────────────────────────────────────
+const N = 60;
+const labels = Array.from({length:N}, (_,i)=> `-${N-i-1}m`);
+labels[N-1] = '现在';
+
+function makeGradient(ctx, col) {
+  const g = ctx.createLinearGradient(0,0,0,200);
+  g.addColorStop(0, col.replace(')',',0.3)').replace('rgb','rgba').replace('#','rgba('+parseInt('ef',16)+','+parseInt('44',16)+','+parseInt('44',16)+','));
+  return g;
+}
+
+// Temperature chart
+const ctxT = document.getElementById('chart-temp').getContext('2d');
+const tempPV = Array.from({length:N}, (_,i) => +(800 + (i/N)*748 + Math.random()*8 - 4).toFixed(1));
+const tempSV = Array.from({length:N}, (_,i) => +(800 + (i/N)*780).toFixed(0));
+const burdenT = Array.from({length:N}, (_,i) => +(700 + (i/N)*703 + Math.random()*6).toFixed(1));
+const chartTemp = new Chart(ctxT, {
+  type: 'line',
+  data: {
+    labels,
+    datasets: [
+      { label:'炉温 PV (°C)', data: tempPV, borderColor:'#ef4444', borderWidth:2, pointRadius:0, tension:.3, fill:false },
+      { label:'料层温度 (°C)', data: burdenT, borderColor:'#f97316', borderWidth:2, pointRadius:0, tension:.3, fill:false },
+      { label:'炉温 SV', data: tempSV, borderColor:'#64748b', borderWidth:1.5, borderDash:[5,5], pointRadius:0, tension:.3, fill:false }
+    ]
+  },
+  options: {
+    responsive:true, maintainAspectRatio:false, animation:false,
+    plugins:{ legend:{display:false}, tooltip:{ mode:'index', intersect:false,
+      callbacks:{ label: ctx => ` ${ctx.dataset.label}: ${ctx.parsed.y.toFixed(1)}` }
+    }},
+    scales:{
+      x:{ ticks:{color:'#64748b', maxTicksLimit:10, font:{size:10}}, grid:{color:'#1c2233'} },
+      y:{ ticks:{color:'#64748b', font:{size:10}}, grid:{color:'#1c2233'},
+          title:{display:true, text:'温度 (°C)', color:'#64748b', font:{size:10}} }
+    }
+  }
+});
+
+// Gas chart
+const ctxG = document.getElementById('chart-gas').getContext('2d');
+const n2Data = Array.from({length:N}, () => rnd(3.2, 0.15));
+const coData = Array.from({length:N}, () => rnd(1.8, 0.08));
+new Chart(ctxG, {
+  type:'line', data:{ labels,
+    datasets:[
+      { label:'N₂ PV', data:n2Data, borderColor:'#38bdf8', borderWidth:2, pointRadius:0, tension:.4, fill:false },
+      { label:'CO PV', data:coData, borderColor:'#f59e0b', borderWidth:2, pointRadius:0, tension:.4, fill:false }
+    ]
+  },
+  options:{ responsive:true, maintainAspectRatio:false, animation:false,
+    plugins:{ legend:{display:false}, tooltip:{mode:'index',intersect:false} },
+    scales:{
+      x:{ ticks:{color:'#64748b', maxTicksLimit:8, font:{size:10}}, grid:{color:'#1c2233'} },
+      y:{ ticks:{color:'#64748b', font:{size:10}}, grid:{color:'#1c2233'},
+          title:{display:true, text:'流量 (L/min)', color:'#64748b', font:{size:10}} }
+    }
+  }
+});
+
+// Process chart
+const ctxP = document.getElementById('chart-process').getContext('2d');
+const dpData  = Array.from({length:N}, () => rnd(128, 8));
+const dispData= Array.from({length:N}, (_,i) => +(i*0.7 + Math.random()*1.5).toFixed(2));
+const dripData= Array.from({length:N}, (_,i) => +(i*0.065 + Math.random()*0.05).toFixed(2));
+new Chart(ctxP, {
+  type:'line', data:{ labels,
+    datasets:[
+      { label:'压差 (Pa)', data:dpData, borderColor:'#a78bfa', borderWidth:2, pointRadius:0, tension:.3, fill:false, yAxisID:'y1' },
+      { label:'位移 (mm)', data:dispData, borderColor:'#22c55e', borderWidth:2, pointRadius:0, tension:.4, fill:false, yAxisID:'y2' },
+      { label:'重量 (g)',  data:dripData, borderColor:'#fb923c', borderWidth:2, pointRadius:0, tension:.4, fill:false, yAxisID:'y2' }
+    ]
+  },
+  options:{ responsive:true, maintainAspectRatio:false, animation:false,
+    plugins:{ legend:{display:false}, tooltip:{mode:'index',intersect:false} },
+    scales:{
+      x:{ ticks:{color:'#64748b', maxTicksLimit:8, font:{size:10}}, grid:{color:'#1c2233'} },
+      y1:{ position:'left',  ticks:{color:'#a78bfa', font:{size:10}}, grid:{color:'#1c2233'} },
+      y2:{ position:'right', ticks:{color:'#22c55e', font:{size:10}}, grid:{drawOnChartArea:false} }
+    }
+  }
+});
+
+// ─── Analysis page ────────────────────────────────────────────────
+function updateCmpBtn() {
+  const checked = document.querySelectorAll('.cmp-chk:checked').length;
+  const btn = document.getElementById('btn-compare-sel');
+  btn.disabled = checked < 2;
+  btn.textContent = checked > 0 ? `📊 对比所选 (${checked})` : '📊 对比所选';
+}
+function goCompare() {
+  navTo('page-analysis');
+  // Switch to compare tab
+  const tabs = document.querySelectorAll('#page-analysis .tab');
+  const panels = document.querySelectorAll('#page-analysis .tab-panel');
+  tabs.forEach(t => t.classList.remove('active'));
+  panels.forEach(p => p.classList.remove('active'));
+  tabs[2].classList.add('active');
+  panels[2].classList.add('active');
+}
+function runQuery() {
+  const tid = document.getElementById('q-testid').value;
+  const rows = document.querySelectorAll('#query-tbody tr');
+  let visible = 0;
+  rows.forEach(r => {
+    const rowText = r.textContent.toLowerCase();
+    const match = !tid || rowText.includes(tid.toLowerCase());
+    r.style.display = match ? '' : 'none';
+    if (match) visible++;
+  });
+  document.getElementById('q-result-count').textContent = `显示 ${visible} 条记录`;
+}
+function clearQuery() {
+  document.getElementById('q-testid').value = '';
+  document.getElementById('q-sampleid').value = '';
+  document.getElementById('q-operator').value = '';
+  document.getElementById('q-status').value = '';
+  document.querySelectorAll('#query-tbody tr').forEach(r => r.style.display = '');
+  document.getElementById('q-result-count').textContent = '显示 42 条记录';
+}
+function exportQuery(fmt) { showToast(`查询结果已导出为 ${fmt.toUpperCase()} 文件`); }
+function scatterFilter(type, btn) {
+  document.querySelectorAll('#ana-stats .tab-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+}
+
+// ─── Report page ───────────────────────────────────────────────────
+function selectTpl(id) {
+  document.querySelectorAll('.tpl-card').forEach(c => c.classList.remove('selected'));
+  document.getElementById('tpl-'+id).classList.add('selected');
+}
+function toggleRptMode() {
+  // placeholder for range/multi UI toggle
+}
+function previewReport() { showToast('预览功能将在 D2 原型评审后实现'); }
+function generateReport() {
+  const idle = document.getElementById('rpt-idle');
+  const gen  = document.getElementById('rpt-gen');
+  idle.style.display = 'none';
+  gen.classList.add('show');
+  const steps = ['gs-1','gs-2','gs-3','gs-4','gs-5'];
+  const bar = document.getElementById('rpt-gen-bar');
+  let i = 0;
+  function nextStep() {
+    if (i > 0) {
+      document.getElementById(steps[i-1]).className = 'gen-step done';
+      document.getElementById(steps[i-1]).querySelector('.gen-step-icon').textContent = '✅';
+    }
+    if (i < steps.length) {
+      document.getElementById(steps[i]).className = 'gen-step active';
+      bar.style.width = ((i+1)/steps.length*100) + '%';
+      i++;
+      setTimeout(nextStep, 900);
+    } else {
+      bar.style.width = '100%';
+      setTimeout(() => {
+        showToast('报告已生成: TEST-2026-041_标准试验报告.xlsx');
+        // Add to history
+        const tbody = document.getElementById('rpt-history-tbody');
+        const now = new Date();
+        const row = document.createElement('tr');
+        row.innerHTML = `<td style="font-family:monospace;font-size:11px;color:var(--text-sec);">刚刚</td>
+          <td style="color:var(--accent);">TEST-2026-041</td><td>标准报告</td>
+          <td><span class="badge badge-ok">xlsx</span></td><td>operator01</td>
+          <td><button class="btn btn-ghost btn-sm" onclick="showToast('文件已下载')">⬇️</button></td>`;
+        tbody.insertBefore(row, tbody.firstChild);
+        gen.classList.remove('show');
+        idle.style.display = '';
+        idle.textContent = '✅ 最近报告已生成';
+        idle.style.color = 'var(--green)';
+        steps.forEach(s => {
+          document.getElementById(s).className = 'gen-step wait';
+        });
+        bar.style.width = '0%';
+        i = 0;
+      }, 600);
+    }
+  }
+  nextStep();
+}
+
+// ─── Help page ─────────────────────────────────────────────────────
+function toggleAcc(id) {
+  const el = document.getElementById(id);
+  el.classList.toggle('open');
+}
+function searchAlarmCodes() {
+  const q = document.getElementById('alarm-search').value.toLowerCase();
+  document.querySelectorAll('#alarm-code-table tbody tr').forEach(r => {
+    r.style.display = r.textContent.toLowerCase().includes(q) ? '' : 'none';
+  });
+}
+function filterAlarmLevel(level) {
+  document.querySelectorAll('#alarm-code-table tbody tr').forEach(r => {
+    if (!level) { r.style.display = ''; return; }
+    r.style.display = r.textContent.includes(level) ? '' : 'none';
+  });
+}
+
+// ─── Analysis charts ───────────────────────────────────────────────
+// Monthly chart
+const ctxM = document.getElementById('chart-monthly').getContext('2d');
+new Chart(ctxM, {
+  type: 'bar',
+  data: {
+    labels: ['1月','2月','3月','4月','5月','6月'],
+    datasets: [
+      { label:'正常完成', data:[5,4,7,8,9,5], backgroundColor:'#22c55e99', borderColor:'#22c55e', borderWidth:1 },
+      { label:'故障终止', data:[1,0,1,0,1,1], backgroundColor:'#ef444499', borderColor:'#ef4444', borderWidth:1 },
+      { label:'手动停止', data:[0,1,0,1,0,0], backgroundColor:'#f59e0b99', borderColor:'#f59e0b', borderWidth:1 }
+    ]
+  },
+  options: {
+    responsive:true, maintainAspectRatio:false, animation:false,
+    plugins:{ legend:{ labels:{ color:'#8892aa', font:{size:10} } }, tooltip:{mode:'index',intersect:false} },
+    scales:{
+      x:{ ticks:{color:'#64748b',font:{size:10}}, grid:{color:'#1c2233'}, stacked:true },
+      y:{ ticks:{color:'#64748b',font:{size:10}}, grid:{color:'#1c2233'}, stacked:true }
+    }
+  }
+});
+
+// Drip weight histogram
+const ctxDH = document.getElementById('chart-drip-hist').getContext('2d');
+new Chart(ctxDH, {
+  type: 'bar',
+  data: {
+    labels: ['0-1g','1-2g','2-3g','3-4g','4-5g','5-6g','6-7g'],
+    datasets: [{ label:'试验次数', data:[1,1,0,4,11,18,3],
+      backgroundColor:'#38bdf855', borderColor:'#38bdf8', borderWidth:1 }]
+  },
+  options: {
+    responsive:true, maintainAspectRatio:false, animation:false,
+    plugins:{ legend:{display:false}, tooltip:{} },
+    scales:{
+      x:{ ticks:{color:'#64748b',font:{size:10}}, grid:{color:'#1c2233'} },
+      y:{ ticks:{color:'#64748b',font:{size:10}}, grid:{color:'#1c2233'},
+          title:{display:true, text:'次数', color:'#64748b', font:{size:10}} }
+    }
+  }
+});
+
+// Scatter plot
+const ctxSC = document.getElementById('chart-scatter').getContext('2d');
+const scatterData = Array.from({length:38}, () => ({
+  x: +(1560 + Math.random()*30).toFixed(0),
+  y: +(3.5 + Math.random()*3).toFixed(2)
+}));
+const faultData = Array.from({length:3}, () => ({
+  x: +(1380 + Math.random()*80).toFixed(0),
+  y: +(0.5 + Math.random()*2).toFixed(2)
+}));
+new Chart(ctxSC, {
+  type:'scatter',
+  data:{ datasets:[
+    { label:'完成', data:scatterData, backgroundColor:'#22c55e99', pointRadius:5 },
+    { label:'故障', data:faultData, backgroundColor:'#ef444499', pointRadius:5 }
+  ]},
+  options:{
+    responsive:true, maintainAspectRatio:false, animation:false,
+    plugins:{ legend:{ labels:{ color:'#8892aa', font:{size:10} } }, tooltip:{
+      callbacks:{ label: ctx => ` 炉温:${ctx.parsed.x}°C, 重量:${ctx.parsed.y}g` }
+    }},
+    scales:{
+      x:{ ticks:{color:'#64748b',font:{size:10}}, grid:{color:'#1c2233'},
+          title:{display:true, text:'最高炉温 (°C)', color:'#64748b', font:{size:10}} },
+      y:{ ticks:{color:'#64748b',font:{size:10}}, grid:{color:'#1c2233'},
+          title:{display:true, text:'滴落重量 (g)', color:'#64748b', font:{size:10}} }
+    }
+  }
+});
+
+// Compare temperature curves chart
+const ctxCT = document.getElementById('chart-cmp-temp').getContext('2d');
+const cmpLabels = Array.from({length:50}, (_,i) => `${i*5}min`);
+const cmp1 = Array.from({length:50}, (_,i) => +(i<20?(i*40+20):i<35?(800+(i-20)*52):1583+Math.sin(i)*3).toFixed(0));
+const cmp2 = Array.from({length:50}, (_,i) => +(i<22?(i*38+15):i<38?(836+(i-22)*48):1582+Math.sin(i+1)*3).toFixed(0));
+const cmp3 = Array.from({length:50}, (_,i) => +(i<21?(i*39+18):i<36?(819+(i-21)*50):1581+Math.sin(i+2)*3).toFixed(0));
+new Chart(ctxCT, {
+  type:'line',
+  data:{ labels:cmpLabels, datasets:[
+    { label:'TEST-041', data:cmp1, borderColor:'#38bdf8', borderWidth:2, pointRadius:0, tension:.3 },
+    { label:'TEST-039', data:cmp2, borderColor:'#22c55e', borderWidth:2, pointRadius:0, tension:.3 },
+    { label:'TEST-037', data:cmp3, borderColor:'#f59e0b', borderWidth:2, pointRadius:0, tension:.3 }
+  ]},
+  options:{
+    responsive:true, maintainAspectRatio:false, animation:false,
+    plugins:{ legend:{display:false}, tooltip:{mode:'index',intersect:false} },
+    scales:{
+      x:{ ticks:{color:'#64748b', maxTicksLimit:10, font:{size:10}}, grid:{color:'#1c2233'} },
+      y:{ ticks:{color:'#64748b',font:{size:10}}, grid:{color:'#1c2233'},
+          title:{display:true, text:'炉温 (°C)', color:'#64748b', font:{size:10}} }
+    }
+  }
+});
+
+// Live chart update
+setInterval(()=>{
+  [tempPV, burdenT, n2Data, coData, dpData].forEach(arr => { arr.shift(); });
+  tempPV.push(rnd(tempPV[tempPV.length-1], 4));
+  burdenT.push(rnd(burdenT[burdenT.length-1], 4));
+  n2Data.push(rnd(3.2, 0.15));
+  coData.push(rnd(1.8, 0.08));
+  dpData.push(rnd(128, 8));
+  chartTemp.update('none');
+}, 3000);
+</script>
+</body>
+</html>
