@@ -1,0 +1,20 @@
+# ===== smd-web-hmi 后端运行依赖 =====
+# Web 框架
+fastapi==0.115.5
+uvicorn[standard]==0.32.1
+python-multipart==0.0.17
+
+# 数据库（SQLAlchemy 2.x async + SQLite）
+SQLAlchemy[asyncio]==2.0.36
+aiosqlite==0.20.0
+alembic==1.14.0
+
+# 配置 / 校验
+pydantic==2.10.3
+pydantic-settings==2.6.1
+
+# 认证（JWT）
+PyJWT==2.10.1
+
+# 结构化日志
+structlog==24.4.0

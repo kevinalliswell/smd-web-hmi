@@ -1,0 +1,46 @@
+"""WebSocket 端点 /ws/realtime（规格第 4 节）。
+
+认证：连接须携带 ``?token=<JWT>``。无效令牌以 4001 关闭（T14）。
+推送：由 HostComm 回调经 ws_manager.broadcast 下发（status_update 等）。
+"""
+
+from __future__ import annotations
+
+import jwt
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+
+from app.api.ws_manager import ws_manager
+from app.core.logging import get_logger
+from app.core.security import decode_access_token
+
+logger = get_logger("ws.endpoint")
+
+router = APIRouter()
+
+WS_CLOSE_UNAUTHORIZED = 4001
+
+
+@router.websocket("/ws/realtime")
+async def realtime(ws: WebSocket, token: str | None = None) -> None:
+    """实时推送端点。前端通过 ?token= 传 JWT 认证。"""
+    if not token:
+        await ws.close(code=WS_CLOSE_UNAUTHORIZED)
+        return
+    try:
+        decode_access_token(token)
+    except jwt.PyJWTError:
+        await ws.close(code=WS_CLOSE_UNAUTHORIZED)
+        return
+
+    await ws_manager.connect(ws)
+    try:
+        while True:
+            msg = await ws.receive_json()
+            # 前端可发 ping / subscribe（规格 4.2）
+            if msg.get("type") == "ping":
+                await ws.send_json({"type": "pong"})
+    except WebSocketDisconnect:
+        await ws_manager.disconnect(ws)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("ws.error", error=str(exc))
+        await ws_manager.disconnect(ws)

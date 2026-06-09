@@ -1,0 +1,151 @@
+"""FastAPI 应用入口：注册路由、WebSocket，启动 HostComm 客户端。"""
+
+from __future__ import annotations
+
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import select
+
+from app import __version__
+from app.api.routes import (
+    alarms,
+    auth,
+    commands,
+    logs,
+    parameters,
+    reports,
+    status,
+    system,
+    tests,
+    users,
+)
+from app.api import websocket
+from app.api.ws_manager import ws_manager
+from app.core.config import get_settings
+from app.core.logging import configure_logging, get_logger
+from app.core.security import hash_password
+from app.db.database import create_all, dispose_engine, get_sessionmaker
+from app.db.models import UserAccount
+from app.hostcomm.client import HostCommClient
+from app.hostcomm.protocol import now_iso
+from app.services.cache import status_cache
+
+logger = get_logger("main")
+
+
+async def _seed_admin() -> None:
+    """首次启动插入默认 admin/admin 账户（提示修改密码）。"""
+    sessionmaker = get_sessionmaker()
+    async with sessionmaker() as session:
+        result = await session.execute(select(UserAccount).where(UserAccount.username == "admin"))
+        if result.scalar_one_or_none() is None:
+            session.add(
+                UserAccount(
+                    username="admin",
+                    hashed_pw=hash_password("admin"),
+                    role="admin",
+                    display_name="系统管理员",
+                    is_active=1,
+                    created_at=now_iso(),
+                )
+            )
+            await session.commit()
+            logger.warning("seed.admin_created", note="默认密码 admin/admin，请尽快修改")
+
+
+def _build_hostcomm_client(settings) -> HostCommClient:
+    """根据配置构造 HostComm 客户端并接好回调（缓存 / WebSocket 广播）。"""
+    host = "127.0.0.1" if settings.hostcomm_mock else settings.hostcomm_host
+
+    async def on_status(payload: dict) -> None:
+        await status_cache.update(payload, ts_iso=now_iso())
+        await ws_manager.broadcast("status_update", payload)
+
+    async def on_event(payload: dict) -> None:
+        # 事件 → WebSocket（写库见 logging_service，后续迭代接入持久化）
+        kind = payload.get("kind", "event")
+        if kind == "alarm_new":
+            await ws_manager.broadcast("alarm_new", payload)
+        else:
+            await ws_manager.broadcast("state_change", payload)
+
+    async def on_comm_status(payload: dict) -> None:
+        await ws_manager.broadcast("comm_status", payload)
+
+    return HostCommClient(
+        host=host,
+        port=settings.hostcomm_port,
+        heartbeat_interval=settings.hostcomm_heartbeat_interval,
+        timeout_count=settings.hostcomm_timeout_count,
+        command_timeout=settings.hostcomm_command_timeout,
+        client_id=settings.client_id,
+        on_status=on_status,
+        on_event=on_event,
+        on_comm_status=on_comm_status,
+    )
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """应用生命周期：建表、播种、启动 HostComm。"""
+    settings = get_settings()
+    configure_logging()
+    logger.info("app.starting", version=__version__, mock=settings.hostcomm_mock)
+
+    # 开发/联调：按 ORM 元数据建表（生产用 alembic upgrade head）
+    await create_all()
+    await _seed_admin()
+
+    client = _build_hostcomm_client(settings)
+    app.state.hostcomm_client = client
+    await client.start()  # 失败不阻断启动，转后台重连
+
+    try:
+        yield
+    finally:
+        await client.close()
+        await dispose_engine()
+        logger.info("app.stopped")
+
+
+def create_app() -> FastAPI:
+    app = FastAPI(title="smd-web-hmi 后端", version=__version__, lifespan=lifespan)
+
+    # 本地工控机：允许同网段浏览器访问
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
+    # REST 路由
+    for module in (
+        auth,
+        status,
+        commands,
+        tests,
+        alarms,
+        parameters,
+        logs,
+        reports,
+        users,
+        system,
+    ):
+        app.include_router(module.router)
+
+    # WebSocket
+    app.include_router(websocket.router)
+
+    @app.get("/health", tags=["system"])
+    async def health():  # noqa: D401
+        """根级健康检查（便于探针）。"""
+        return {"status": "ok", "version": __version__}
+
+    return app
+
+
+app = create_app()

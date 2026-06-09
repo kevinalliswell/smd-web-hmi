@@ -1,0 +1,115 @@
+"""命令服务测试 T07-T10、T12（开发规格说明书 9.2）。"""
+
+from __future__ import annotations
+
+import pytest
+from sqlalchemy import func, select
+
+from app.db.models import OperatorAction
+from app.services.command_service import (
+    CommandError,
+    CommandService,
+    check_confirm_token,
+    check_parameter_crc,
+    check_permission,
+    check_state,
+    compute_param_crc,
+    confirm_tokens,
+)
+
+
+class _FakeClient:
+    is_online = True
+
+    def __init__(self, result="accepted"):
+        self._result = result
+        self.sent: list[tuple] = []
+
+    async def send_command(self, command, params, *, operator_id, role, confirm_token=None):
+        self.sent.append((command, params))
+        return {
+            "request_msg_id": "x",
+            "command": command,
+            "result": self._result,
+            "reason_code": "ok",
+            "current_state": "Precheck",
+        }
+
+
+class _FakeCache:
+    def __init__(self, state="Standby"):
+        self._state = state
+
+    def get_field(self, path):
+        if path == "system.current_state":
+            return self._state
+        return None
+
+
+# ---------------------------------------------------- T07 start_test 权限校验
+def test_t07_permission():
+    """T07：Observer 无权 start_test（403）；Operator 通过。"""
+    with pytest.raises(CommandError) as ei:
+        check_permission("start_test", "observer")
+    assert ei.value.status_code == 403
+    assert ei.value.error_code == "operator_permission_denied"
+    # Operator 不抛异常
+    check_permission("start_test", "operator")
+
+
+# ---------------------------------------------------- T08 start_test 二次确认
+def test_t08_confirm_token():
+    """T08：CO 命令无 confirm_token → 400；有效 token → 通过。"""
+    with pytest.raises(CommandError) as ei:
+        check_confirm_token("start_test", None)
+    assert ei.value.status_code == 400
+    assert ei.value.error_code == "confirm_token_required"
+
+    token = confirm_tokens.issue()
+    check_confirm_token("start_test", token)  # 不抛异常
+    # 单次使用：再次使用应失效
+    with pytest.raises(CommandError):
+        check_confirm_token("start_test", token)
+
+
+# ---------------------------------------------- T09 set_parameters 运行中拒绝
+def test_t09_set_parameters_running_rejected():
+    """T09：current_state=Reducing 时 set_parameters → 400 state_not_allowed。"""
+    with pytest.raises(CommandError) as ei:
+        check_state("set_parameters", "Reducing")
+    assert ei.value.status_code == 400
+    assert ei.value.error_code == "state_not_allowed"
+    # 非运行态允许
+    check_state("set_parameters", "Standby")
+
+
+# ---------------------------------------------------- T10 操作日志写库
+async def test_t10_operator_action_logged(db_session):
+    """T10：命令执行后 operator_action 表有记录。"""
+    service = CommandService(_FakeClient(), _FakeCache("Standby"))
+    await service.execute(
+        "tare_balance",
+        {},
+        operator_id="op001",
+        role="operator",
+        db_session=db_session,
+    )
+    count = await db_session.scalar(select(func.count()).select_from(OperatorAction))
+    assert count == 1
+    row = (await db_session.execute(select(OperatorAction))).scalar_one()
+    assert row.action_type == "tare_balance"
+    assert row.operator_id == "op001"
+    assert row.result == "accepted"
+
+
+# ---------------------------------------------------- T12 set_parameters CRC
+def test_t12_parameter_crc():
+    """T12：CRC 不匹配 → 400 parameter_crc_error，不下发；匹配则通过。"""
+    values = {"gas_switch_temp_deg_c": 500, "end_temp_deg_c": 1580}
+    # 错误 CRC
+    with pytest.raises(CommandError) as ei:
+        check_parameter_crc("set_parameters", {"values": values, "param_crc": "deadbeef"})
+    assert ei.value.error_code == "parameter_crc_error"
+    # 正确 CRC
+    good = compute_param_crc(values)
+    check_parameter_crc("set_parameters", {"values": values, "param_crc": good})
