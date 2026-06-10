@@ -90,12 +90,19 @@ def _build_hostcomm_client(settings) -> HostCommClient:
         await _persist_snapshot(payload)
 
     async def on_event(payload: dict) -> None:
-        # 事件 → WebSocket（写库见 logging_service，后续迭代接入持久化）
-        kind = payload.get("kind", "event")
-        if kind == "alarm_new":
-            await ws_manager.broadcast("alarm_new", payload)
-        else:
-            await ws_manager.broadcast("state_change", payload)
+        # 事件落库（event_log / alarm_log，只追加）并按结果广播
+        ws_type, ws_data = "event", payload
+        try:
+            sessionmaker = get_sessionmaker()
+            async with sessionmaker() as session:
+                from app.services import alarm_service
+
+                result = await alarm_service.handle_event(session, payload)
+                if result is not None:
+                    ws_type, ws_data = result
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("persist.event_failed", error=str(exc))
+        await ws_manager.broadcast(ws_type, ws_data)
 
     async def on_comm_status(payload: dict) -> None:
         await ws_manager.broadcast("comm_status", payload)

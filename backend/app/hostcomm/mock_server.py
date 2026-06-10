@@ -82,6 +82,7 @@ class MockHostCommServer:
         command_mode: str = "accept",
         inject_bad_json: bool = False,
         status_interval: float | None = 1.0,
+        demo_alarms: bool = False,
         fw_version: str = "FW-MOCK-20260609-01",
     ) -> None:
         self.host = host
@@ -89,6 +90,7 @@ class MockHostCommServer:
         self.command_mode = command_mode
         self.inject_bad_json = inject_bad_json
         self.status_interval = status_interval
+        self.demo_alarms = demo_alarms
         self.fw_version = fw_version
 
         self._server: asyncio.AbstractServer | None = None
@@ -136,6 +138,7 @@ class MockHostCommServer:
         self._clients.add(writer)
         parser = FrameParser()
         push_task: asyncio.Task | None = None
+        alarm_task: asyncio.Task | None = None
         try:
             while True:
                 data = await reader.read(4096)
@@ -150,13 +153,17 @@ class MockHostCommServer:
                         and push_task is None
                     ):
                         push_task = asyncio.create_task(self._push_loop(writer))
+                    # hello 之后启动演示报警循环（若开启）
+                    if frame.get("type") == "hello" and self.demo_alarms and alarm_task is None:
+                        alarm_task = asyncio.create_task(self._demo_alarm_loop(writer))
         except (asyncio.CancelledError, ConnectionResetError):
             pass
         except Exception as exc:  # noqa: BLE001
             logger.warning("mock.handler_error", error=str(exc))
         finally:
-            if push_task is not None:
-                push_task.cancel()
+            for t in (push_task, alarm_task):
+                if t is not None:
+                    t.cancel()
             self._clients.discard(writer)
             try:
                 writer.close()
@@ -281,6 +288,47 @@ class MockHostCommServer:
             pass
         except Exception:  # noqa: BLE001
             pass
+
+    # 演示报警序列（对应 SOP §12 异常分级；level 2=L2, 3=L3）
+    _DEMO_ALARMS = [
+        ("ALM-CO-L1", 2, "CO 一级报警：室内 CO > 25 ppm"),
+        ("ALM-DP-HIGH", 2, "料层压差高：> 30 kPa"),
+        ("ALM-EXHAUST", 3, "排风故障：风量低于阈值"),
+        ("ALM-OVERTEMP", 3, "独立超温报警：料层温度越限"),
+    ]
+
+    async def _demo_alarm_loop(self, writer: asyncio.StreamWriter) -> None:
+        """演示用：周期性注入一条报警，数秒后消除，循环遍历多种等级。"""
+        try:
+            i = 0
+            await asyncio.sleep(3.0)
+            while True:
+                code, level, text = self._DEMO_ALARMS[i % len(self._DEMO_ALARMS)]
+                await self._send(writer, self._alarm_event(code, level, text, "alarm_new"))
+                await asyncio.sleep(5.0)
+                await self._send(writer, self._alarm_event(code, level, text, "alarm_clear"))
+                await asyncio.sleep(4.0)
+                i += 1
+        except (asyncio.CancelledError, ConnectionResetError):
+            pass
+        except Exception:  # noqa: BLE001
+            pass
+
+    def _alarm_event(self, code: str, level: int, text: str, kind: str) -> dict[str, Any]:
+        return make_frame(
+            "event",
+            {
+                "event_code": code,
+                "level": level,
+                "current_state": self._state,
+                "text": text,
+                "latched": level >= 3,
+                "ack_required": True,
+                "test_id": self._test_id,
+                "kind": kind,
+            },
+            prefix="mcu",
+        )
 
     # ----------------------------------------------------------- 报文构造
     def _hello_ack(self) -> dict[str, Any]:
@@ -447,6 +495,9 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="故障注入，例如 disconnect_after=10s（当前仅解析，占位）",
     )
     parser.add_argument("--status-interval", type=float, default=1.0)
+    parser.add_argument(
+        "--demo-alarms", action="store_true", help="周期性注入演示报警（联调/演示用）"
+    )
     return parser.parse_args(argv)
 
 
@@ -466,6 +517,7 @@ async def _amain(argv: list[str] | None = None) -> None:
         port=args.port,
         command_mode=_MODE_MAP.get(args.mode, "accept"),
         status_interval=args.status_interval,
+        demo_alarms=args.demo_alarms,
     )
     await server.start()
     logger.info("mock.listening", host=args.host, port=server.port, mode=args.mode)

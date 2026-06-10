@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import select
 
-from app.api.deps import DbDep, UserDep, get_current_user
+from app.api.deps import DbDep, UserDep, get_current_user, get_hostcomm_client
 from app.api.schemas import err, ok
+from app.api.ws_manager import ws_manager
 from app.db.models import AlarmLog
 from app.hostcomm.protocol import now_iso
+from app.services.command_service import audit_action
 
 router = APIRouter(prefix="/api/alarms", tags=["alarms"])
 
@@ -35,18 +37,52 @@ async def alarm_history(db: DbDep, page: int = 1, size: int = 50):
 
 
 @router.post("/{alarm_id}/ack")
-async def ack_alarm(alarm_id: int, user: UserDep, db: DbDep):
-    """确认报警（写确认信息）。权限：Operator+。"""
+async def ack_alarm(alarm_id: int, request: Request, user: UserDep, db: DbDep):
+    """确认报警：经 HostComm 发送 ack_alarm 命令 + 写操作日志。权限：Operator+。
+
+    安全：ack_alarm 仅确认显示/锁存状态，不绕过未消除故障（裁决在 STM32）。
+    """
     if user.role == "observer":
         raise HTTPException(status_code=403, detail=err("operator_permission_denied", "无操作权限"))
     alarm = await db.get(AlarmLog, alarm_id)
     if alarm is None:
         raise HTTPException(status_code=404, detail=err("not_found", "报警不存在"))
+
+    # 经 HostComm 发送 ack_alarm（尽力而为：离线时仍记录本地确认）
+    client = get_hostcomm_client(request)
+    cmd_result, reason = "skipped", None
+    if client is not None and getattr(client, "is_online", False):
+        try:
+            r = await client.send_command(
+                "ack_alarm",
+                {"alarm_id": alarm_id, "alarm_code": alarm.alarm_code},
+                operator_id=user.username,
+                role=user.role,
+            )
+            cmd_result, reason = r.get("result", "error"), r.get("reason_code")
+        except Exception:  # noqa: BLE001
+            cmd_result, reason = "error", "device_comm_fault"
+
     # 仅更新确认字段（不删除/覆盖原始报警记录）
     alarm.ack_time = now_iso()
     alarm.ack_operator = user.username
     await db.commit()
-    return ok({"alarm_id": alarm_id, "ack_operator": user.username, "ack_time": alarm.ack_time})
+
+    await audit_action(
+        db,
+        operator_id=user.username,
+        role=user.role,
+        action_type="ack_alarm",
+        params={"alarm_id": alarm_id, "alarm_code": alarm.alarm_code},
+        result=cmd_result,
+        reason_code=reason,
+        client_ip=request.client.host if request.client else None,
+    )
+    await ws_manager.broadcast(
+        "alarm_ack",
+        {"alarm_id": alarm_id, "ack_operator": user.username, "ack_time": alarm.ack_time},
+    )
+    return ok({"alarm_id": alarm_id, "ack_operator": user.username, "ack_time": alarm.ack_time, "command": cmd_result})
 
 
 def _row(r: AlarmLog) -> dict:
