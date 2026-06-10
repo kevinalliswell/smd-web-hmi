@@ -13,6 +13,9 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import binascii
+import copy
+import json
 import math
 import random
 import time
@@ -22,6 +25,40 @@ from app.core.logging import configure_logging, get_logger
 from app.hostcomm.protocol import FrameParser, make_frame, now_iso
 
 logger = get_logger("hostcomm.mock")
+
+# 默认参数集（结构见 docs/待确认事项与接口对齐清单.md §2，依据 SOP 工艺口径）
+DEFAULT_PARAMS: dict[str, Any] = {
+    "process": {
+        "gas_switch_temp_deg_c": 500,
+        "end_temp_deg_c": 1580,
+        "hold_minutes": 30,
+        "low_temp_end_hint_deg_c": 200,
+        "total_flow_l_min": 5.0,
+    },
+    "mfc": {
+        "n2_reduce_l_min": 3.5,
+        "co_reduce_l_min": 1.5,
+        "n2_purge_l_min": 2.0,
+        "leak_check_n2_l_min": 5.0,
+        "co_ratio_pct": 30,
+        "deviation_pct": 0.5,
+    },
+    "temp_program": {
+        "seg1_rate_deg_c_min": 10,
+        "seg1_to_deg_c": 900,
+        "seg2_rate_deg_c_min": 2,
+        "seg2_to_deg_c": 1100,
+        "seg3_rate_deg_c_min": 5,
+        "seg3_to_deg_c": 1600,
+    },
+    "ai_calib": {"disp_zero": 0.0, "disp_span": 1.0, "dp_zero": 0.0, "dp_span": 1.0},
+}
+
+
+def _crc_hex(values: dict[str, Any]) -> str:
+    """与上位机一致的参数 CRC：crc32(排序 JSON)，格式 0x 大写 8 位。"""
+    raw = json.dumps(values, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return "0x" + format(binascii.crc32(raw.encode("utf-8")) & 0xFFFFFFFF, "08X")
 
 _STATE_SEQUENCE = [
     "Standby",
@@ -59,6 +96,7 @@ class MockHostCommServer:
         self._test_id: str | None = None
         self._t0 = time.monotonic()
         self._clients: set[asyncio.StreamWriter] = set()
+        self._param_values: dict[str, Any] = copy.deepcopy(DEFAULT_PARAMS)
 
     # ----------------------------------------------------------- 生命周期
     @property
@@ -203,7 +241,7 @@ class MockHostCommServer:
             )
             return
 
-        # accept 模式：根据命令推进状态机
+        # accept 模式：根据命令推进状态机 / 保存参数
         if command == "start_test":
             self._test_id = payload.get("params", {}).get("test_id")
             self._state = "Precheck"
@@ -211,6 +249,11 @@ class MockHostCommServer:
             self._state = "Cooling"
         elif command == "pause_hold":
             self._state = "Holding"
+        elif command == "set_parameters":
+            # 保存下发的参数，使后续 get_parameters 回读一致（模拟 STM32 保存+回读）
+            values = payload.get("params", {}).get("values")
+            if isinstance(values, dict):
+                self._param_values = copy.deepcopy(values)
 
         await self._send(
             writer,
@@ -358,17 +401,8 @@ class MockHostCommServer:
             {
                 "fw_version": self.fw_version,
                 "device_profile_version": "DP-MOCK-V1.0",
-                "parameter_crc": "0x1234ABCD",
-                "params": {
-                    "process": {
-                        "gas_switch_temp_deg_c": 500,
-                        "end_temp_deg_c": 1580,
-                        "hold_minutes": 30,
-                        "low_temp_end_hint_deg_c": 200,
-                    },
-                    "mfc": {"n2_sp_l_min": 2.0, "co_sp_l_min": 1.0, "deviation_pct": 5},
-                    "temp_program": {"program_no": 1, "ramp_rate_deg_c_min": 10},
-                },
+                "parameter_crc": _crc_hex(self._param_values),
+                "params": copy.deepcopy(self._param_values),
             },
             prefix="mcu",
         )

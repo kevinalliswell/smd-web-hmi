@@ -126,6 +126,39 @@ def compute_param_crc(values: dict) -> str:
     return format(binascii.crc32(raw.encode("utf-8")) & 0xFFFFFFFF, "08x")
 
 
+async def audit_action(
+    db_session,
+    *,
+    operator_id: str,
+    role: str,
+    action_type: str,
+    params: dict | None,
+    result: str,
+    reason_code: str | None = None,
+    test_id: str | None = None,
+    client_ip: str | None = None,
+) -> None:
+    """向 operator_action 追加一条审计记录（只追加）。供命令与参数下发共用。"""
+    if db_session is None:
+        return
+    from app.db.models import OperatorAction
+
+    db_session.add(
+        OperatorAction(
+            ts=now_iso(),
+            operator_id=operator_id,
+            operator_role=role,
+            action_type=action_type,
+            test_id=test_id or (params.get("test_id") if isinstance(params, dict) else None),
+            params_json=json.dumps(params, ensure_ascii=False) if params is not None else None,
+            result=result,
+            reason_code=reason_code,
+            client_ip=client_ip,
+        )
+    )
+    await db_session.commit()
+
+
 class CommandService:
     """编排一次命令下发的完整流程。"""
 
@@ -241,21 +274,13 @@ class CommandService:
         client_ip: str | None,
     ) -> None:
         """写入 operator_action（只追加）。T10。"""
-        if db_session is None:
-            return
-        from app.db.models import OperatorAction
-
-        db_session.add(
-            OperatorAction(
-                ts=now_iso(),
-                operator_id=operator_id,
-                operator_role=role,
-                action_type=command,
-                test_id=params.get("test_id") if isinstance(params, dict) else None,
-                params_json=json.dumps(params, ensure_ascii=False),
-                result=result,
-                reason_code=reason_code,
-                client_ip=client_ip,
-            )
+        await audit_action(
+            db_session,
+            operator_id=operator_id,
+            role=role,
+            action_type=command,
+            params=params,
+            result=result,
+            reason_code=reason_code,
+            client_ip=client_ip,
         )
-        await db_session.commit()

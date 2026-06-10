@@ -68,6 +68,13 @@ def get_command_service(request: Request) -> CommandService:
     return CommandService(get_hostcomm_client(request), status_cache)
 
 
+def get_parameter_service(request: Request):
+    """构造参数下发服务（绑定当前 HostComm 客户端与状态缓存）。"""
+    from app.services.parameter_service import ParameterService
+
+    return ParameterService(get_hostcomm_client(request), status_cache)
+
+
 # 类型别名
 DbDep = Annotated[AsyncSession, Depends(get_db)]
 UserDep = Annotated[CurrentUser, Depends(get_current_user)]

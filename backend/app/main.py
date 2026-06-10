@@ -4,9 +4,13 @@ from __future__ import annotations
 
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from sqlalchemy import select
+
+from app.api.schemas import err
 
 from app import __version__
 from app.api.routes import (
@@ -161,6 +165,22 @@ def create_app() -> FastAPI:
 
     # WebSocket
     app.include_router(websocket.router)
+
+    # 统一错误响应为顶层 {error_code, message, ts}（规格 §3），而非 FastAPI 默认的 {detail:...}
+    @app.exception_handler(HTTPException)
+    async def _http_exc_handler(request: Request, exc: HTTPException):
+        detail = exc.detail
+        if isinstance(detail, dict) and "error_code" in detail:
+            return JSONResponse(status_code=exc.status_code, content=detail, headers=exc.headers)
+        return JSONResponse(
+            status_code=exc.status_code,
+            content=err("http_error", str(detail)),
+            headers=exc.headers,
+        )
+
+    @app.exception_handler(RequestValidationError)
+    async def _validation_exc_handler(request: Request, exc: RequestValidationError):
+        return JSONResponse(status_code=422, content=err("validation_error", str(exc.errors())))
 
     @app.get("/health", tags=["system"])
     async def health():  # noqa: D401
