@@ -8,10 +8,14 @@ from __future__ import annotations
 import json
 from typing import Any
 
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models import AlarmLog, EventLog, SamplePoint
+from app.db.models import AlarmLog, DeviceStatus, EventLog, SamplePoint
 from app.hostcomm.protocol import now_iso
+
+# device_status 滚动缓冲保留条数（唯一允许 DELETE 的表）
+DEVICE_STATUS_KEEP = 1000
 
 
 async def append_sample_point(
@@ -77,6 +81,28 @@ async def append_event(
         )
     )
     await session.commit()
+
+
+async def append_device_status(
+    session: AsyncSession, snapshot: dict[str, Any], *, keep: int = DEVICE_STATUS_KEEP
+) -> None:
+    """写入 device_status 滚动缓冲，并裁剪到最近 ``keep`` 条。
+
+    注意：device_status 是规格中**唯一**允许 DELETE 旧记录的表（第 2.8 节）。
+    sample_point / event_log / alarm_log 严禁删除。
+    """
+    session.add(DeviceStatus(ts=now_iso(), status_json=json.dumps(snapshot, ensure_ascii=False)))
+    await session.commit()
+
+    # 裁剪：删除超出保留窗口的最旧记录
+    ids = (
+        await session.execute(
+            select(DeviceStatus.id).order_by(DeviceStatus.id.desc()).offset(keep)
+        )
+    ).scalars().all()
+    if ids:
+        await session.execute(delete(DeviceStatus).where(DeviceStatus.id.in_(ids)))
+        await session.commit()
 
 
 async def append_alarm(

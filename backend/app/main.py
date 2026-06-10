@@ -55,6 +55,27 @@ async def _seed_admin() -> None:
             logger.warning("seed.admin_created", note="默认密码 admin/admin，请尽快修改")
 
 
+async def _persist_snapshot(payload: dict) -> None:
+    """将状态快照写入 device_status 滚动缓冲；试验进行中再写 sample_point。
+
+    写库失败不得影响实时推送，异常仅记录。
+    """
+    from app.services import logging_service
+    from app.services.test_runtime import active_test
+
+    try:
+        sessionmaker = get_sessionmaker()
+        async with sessionmaker() as session:
+            await logging_service.append_device_status(session, payload)
+            test_id = active_test.active_test_id or (payload.get("state_machine", {}) or {}).get(
+                "test_id"
+            )
+            if test_id:
+                await logging_service.append_sample_point(session, test_id, payload)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("persist.snapshot_failed", error=str(exc))
+
+
 def _build_hostcomm_client(settings) -> HostCommClient:
     """根据配置构造 HostComm 客户端并接好回调（缓存 / WebSocket 广播）。"""
     host = "127.0.0.1" if settings.hostcomm_mock else settings.hostcomm_host
@@ -62,6 +83,7 @@ def _build_hostcomm_client(settings) -> HostCommClient:
     async def on_status(payload: dict) -> None:
         await status_cache.update(payload, ts_iso=now_iso())
         await ws_manager.broadcast("status_update", payload)
+        await _persist_snapshot(payload)
 
     async def on_event(payload: dict) -> None:
         # 事件 → WebSocket（写库见 logging_service，后续迭代接入持久化）

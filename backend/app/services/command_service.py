@@ -179,7 +179,54 @@ class CommandService:
                 reason_code=reason_code,
                 client_ip=client_ip,
             )
+
+        # 命令被控制板受理后，处理试验会话生命周期（建/收会话）
+        if result_label == "accepted":
+            await self._handle_lifecycle(
+                db_session, command, params, operator_id, result_payload
+            )
         return result_payload
+
+    async def _handle_lifecycle(
+        self, db_session, command: str, params: dict, operator_id: str, result_payload: dict
+    ) -> None:
+        """start_test → 建 test_session 并标记进行中；stop_test → 收尾。"""
+        if db_session is None:
+            return
+        from sqlalchemy import select
+
+        from app.db.models import TestSession
+        from app.services.test_runtime import active_test
+
+        if command == "start_test":
+            test_id = params.get("test_id")
+            if not test_id:
+                return
+            exists = await db_session.scalar(
+                select(TestSession).where(TestSession.test_id == test_id)
+            )
+            if exists is None:
+                db_session.add(
+                    TestSession(
+                        test_id=test_id,
+                        operator_id=operator_id,
+                        start_time=now_iso(),
+                    )
+                )
+                await db_session.commit()
+            active_test.start(test_id)
+
+        elif command == "stop_test":
+            test_id = active_test.stop()
+            if test_id:
+                row = await db_session.scalar(
+                    select(TestSession).where(TestSession.test_id == test_id)
+                )
+                if row is not None and row.end_time is None:
+                    row.end_time = now_iso()
+                    row.end_reason = "operator_stop"
+                    row.state_at_end = result_payload.get("current_state")
+                    await db_session.commit()
 
     async def _write_audit(
         self,
