@@ -5,6 +5,7 @@ import { useDeviceStore } from '@/stores/device'
 import { useRole } from '@/composables/useRole'
 import { fetchStatus } from '@/api/status'
 import StatusBadge from '@/components/shared/StatusBadge.vue'
+import RealtimeChart from '@/components/charts/RealtimeChart.vue'
 import StartTestModal from '@/components/command/StartTestModal.vue'
 import StopTestModal from '@/components/command/StopTestModal.vue'
 
@@ -60,6 +61,12 @@ onMounted(async () => {
         <div class="kpi-val">{{ kpi.value }}<span class="kpi-unit">{{ kpi.unit }}</span></div>
         <div class="kpi-sub muted">{{ kpi.sub }}</div>
       </div>
+    </div>
+
+    <!-- 实时炉温趋势 -->
+    <div class="card">
+      <div class="card-title">炉温趋势（实时）</div>
+      <RealtimeChart />
     </div>
 
     <div class="row">
