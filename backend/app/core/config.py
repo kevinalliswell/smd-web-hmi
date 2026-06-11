@@ -64,6 +64,25 @@ class Settings(BaseSettings):
         raw = Path(self.smd_db_path)
         return raw if raw.is_absolute() else (BACKEND_DIR / raw)
 
+    @property
+    def data_dir(self) -> Path:
+        """数据目录（数据库所在目录），报告/导出文件落在其子目录下。"""
+        d = self.db_path_resolved.parent
+        d.mkdir(parents=True, exist_ok=True)
+        return d
+
+    @property
+    def reports_dir(self) -> Path:
+        d = self.data_dir / "reports"
+        d.mkdir(parents=True, exist_ok=True)
+        return d
+
+    @property
+    def exports_dir(self) -> Path:
+        d = self.data_dir / "exports"
+        d.mkdir(parents=True, exist_ok=True)
+        return d
+
 
 @lru_cache(maxsize=1)
 def _ephemeral_secret() -> str:
