@@ -12,3 +12,17 @@ export function fetchTests(page = 1, size = 20) {
 export function fetchTestDetail(testId) {
   return apiClient.get(`/api/tests/${testId}`).then((r) => r.data.data)
 }
+
+export function fetchTestSamples(testId, maxPoints = 1000) {
+  return apiClient
+    .get(`/api/tests/${testId}/samples`, { params: { max_points: maxPoints } })
+    .then((r) => r.data.data)
+}
+
+export function fetchTestEvents(testId) {
+  return apiClient.get(`/api/tests/${testId}/events`).then((r) => r.data.data)
+}
+
+export function fetchTestAlarms(testId) {
+  return apiClient.get(`/api/tests/${testId}/alarms`).then((r) => r.data.data)
+}
