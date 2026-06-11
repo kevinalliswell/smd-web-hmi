@@ -43,6 +43,21 @@ async def info(request: Request):
     )
 
 
+@router.post("/sync-time", dependencies=[Depends(require_role("admin"))])
+async def sync_time(request: Request):
+    """通过 HostComm 下发 sync_time 校时命令。权限：Admin。"""
+    from app.hostcomm.protocol import now_iso
+
+    client = get_hostcomm_client(request)
+    if client is None or not getattr(client, "is_online", False):
+        raise HTTPException(status_code=503, detail=err("device_comm_fault", "HostComm 未连接"))
+    ts = now_iso()
+    result = await client.send_command(
+        "sync_time", {"timestamp": ts}, operator_id="system", role="admin"
+    )
+    return ok({"sent_time": ts, "result": result.get("result"), "reason_code": result.get("reason_code")})
+
+
 @router.get("/hostcomm/status", dependencies=[Depends(require_role("maintainer"))])
 async def hostcomm_status(request: Request):
     """HostComm 连接详情、帧统计、心跳延迟。权限：Maintainer。"""

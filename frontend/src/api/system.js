@@ -12,3 +12,11 @@ export function hostcommDebug(action) {
 export function fetchSystemInfo() {
   return apiClient.get('/api/system/info').then((r) => r.data.data)
 }
+
+export function fetchHealth() {
+  return apiClient.get('/api/system/health').then((r) => r.data.data)
+}
+
+export function syncTime() {
+  return apiClient.post('/api/system/sync-time').then((r) => r.data.data)
+}

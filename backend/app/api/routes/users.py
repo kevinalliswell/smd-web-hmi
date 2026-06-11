@@ -27,6 +27,13 @@ class ChangePasswordRequest(BaseModel):
     new_password: str
 
 
+class UpdateUserRequest(BaseModel):
+    role: str | None = None
+    is_active: bool | None = None
+    display_name: str | None = None
+    new_password: str | None = None
+
+
 @router.get("", dependencies=[Depends(require_role("admin"))])
 async def list_users(db: DbDep):
     """用户列表。权限：Admin。"""
@@ -45,6 +52,9 @@ async def create_user(body: CreateUserRequest, db: DbDep):
     """创建用户。权限：Admin。"""
     if body.role not in {"observer", "operator", "admin", "maintainer"}:
         raise HTTPException(status_code=400, detail=err("invalid_role", "非法角色"))
+    exists = await db.scalar(select(UserAccount).where(UserAccount.username == body.username))
+    if exists is not None:
+        raise HTTPException(status_code=400, detail=err("username_exists", "用户名已存在"))
     db.add(
         UserAccount(
             username=body.username,
@@ -57,6 +67,31 @@ async def create_user(body: CreateUserRequest, db: DbDep):
     )
     await db.commit()
     return ok({"username": body.username, "role": body.role})
+
+
+@router.put("/{user_id}", dependencies=[Depends(require_role("admin"))])
+async def update_user(user_id: int, body: UpdateUserRequest, user: UserDep, db: DbDep):
+    """修改角色 / 激活状态 / 显示名 / 重置密码。权限：Admin。"""
+    account = await db.get(UserAccount, user_id)
+    if account is None:
+        raise HTTPException(status_code=404, detail=err("not_found", "用户不存在"))
+    # 防自锁：不允许管理员停用或降级自己的账户
+    if account.username == user.username and (
+        body.is_active is False or (body.role is not None and body.role != "admin")
+    ):
+        raise HTTPException(status_code=400, detail=err("self_lockout", "不能停用或降级当前登录的管理员账户"))
+    if body.role is not None:
+        if body.role not in {"observer", "operator", "admin", "maintainer"}:
+            raise HTTPException(status_code=400, detail=err("invalid_role", "非法角色"))
+        account.role = body.role
+    if body.is_active is not None:
+        account.is_active = int(body.is_active)
+    if body.display_name is not None:
+        account.display_name = body.display_name
+    if body.new_password:
+        account.hashed_pw = hash_password(body.new_password)
+    await db.commit()
+    return ok({"id": account.id, "username": account.username, "role": account.role, "is_active": bool(account.is_active)})
 
 
 @router.post("/change-password")
