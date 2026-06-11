@@ -118,13 +118,20 @@ class HostCommClient:
 
     @property
     def stats(self) -> dict[str, Any]:
+        age = None
+        if self._last_heartbeat_ack is not None:
+            age = round(time.monotonic() - self._last_heartbeat_ack, 2)
         return {
             "comm_quality": self._comm_quality,
             "connected": self._connected,
+            "host": self.host,
+            "port": self.port,
+            "fw_version": (self.hello_ack or {}).get("payload", {}).get("fw_version") if self.hello_ack else None,
+            "capabilities": self.capabilities,
             "frames_parsed": self._parser.frames_parsed,
             "frames_dropped": self._parser.frames_dropped,
             "json_errors": self._parser.json_errors,
-            "last_heartbeat_ack": self._last_heartbeat_ack,
+            "heartbeat_age_s": age,
             "missed_heartbeats": self._missed_heartbeats,
         }
 

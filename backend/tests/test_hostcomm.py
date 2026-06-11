@@ -37,7 +37,7 @@ async def test_t02_heartbeat_stable(mock_server):
         assert client.is_online
         assert client.comm_quality == "online"
         assert client.stats["missed_heartbeats"] == 0
-        assert client.stats["last_heartbeat_ack"] is not None
+        assert client.stats["heartbeat_age_s"] is not None
     finally:
         await client.close()
 

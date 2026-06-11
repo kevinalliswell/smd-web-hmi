@@ -59,3 +59,12 @@ def test_command_permissions_deny_observer():
 
     for command, roles in COMMAND_PERMISSIONS.items():
         assert "observer" not in roles, f"Observer 不应被允许执行 {command}"
+
+
+def test_hostcomm_debug_readonly_only():
+    """HostComm 调试工具白名单仅含只读操作，不含任何控制/有副作用动作。"""
+    from app.api.routes.system import DEBUG_READONLY_ACTIONS
+
+    assert DEBUG_READONLY_ACTIONS == {"get_status", "get_parameters"}
+    forbidden = {"command", "set_parameters", "start_test", "stop_test", "ack_alarm", "sync_time"}
+    assert not (DEBUG_READONLY_ACTIONS & forbidden)
