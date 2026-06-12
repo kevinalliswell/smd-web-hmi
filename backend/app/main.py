@@ -15,6 +15,7 @@ from app.api.schemas import err
 from app import __version__
 from app.api.routes import (
     alarms,
+    analytics,
     auth,
     commands,
     logs,
@@ -165,6 +166,7 @@ def create_app() -> FastAPI:
         parameters,
         logs,
         reports,
+        analytics,
         users,
         system,
     ):
