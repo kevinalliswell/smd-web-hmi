@@ -7,7 +7,8 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy import select
 
 from app import __version__
@@ -180,6 +181,26 @@ def create_app() -> FastAPI:
     async def health():  # noqa: D401
         """根级健康检查（便于探针）。"""
         return {"status": "ok", "version": __version__}
+
+    # 生产形态：托管前端构建产物（vite build 输出），同源伺服免 CORS。
+    # 未配置且默认位置无产物时不注册任何路由（开发模式走 Vite dev server）。
+    # 注意：SPA 回退是 catch-all 路由，必须在所有 API 路由之后注册。
+    dist_dir = get_settings().frontend_dist_dir
+    if dist_dir is not None:
+        if (dist_dir / "assets").is_dir():
+            app.mount("/assets", StaticFiles(directory=dist_dir / "assets"), name="assets")
+        index_file = dist_dir / "index.html"
+        dist_root = dist_dir.resolve()
+
+        @app.get("/{full_path:path}", include_in_schema=False)
+        async def spa_fallback(full_path: str):
+            """SPA 路由回退：/api、/ws 之外的未知路径一律返回 index.html。"""
+            if full_path in ("api", "ws") or full_path.startswith(("api/", "ws/")):
+                raise HTTPException(status_code=404, detail=err("not_found", "接口不存在"))
+            target = (dist_dir / full_path).resolve()
+            if full_path and target.is_file() and target.is_relative_to(dist_root):
+                return FileResponse(target)
+            return FileResponse(index_file)
 
     return app
 

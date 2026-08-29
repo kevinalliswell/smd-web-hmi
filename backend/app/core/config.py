@@ -39,6 +39,10 @@ class Settings(BaseSettings):
     hostcomm_command_timeout: float = 3.0
     hostcomm_mock: bool = False
 
+    # ---- 前端静态托管（生产同源部署）----
+    # 留空时自动探测仓库内 frontend/dist；显式配置用于离线包部署（见 deploy/windows/）
+    smd_frontend_dist: str = ""
+
     # ---- 元信息 ----
     client_id: str = "hmi-01"
     client_name: str = "smd-web-backend"
@@ -82,6 +86,16 @@ class Settings(BaseSettings):
         d = self.data_dir / "exports"
         d.mkdir(parents=True, exist_ok=True)
         return d
+
+    @property
+    def frontend_dist_dir(self) -> Path | None:
+        """前端构建产物目录；未配置且默认位置无产物时返回 None（开发模式走 Vite dev server）。"""
+        if self.smd_frontend_dist:
+            raw = Path(self.smd_frontend_dist)
+            candidate = raw if raw.is_absolute() else (BACKEND_DIR / raw)
+        else:
+            candidate = BACKEND_DIR.parent / "frontend" / "dist"
+        return candidate if (candidate / "index.html").is_file() else None
 
 
 @lru_cache(maxsize=1)
