@@ -98,9 +98,17 @@ cd backend && pytest tests/ -v          # test_safety.py 验证安全红线
 cd frontend && npm run test             # Vitest（store + 组件）
 ```
 
+## 部署与发布
+
+生产为**同源部署**：后端直接托管 `vite build` 产物（自动探测 `frontend/dist`，或经
+`SMD_FRONTEND_DIST` 指定），单端口 8000、无跨域。打 tag `vX.Y.Z` 自动触发发布流水线，
+构建 Windows 离线安装包并创建 GitHub Release。现场安装 / 升级 / 回滚见
+[`deploy/windows/README.md`](./deploy/windows/README.md)；分支、版本与发布全流程见
+[`docs/发布与维护指南.md`](./docs/发布与维护指南.md)，变更记录见 [`CHANGELOG.md`](./CHANGELOG.md)。
+
 ## 开发阶段
 
-D2 原型已完成 → **D3 接口联调（当前，里程碑 `v0.3-d3`）** → D4 冷态验收。
+D2 原型已完成 → **D3 接口联调（当前，工程基线 `v0.2.x`，联调基线 `v0.3.0`）** → D4 冷态验收。
 
 D3 阶段交付标准见 `CLAUDE.md` 第 9 节，P0 测试矩阵（T01-T15）见
 `docs/上位机软件开发规格说明书.md` 第 9.2 节。

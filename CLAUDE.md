@@ -200,14 +200,20 @@ VITE_WS_URL=ws://localhost:8000/ws/realtime
 
 ---
 
-## 6. Git 工作流
+## 6. Git 工作流（trunk-based）
 
 ```
-main          ← 稳定版，仅通过 PR/merge 更新，每个里程碑打 tag (v0.3-d3, v0.4-d4...)
-dev           ← 日常开发分支，D3 阶段工作在此进行
-feature/xxx   ← 功能分支，从 dev 创建，完成后 merge 回 dev
-hotfix/xxx    ← 修复分支，从 main 创建
+main          ← 唯一长期分支（受保护）：只经 PR + squash 合并更新，里程碑打 tag
+fix/xxx       ← 缺陷修复分支，从 main 创建，PR 合并后删除
+feature/xxx   ← 功能分支，从 main 创建，PR 合并后删除
 ```
+
+- 所有变更走 PR：CI 全绿（安全红线 job 必须通过）才可合并；合并方式一律 **squash**，
+  PR 标题即 Conventional Commits 提交信息；一个 PR 对应一个 issue（或其中一条勾选项）。
+- **版本**：SemVer；`backend/app/__init__.py` 的 `__version__` 是唯一权威版本源。
+  发版三步 = 改 `__version__` → 更新 `CHANGELOG.md` → 打 tag `vX.Y.Z`（tag 自动触发
+  release 流水线构建 Windows 离线包）。操作细节见 `docs/发布与维护指南.md`。
+- 已发布的 Alembic 迁移只追加、不得修改。
 
 **提交信息格式（Conventional Commits）：**
 
@@ -229,17 +235,8 @@ test(hostcomm): 补充断线重连测试用例
 - 每次 commit 前运行 `pytest backend/tests/` 确保无新增失败
 
 **何时 push：**
-- commit 后直接 push 到当前分支（`git push origin <branch>`）
-- 不等待用户指令，完成即推
-
-**首次设置（如远程仓库尚未配置）：**
-```bash
-git init
-git remote add origin <用户提供的远程仓库 URL>
-git checkout -b dev
-# 完成初始提交后
-git push -u origin dev
-```
+- commit 后直接 push 到当前 fix/feature 分支（`git push origin <branch>`），不直接 push main
+- 不等待用户指令，完成即推；改动完成后开 PR 合回 main
 
 ---
 
