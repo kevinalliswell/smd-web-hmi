@@ -1,0 +1,3 @@
+# Windows 批处理必须以 CRLF 检出（LF 的 .bat 在 cmd 中 goto/label 行为不可靠），
+# 打包流水线直接从工作区复制，故所有平台统一强制 CRLF。
+deploy/windows/*.bat text eol=crlf

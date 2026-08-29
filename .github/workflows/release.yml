@@ -1,0 +1,129 @@
+name: Release
+
+# 打 tag（vX.Y.Z）自动构建 Windows 离线安装包并创建 GitHub Release。
+# workflow_dispatch 用于试运行：只构建产物（可从 Actions Artifacts 下载验证），不创建 Release。
+# 目标机为离线局域网工控机，因此"CD"= 发布打包自动化，交付到现场为人工/U 盘。
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "试运行版本号（仅用于产物命名，如 v0.2.0-rc1）"
+        required: false
+        default: "v0.0.0-dev"
+
+permissions:
+  contents: write
+
+jobs:
+  test:
+    name: 发布前测试（安全红线优先）
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements-dev.txt
+
+      - name: 后端依赖
+        working-directory: backend
+        run: pip install -r requirements-dev.txt
+
+      - name: 安全红线（最先运行）
+        working-directory: backend
+        run: pytest tests/test_safety.py -v
+
+      - name: 后端全量测试
+        working-directory: backend
+        run: pytest -q
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: 前端测试
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run test
+
+  build:
+    name: 构建 Windows 离线安装包
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 确定版本号
+        id: ver
+        run: |
+          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            echo "version=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=${{ github.event.inputs.version || 'v0.0.0-dev' }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      # 同源部署：不注入 VITE_API_BASE / VITE_WS_URL，前端代码内已有 location 回退
+      - name: 构建前端
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      # 工控机 Python 3.11 x64；--only-binary 确保全部为 wheel，可在离线机直接安装
+      - name: 下载 Windows (cp311 / win_amd64) 依赖 wheels
+        run: |
+          pip download -r backend/requirements.txt -d stage/wheels \
+            --platform win_amd64 --python-version 311 \
+            --implementation cp --only-binary=:all:
+
+      - name: 组装离线包
+        id: pack
+        run: |
+          NAME="smd-web-hmi-${{ steps.ver.outputs.version }}-win64"
+          STAGE="stage/${NAME}"
+          mkdir -p "${STAGE}/app"
+          rsync -a --exclude='__pycache__' --exclude='.pytest_cache' \
+                --exclude='data' --exclude='.env' backend "${STAGE}/app/"
+          cp -r frontend/dist "${STAGE}/app/frontend_dist"
+          mv stage/wheels "${STAGE}/wheels"
+          cp -r deploy/windows/. "${STAGE}/"
+          cp .env.example CHANGELOG.md "${STAGE}/"
+          (cd stage && zip -qr "${NAME}.zip" "${NAME}" && sha256sum "${NAME}.zip" > SHA256SUMS.txt)
+          echo "zip=stage/${NAME}.zip" >> "$GITHUB_OUTPUT"
+
+      - name: 上传构建产物（试运行也可下载验证）
+        uses: actions/upload-artifact@v4
+        with:
+          name: offline-bundle-${{ steps.ver.outputs.version }}
+          path: |
+            stage/*.zip
+            stage/SHA256SUMS.txt
+          retention-days: 30
+
+      - name: 创建 GitHub Release（仅 tag 触发）
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" \
+            "${{ steps.pack.outputs.zip }}" stage/SHA256SUMS.txt \
+            --title "smd-web-hmi ${GITHUB_REF_NAME}" \
+            --generate-notes
