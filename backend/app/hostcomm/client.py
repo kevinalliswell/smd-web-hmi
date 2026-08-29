@@ -107,7 +107,7 @@ class HostCommClient:
 
     @property
     def comm_quality(self) -> str:
-        """"online" / "degraded" / "offline"。"""
+        """ "online" / "degraded" / "offline"。"""
         return self._comm_quality
 
     @property
@@ -153,12 +153,8 @@ class HostCommClient:
             logger.warning("hostcomm.initial_connect_failed", error=str(exc))
             await self._teardown_connection()
             await self._set_comm_quality("offline")
-            if self.auto_reconnect and (
-                self._reconnect_task is None or self._reconnect_task.done()
-            ):
-                self._reconnect_task = asyncio.create_task(
-                    self._reconnect_loop(), name="hostcomm-reconnect"
-                )
+            if self.auto_reconnect and (self._reconnect_task is None or self._reconnect_task.done()):
+                self._reconnect_task = asyncio.create_task(self._reconnect_loop(), name="hostcomm-reconnect")
 
     async def _open(self) -> None:
         self._reader, self._writer = await asyncio.open_connection(self.host, self.port)
@@ -323,9 +319,7 @@ class HostCommClient:
         self._writer.write(FrameParser.encode(frame))
         await self._writer.drain()
 
-    async def _await_type(
-        self, expect_type: str, frame: dict[str, Any], *, timeout: float
-    ) -> dict[str, Any]:
+    async def _await_type(self, expect_type: str, frame: dict[str, Any], *, timeout: float) -> dict[str, Any]:
         """发送 frame 并等待下一帧 expect_type 类型的响应。"""
         loop = asyncio.get_running_loop()
         fut: asyncio.Future[dict[str, Any]] = loop.create_future()
@@ -399,9 +393,7 @@ class HostCommClient:
                 if not self._connected:
                     return
                 try:
-                    frame = make_frame(
-                        "heartbeat", {"client_id": self.client_id}, prefix="pc-hb"
-                    )
+                    frame = make_frame("heartbeat", {"client_id": self.client_id}, prefix="pc-hb")
                     await self._send(frame)
                 except HostCommNotConnectedError:
                     return

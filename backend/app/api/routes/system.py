@@ -52,9 +52,7 @@ async def sync_time(request: Request):
     if client is None or not getattr(client, "is_online", False):
         raise HTTPException(status_code=503, detail=err("device_comm_fault", "HostComm 未连接"))
     ts = now_iso()
-    result = await client.send_command(
-        "sync_time", {"timestamp": ts}, operator_id="system", role="admin"
-    )
+    result = await client.send_command("sync_time", {"timestamp": ts}, operator_id="system", role="admin")
     return ok({"sent_time": ts, "result": result.get("result"), "reason_code": result.get("reason_code")})
 
 

@@ -10,23 +10,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy import select
 
-from app.api.schemas import err
-
 from app import __version__
-from app.api.routes import (
-    alarms,
-    analytics,
-    auth,
-    commands,
-    logs,
-    parameters,
-    reports,
-    status,
-    system,
-    tests,
-    users,
-)
 from app.api import websocket
+from app.api.routes import alarms, analytics, auth, commands, logs, parameters, reports, status, system, tests, users
+from app.api.schemas import err
 from app.api.ws_manager import ws_manager
 from app.core.config import get_settings
 from app.core.logging import configure_logging, get_logger
@@ -72,9 +59,7 @@ async def _persist_snapshot(payload: dict) -> None:
         sessionmaker = get_sessionmaker()
         async with sessionmaker() as session:
             await logging_service.append_device_status(session, payload)
-            test_id = active_test.active_test_id or (payload.get("state_machine", {}) or {}).get(
-                "test_id"
-            )
+            test_id = active_test.active_test_id or (payload.get("state_machine", {}) or {}).get("test_id")
             if test_id:
                 await logging_service.append_sample_point(session, test_id, payload)
     except Exception as exc:  # noqa: BLE001

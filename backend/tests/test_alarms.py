@@ -65,8 +65,12 @@ async def test_multiple_alarms_levels(db_session):
     await alarm_service.handle_event(db_session, _alarm_payload("alarm_new", code="A3", level=3))
     await alarm_service.handle_event(db_session, _alarm_payload("alarm_new", code="A2", level=2))
     rows = (
-        await db_session.execute(
-            select(AlarmLog).where(AlarmLog.clear_time.is_(None)).order_by(AlarmLog.level.desc())
+        (
+            await db_session.execute(
+                select(AlarmLog).where(AlarmLog.clear_time.is_(None)).order_by(AlarmLog.level.desc())
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     assert [r.level for r in rows] == [3, 2, 1]

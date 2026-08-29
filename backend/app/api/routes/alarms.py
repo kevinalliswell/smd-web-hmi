@@ -18,9 +18,7 @@ router = APIRouter(prefix="/api/alarms", tags=["alarms"])
 @router.get("/active", dependencies=[Depends(get_current_user)])
 async def active_alarms(db: DbDep):
     """当前活跃（未消除）报警。权限：Observer+。"""
-    result = await db.execute(
-        select(AlarmLog).where(AlarmLog.clear_time.is_(None)).order_by(AlarmLog.level.desc())
-    )
+    result = await db.execute(select(AlarmLog).where(AlarmLog.clear_time.is_(None)).order_by(AlarmLog.level.desc()))
     rows = result.scalars().all()
     return ok([_row(r) for r in rows])
 
@@ -29,9 +27,7 @@ async def active_alarms(db: DbDep):
 async def alarm_history(db: DbDep, page: int = 1, size: int = 50):
     """历史报警（分页）。权限：Observer+。"""
     offset = max(0, (page - 1) * size)
-    result = await db.execute(
-        select(AlarmLog).order_by(AlarmLog.id.desc()).limit(size).offset(offset)
-    )
+    result = await db.execute(select(AlarmLog).order_by(AlarmLog.id.desc()).limit(size).offset(offset))
     rows = result.scalars().all()
     return ok([_row(r) for r in rows])
 

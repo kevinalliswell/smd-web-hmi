@@ -41,7 +41,13 @@ async def list_users(db: DbDep):
     rows = result.scalars().all()
     return ok(
         [
-            {"id": u.id, "username": u.username, "role": u.role, "display_name": u.display_name, "is_active": bool(u.is_active)}
+            {
+                "id": u.id,
+                "username": u.username,
+                "role": u.role,
+                "display_name": u.display_name,
+                "is_active": bool(u.is_active),
+            }
             for u in rows
         ]
     )
@@ -91,7 +97,9 @@ async def update_user(user_id: int, body: UpdateUserRequest, user: UserDep, db: 
     if body.new_password:
         account.hashed_pw = hash_password(body.new_password)
     await db.commit()
-    return ok({"id": account.id, "username": account.username, "role": account.role, "is_active": bool(account.is_active)})
+    return ok(
+        {"id": account.id, "username": account.username, "role": account.role, "is_active": bool(account.is_active)}
+    )
 
 
 @router.post("/change-password")

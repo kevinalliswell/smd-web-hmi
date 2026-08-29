@@ -16,9 +16,7 @@ router = APIRouter(prefix="/api/tests", tags=["tests"], dependencies=[Depends(ge
 async def list_tests(db: DbDep, page: int = 1, size: int = 20):
     """历史试验列表（分页）。权限：Observer+。"""
     offset = max(0, (page - 1) * size)
-    result = await db.execute(
-        select(TestSession).order_by(TestSession.id.desc()).limit(size).offset(offset)
-    )
+    result = await db.execute(select(TestSession).order_by(TestSession.id.desc()).limit(size).offset(offset))
     rows = result.scalars().all()
     return ok(
         [
@@ -38,9 +36,7 @@ async def list_tests(db: DbDep, page: int = 1, size: int = 20):
 @router.get("/current")
 async def current_test(db: DbDep):
     """当前进行中的试验（end_time 为空）。权限：Observer+。"""
-    result = await db.execute(
-        select(TestSession).where(TestSession.end_time.is_(None)).order_by(TestSession.id.desc())
-    )
+    result = await db.execute(select(TestSession).where(TestSession.end_time.is_(None)).order_by(TestSession.id.desc()))
     r = result.scalars().first()
     if r is None:
         return ok(None)
@@ -54,12 +50,8 @@ async def test_detail(test_id: str, db: DbDep):
     r = result.scalar_one_or_none()
     if r is None:
         return ok(None)
-    sample_count = await db.scalar(
-        select(func.count()).select_from(SamplePoint).where(SamplePoint.test_id == test_id)
-    )
-    alarm_count = await db.scalar(
-        select(func.count()).select_from(AlarmLog).where(AlarmLog.test_id == test_id)
-    )
+    sample_count = await db.scalar(select(func.count()).select_from(SamplePoint).where(SamplePoint.test_id == test_id))
+    alarm_count = await db.scalar(select(func.count()).select_from(AlarmLog).where(AlarmLog.test_id == test_id))
     return ok(
         {
             "test_id": r.test_id,
@@ -81,10 +73,10 @@ async def test_detail(test_id: str, db: DbDep):
 async def test_samples(test_id: str, db: DbDep, max_points: int = 1000):
     """试验曲线数据（等距降采样到 max_points 以内）。权限：Observer+。"""
     rows = (
-        await db.execute(
-            select(SamplePoint).where(SamplePoint.test_id == test_id).order_by(SamplePoint.ts)
-        )
-    ).scalars().all()
+        (await db.execute(select(SamplePoint).where(SamplePoint.test_id == test_id).order_by(SamplePoint.ts)))
+        .scalars()
+        .all()
+    )
     total = len(rows)
     stride = max(1, (total + max_points - 1) // max_points) if max_points > 0 else 1
     sampled = rows[::stride]
@@ -112,15 +104,12 @@ async def test_samples(test_id: str, db: DbDep, max_points: int = 1000):
 async def test_events(test_id: str, db: DbDep, limit: int = 500):
     """该试验事件日志。权限：Observer+。"""
     rows = (
-        await db.execute(
-            select(EventLog).where(EventLog.test_id == test_id).order_by(EventLog.ts).limit(limit)
-        )
-    ).scalars().all()
+        (await db.execute(select(EventLog).where(EventLog.test_id == test_id).order_by(EventLog.ts).limit(limit)))
+        .scalars()
+        .all()
+    )
     return ok(
-        [
-            {"ts": e.ts, "source": e.source, "event_code": e.event_code, "level": e.level, "text": e.text}
-            for e in rows
-        ]
+        [{"ts": e.ts, "source": e.source, "event_code": e.event_code, "level": e.level, "text": e.text} for e in rows]
     )
 
 
@@ -128,10 +117,10 @@ async def test_events(test_id: str, db: DbDep, limit: int = 500):
 async def test_alarms(test_id: str, db: DbDep):
     """该试验报警记录。权限：Observer+。"""
     rows = (
-        await db.execute(
-            select(AlarmLog).where(AlarmLog.test_id == test_id).order_by(AlarmLog.occur_time)
-        )
-    ).scalars().all()
+        (await db.execute(select(AlarmLog).where(AlarmLog.test_id == test_id).order_by(AlarmLog.occur_time)))
+        .scalars()
+        .all()
+    )
     return ok(
         [
             {

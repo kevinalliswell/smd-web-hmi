@@ -16,12 +16,7 @@ from typing import Any
 
 from app.core.logging import get_logger
 from app.hostcomm.protocol import now_iso
-from app.services.command_service import (
-    CommandError,
-    audit_action,
-    check_parameter_crc,
-    check_state,
-)
+from app.services.command_service import CommandError, audit_action, check_parameter_crc, check_state
 
 logger = get_logger("service.parameter")
 

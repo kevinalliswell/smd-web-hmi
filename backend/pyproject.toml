@@ -1,0 +1,15 @@
+# 仅存放工具配置（black / isort / coverage）；依赖仍由 requirements*.txt 管理。
+# 行长 120 与 CLAUDE.md §5 编码规范一致；Alembic 迁移脚本为生成物，不参与格式检查。
+
+[tool.black]
+line-length = 120
+target-version = ["py311"]
+extend-exclude = "app/db/migrations"
+
+[tool.isort]
+profile = "black"
+line_length = 120
+skip_glob = ["app/db/migrations/*"]
+
+[tool.coverage.run]
+omit = ["app/db/migrations/*"]

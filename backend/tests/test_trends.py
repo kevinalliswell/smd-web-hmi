@@ -11,9 +11,27 @@ async def _seed(db):
         db.add(TestSession(test_id=tid, operator_id="adm", start_time="2026-06-10T00:00:00"))
     # TEST-A: 00:00:00..00:00:09 ；TEST-B: 00:10:00..00:10:09
     for i in range(10):
-        db.add(SamplePoint(test_id="TEST-A", ts=f"2026-06-10T00:00:{i:02d}", source="live_poll", furnace_pv=float(i), n2_pv=1.0, co_pv=0.0))
+        db.add(
+            SamplePoint(
+                test_id="TEST-A",
+                ts=f"2026-06-10T00:00:{i:02d}",
+                source="live_poll",
+                furnace_pv=float(i),
+                n2_pv=1.0,
+                co_pv=0.0,
+            )
+        )
     for i in range(10):
-        db.add(SamplePoint(test_id="TEST-B", ts=f"2026-06-10T00:10:{i:02d}", source="live_poll", furnace_pv=float(100 + i), n2_pv=2.0, co_pv=1.0))
+        db.add(
+            SamplePoint(
+                test_id="TEST-B",
+                ts=f"2026-06-10T00:10:{i:02d}",
+                source="live_poll",
+                furnace_pv=float(100 + i),
+                n2_pv=2.0,
+                co_pv=1.0,
+            )
+        )
     await db.commit()
 
 

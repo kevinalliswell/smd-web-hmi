@@ -62,9 +62,7 @@ async def test_start_test_creates_session(db_session):
         db_session=db_session,
     )
     assert active_test.active_test_id == "TEST-20260610-001"
-    row = await db_session.scalar(
-        select(TestSession).where(TestSession.test_id == "TEST-20260610-001")
-    )
+    row = await db_session.scalar(select(TestSession).where(TestSession.test_id == "TEST-20260610-001"))
     assert row is not None
     assert row.operator_id == "op001"
     assert row.end_time is None
@@ -106,9 +104,7 @@ async def test_stop_test_closes_session(db_session):
         db_session=db_session,
     )
     assert active_test.active_test_id is None
-    row = await db_session.scalar(
-        select(TestSession).where(TestSession.test_id == "TEST-20260610-002")
-    )
+    row = await db_session.scalar(select(TestSession).where(TestSession.test_id == "TEST-20260610-002"))
     assert row.end_time is not None
     assert row.end_reason == "operator_stop"
     assert row.state_at_end == "Cooling"

@@ -38,9 +38,7 @@ async def get_current_user(
     try:
         payload = decode_access_token(token)
     except jwt.PyJWTError:
-        raise HTTPException(
-            status_code=401, detail={"error_code": "invalid_token", "message": "令牌无效或已过期"}
-        )
+        raise HTTPException(status_code=401, detail={"error_code": "invalid_token", "message": "令牌无效或已过期"})
     return CurrentUser(username=payload.get("sub", ""), role=payload.get("role", "observer"))
 
 

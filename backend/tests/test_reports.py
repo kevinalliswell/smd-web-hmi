@@ -13,16 +13,13 @@ from app.services import log_export_service, report_service
 
 
 def _sample(furnace, burden, dp, drip, disp):
-    return SimpleNamespace(
-        furnace_pv=furnace, burden_temp=burden, delta_p=dp, drip_weight=drip, displacement=disp
-    )
+    return SimpleNamespace(furnace_pv=furnace, burden_temp=burden, delta_p=dp, drip_weight=drip, displacement=disp)
 
 
 # ----------------------------------------------------- 指标计算（单元）
 def test_compute_metrics():
     samples = [
-        _sample(100 + i * 150, 90 + i * 150, i * 10.0, 0.0 if i < 5 else float(i - 4), i * 0.5)
-        for i in range(10)
+        _sample(100 + i * 150, 90 + i * 150, i * 10.0, 0.0 if i < 5 else float(i - 4), i * 0.5) for i in range(10)
     ]
     m = report_service.compute_metrics(samples, original_height_mm=10.0)
     assert m["delta_p_max"] == 90.0

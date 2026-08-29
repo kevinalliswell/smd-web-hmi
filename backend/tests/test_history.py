@@ -7,7 +7,15 @@ from app.db.models import AlarmLog, EventLog, SamplePoint, TestSession
 
 
 async def _seed(db, test_id="TEST-H-1", n=250):
-    db.add(TestSession(test_id=test_id, operator_id="adm", start_time="2026-06-10T00:00:00", end_time="2026-06-10T01:00:00", end_reason="normal"))
+    db.add(
+        TestSession(
+            test_id=test_id,
+            operator_id="adm",
+            start_time="2026-06-10T00:00:00",
+            end_time="2026-06-10T01:00:00",
+            end_reason="normal",
+        )
+    )
     for i in range(n):
         db.add(
             SamplePoint(
@@ -22,7 +30,9 @@ async def _seed(db, test_id="TEST-H-1", n=250):
                 current_state="Heating",
             )
         )
-    db.add(EventLog(test_id=test_id, ts="2026-06-10T00:00:05", source="stm32_event", event_code="EVT-1", level=1, text="x"))
+    db.add(
+        EventLog(test_id=test_id, ts="2026-06-10T00:00:05", source="stm32_event", event_code="EVT-1", level=1, text="x")
+    )
     db.add(AlarmLog(test_id=test_id, alarm_code="ALM-1", level=2, occur_time="2026-06-10T00:00:06", text="压差高"))
     await db.commit()
     return test_id
