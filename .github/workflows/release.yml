@@ -54,9 +54,32 @@ jobs:
           npm ci
           npm run test
 
+  # 必须在 Windows 上解析依赖：pip 的环境标记（sys_platform 等）按"运行平台"求值，
+  # 在 Linux 上跨平台 --platform win_amd64 会带入 Linux-only 的 uvloop（无 Windows wheel，
+  # --only-binary 直接失败）并漏掉 Windows-only 的 colorama（Codex 审查发现，已本地复现）
+  wheels:
+    name: 下载 Windows 依赖 wheels（原生解析）
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      # 工控机 Python 3.11 x64；--only-binary 确保全部为 wheel，可在离线机直接安装
+      - name: pip download（cp311 / win_amd64）
+        run: pip download -r backend/requirements.txt -d wheels --only-binary=":all:"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: win-wheels
+          path: wheels
+          retention-days: 7
+
   build:
     name: 构建 Windows 离线安装包
-    needs: test
+    needs: [test, wheels]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -83,16 +106,11 @@ jobs:
           npm ci
           npm run build
 
-      - uses: actions/setup-python@v5
+      - name: 取回 Windows wheels
+        uses: actions/download-artifact@v4
         with:
-          python-version: "3.11"
-
-      # 工控机 Python 3.11 x64；--only-binary 确保全部为 wheel，可在离线机直接安装
-      - name: 下载 Windows (cp311 / win_amd64) 依赖 wheels
-        run: |
-          pip download -r backend/requirements.txt -d stage/wheels \
-            --platform win_amd64 --python-version 311 \
-            --implementation cp --only-binary=:all:
+          name: win-wheels
+          path: stage/wheels
 
       - name: 组装离线包
         id: pack
