@@ -19,7 +19,7 @@ class UserAccount(Base):
     __tablename__ = "user_account"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    username: Mapped[str] = mapped_column(String, nullable=False, unique=True)
+    username: Mapped[str] = mapped_column(String(32), nullable=False, unique=True)
     hashed_pw: Mapped[str] = mapped_column(String, nullable=False)
     role: Mapped[str] = mapped_column(String, nullable=False)
     display_name: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -40,7 +40,7 @@ class TestSession(Base):
     __tablename__ = "test_session"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    test_id: Mapped[str] = mapped_column(String, nullable=False, unique=True)
+    test_id: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
     operator_id: Mapped[str] = mapped_column(String, nullable=False)
     start_time: Mapped[str] = mapped_column(Text, nullable=False)
     end_time: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -58,7 +58,7 @@ class SamplePoint(Base):
     __tablename__ = "sample_point"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    test_id: Mapped[str] = mapped_column(String, nullable=False)
+    test_id: Mapped[str] = mapped_column(String(64), nullable=False)
     ts: Mapped[str] = mapped_column(Text, nullable=False)
     source: Mapped[str] = mapped_column(String, nullable=False, default="live_poll")
     # 温度
@@ -95,7 +95,7 @@ class EventLog(Base):
     __tablename__ = "event_log"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    test_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    test_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     ts: Mapped[str] = mapped_column(Text, nullable=False)
     source: Mapped[str] = mapped_column(String, nullable=False)
     event_code: Mapped[str] = mapped_column(String, nullable=False)
@@ -117,7 +117,7 @@ class AlarmLog(Base):
     __tablename__ = "alarm_log"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    test_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    test_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     alarm_code: Mapped[str] = mapped_column(String, nullable=False)
     level: Mapped[int] = mapped_column(Integer, nullable=False)
     occur_time: Mapped[str] = mapped_column(Text, nullable=False)
@@ -135,7 +135,7 @@ class ParameterSnapshot(Base):
     __tablename__ = "parameter_snapshot"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    test_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    test_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     ts: Mapped[str] = mapped_column(Text, nullable=False)
     operator_id: Mapped[str | None] = mapped_column(String, nullable=True)
     source: Mapped[str] = mapped_column(String, nullable=False)
@@ -154,7 +154,7 @@ class OperatorAction(Base):
     operator_id: Mapped[str] = mapped_column(String, nullable=False)
     operator_role: Mapped[str] = mapped_column(String, nullable=False)
     action_type: Mapped[str] = mapped_column(String, nullable=False)
-    test_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    test_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     params_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     result: Mapped[str | None] = mapped_column(Text, nullable=True)
     reason_code: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -179,7 +179,7 @@ class ReportExport(Base):
     __tablename__ = "report_export"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    test_id: Mapped[str] = mapped_column(String, nullable=False)
+    test_id: Mapped[str] = mapped_column(String(64), nullable=False)
     generated_at: Mapped[str] = mapped_column(Text, nullable=False)
     operator_id: Mapped[str] = mapped_column(String, nullable=False)
     format: Mapped[str] = mapped_column(String, nullable=False, default="html")

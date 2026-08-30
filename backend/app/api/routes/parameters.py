@@ -8,6 +8,7 @@ from sqlalchemy import select
 
 from app.api.deps import DbDep, UserDep, get_current_user, get_parameter_service, require_role
 from app.api.schemas import err, ok
+from app.api.validation import Page, PageSize
 from app.db.models import ParameterSnapshot
 from app.services.command_service import CommandError
 
@@ -53,9 +54,9 @@ async def put_parameters(body: SetParametersRequest, request: Request, user: Use
 
 
 @router.get("/history", dependencies=[Depends(require_role("admin"))])
-async def parameters_history(db: DbDep, page: int = 1, size: int = 20):
+async def parameters_history(db: DbDep, page: Page = 1, size: PageSize = 20):
     """历史参数快照列表。权限：Admin。"""
-    offset = max(0, (page - 1) * size)
+    offset = (page - 1) * size
     result = await db.execute(
         select(ParameterSnapshot).order_by(ParameterSnapshot.id.desc()).limit(size).offset(offset)
     )

@@ -7,6 +7,7 @@ from sqlalchemy import select
 
 from app.api.deps import DbDep, get_current_user, get_hostcomm_client
 from app.api.schemas import ok
+from app.api.validation import MaxPoints, TestId
 from app.db.models import SamplePoint
 from app.services.cache import status_cache
 
@@ -32,8 +33,8 @@ async def get_trends(
     db: DbDep,
     from_ts: str | None = None,
     to_ts: str | None = None,
-    test_id: str | None = None,
-    max_points: int = 2000,
+    test_id: TestId | None = None,
+    max_points: MaxPoints = 2000,
 ):
     """跨试验的历史趋势查询（按时间窗 + 等距降采样）。权限：Observer+。
 
@@ -50,7 +51,7 @@ async def get_trends(
 
     rows = (await db.execute(stmt)).scalars().all()
     total = len(rows)
-    stride = max(1, (total + max_points - 1) // max_points) if max_points > 0 else 1
+    stride = max(1, (total + max_points - 1) // max_points)
     sampled = rows[::stride]
     return ok(
         {

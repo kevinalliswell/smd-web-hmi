@@ -8,6 +8,7 @@ from sqlalchemy import select
 
 from app.api.deps import DbDep, UserDep, require_role
 from app.api.schemas import err, ok
+from app.api.validation import DisplayName, LoginPassword, NewPassword, Role, Username
 from app.core.security import hash_password
 from app.db.models import UserAccount
 from app.hostcomm.protocol import now_iso
@@ -16,22 +17,22 @@ router = APIRouter(prefix="/api/users", tags=["users"])
 
 
 class CreateUserRequest(BaseModel):
-    username: str
-    password: str
-    role: str
-    display_name: str | None = None
+    username: Username
+    password: NewPassword
+    role: Role
+    display_name: DisplayName | None = None
 
 
 class ChangePasswordRequest(BaseModel):
-    old_password: str
-    new_password: str
+    old_password: LoginPassword
+    new_password: NewPassword
 
 
 class UpdateUserRequest(BaseModel):
-    role: str | None = None
+    role: Role | None = None
     is_active: bool | None = None
-    display_name: str | None = None
-    new_password: str | None = None
+    display_name: DisplayName | None = None
+    new_password: NewPassword | None = None
 
 
 @router.get("", dependencies=[Depends(require_role("admin"))])
@@ -56,8 +57,6 @@ async def list_users(db: DbDep):
 @router.post("", dependencies=[Depends(require_role("admin"))])
 async def create_user(body: CreateUserRequest, db: DbDep):
     """创建用户。权限：Admin。"""
-    if body.role not in {"observer", "operator", "admin", "maintainer"}:
-        raise HTTPException(status_code=400, detail=err("invalid_role", "非法角色"))
     exists = await db.scalar(select(UserAccount).where(UserAccount.username == body.username))
     if exists is not None:
         raise HTTPException(status_code=400, detail=err("username_exists", "用户名已存在"))
@@ -87,8 +86,6 @@ async def update_user(user_id: int, body: UpdateUserRequest, user: UserDep, db: 
     ):
         raise HTTPException(status_code=400, detail=err("self_lockout", "不能停用或降级当前登录的管理员账户"))
     if body.role is not None:
-        if body.role not in {"observer", "operator", "admin", "maintainer"}:
-            raise HTTPException(status_code=400, detail=err("invalid_role", "非法角色"))
         account.role = body.role
     if body.is_active is not None:
         account.is_active = int(body.is_active)
