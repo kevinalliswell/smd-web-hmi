@@ -5,9 +5,11 @@ from __future__ import annotations
 import pytest
 from sqlalchemy import func, select
 
+from app import main as main_module
 from app.db.models import DeviceStatus, SamplePoint, TestSession
 from app.services import logging_service
 from app.services.command_service import CommandError, CommandService, confirm_tokens
+from app.services.sampling_health import sampling_health
 from app.services.test_runtime import active_test
 from app.services.test_session_service import reconcile_test_sessions
 
@@ -216,3 +218,49 @@ async def test_device_status_prune(db_session):
         await logging_service.append_device_status(db_session, _snapshot(pv=i), keep=3)
     count = await db_session.scalar(select(func.count()).select_from(DeviceStatus))
     assert count == 3
+
+
+async def test_snapshot_write_failures_raise_and_clear_visible_alarm(monkeypatch):
+    """连续写库失败达到阈值后广播报警，下一次成功写入后广播清除。"""
+
+    class FakeSessionContext:
+        async def __aenter__(self):
+            return object()
+
+        async def __aexit__(self, exc_type, exc, traceback):
+            return False
+
+    broadcasts: list[tuple[str, dict]] = []
+
+    async def broadcast(msg_type, data):
+        broadcasts.append((msg_type, data))
+
+    async def fail_write(session, payload):
+        raise RuntimeError("database is locked")
+
+    async def successful_write(*args):
+        return None
+
+    monkeypatch.setattr(main_module, "get_sessionmaker", lambda: FakeSessionContext)
+    monkeypatch.setattr(main_module.ws_manager, "broadcast", broadcast)
+    monkeypatch.setattr(logging_service, "append_device_status", fail_write)
+    sampling_health.reset()
+    active_test.start("TEST-LOCK")
+
+    try:
+        for _ in range(3):
+            await main_module._persist_snapshot(_snapshot())
+
+        assert [item[0] for item in broadcasts] == ["alarm_new"]
+        assert broadcasts[0][1]["alarm_code"] == "HMI-DATA-PERSISTENCE"
+        assert broadcasts[0][1]["test_id"] == "TEST-LOCK"
+
+        monkeypatch.setattr(logging_service, "append_device_status", successful_write)
+        monkeypatch.setattr(logging_service, "append_sample_point", successful_write)
+        await main_module._persist_snapshot(_snapshot())
+
+        assert [item[0] for item in broadcasts] == ["alarm_new", "alarm_clear"]
+        assert broadcasts[-1][1]["alarm_id"] == "HMI-DATA-PERSISTENCE"
+    finally:
+        active_test.stop()
+        sampling_health.reset()
