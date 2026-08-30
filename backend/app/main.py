@@ -24,6 +24,7 @@ from app.db.models import UserAccount
 from app.hostcomm.client import HostCommClient
 from app.hostcomm.protocol import now_iso
 from app.services.cache import status_cache
+from app.services.state_policy import enrich_status_snapshot
 
 logger = get_logger("main")
 
@@ -72,6 +73,7 @@ def _build_hostcomm_client(settings) -> HostCommClient:
     host = "127.0.0.1" if settings.hostcomm_mock else settings.hostcomm_host
 
     async def on_status(payload: dict) -> None:
+        payload = enrich_status_snapshot(payload)
         await status_cache.update(payload, ts_iso=now_iso())
         await ws_manager.broadcast("status_update", payload)
         await _persist_snapshot(payload)

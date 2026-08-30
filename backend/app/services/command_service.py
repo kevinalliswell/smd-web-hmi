@@ -19,6 +19,7 @@ import uuid
 from dataclasses import dataclass, field
 
 from app.hostcomm.protocol import now_iso
+from app.services.state_policy import parameter_changes_allowed
 
 # ---- 命令权限矩阵（命令 → 允许角色集合）规格 6.2 -------------------------
 _ROLES_OPERATOR_UP = {"operator", "admin", "maintainer"}
@@ -40,9 +41,6 @@ COMMAND_PERMISSIONS: dict[str, set[str]] = {
 
 # CO 相关命令：必须二次确认（规格 6.3）
 CO_COMMANDS = {"start_test", "stop_test"}
-
-# set_parameters 仅允许在非运行态下发
-RUNNING_STATES = {"Precheck", "Heating", "Holding", "Reducing", "Cooling", "Purge"}
 
 
 @dataclass
@@ -97,9 +95,9 @@ def check_confirm_token(command: str, token: str | None) -> None:
 
 
 def check_state(command: str, current_state: str | None) -> None:
-    """状态限制校验。set_parameters 运行中拒绝（T09）。"""
-    if command == "set_parameters" and current_state in RUNNING_STATES:
-        raise CommandError(400, "state_not_allowed", f"运行态({current_state})不允许下发参数")
+    """状态限制校验。set_parameters 仅在明确非运行态放行（T09）。"""
+    if command == "set_parameters" and not parameter_changes_allowed(current_state):
+        raise CommandError(400, "state_not_allowed", f"当前状态({current_state or 'unknown'})不允许下发参数")
 
 
 def check_parameter_crc(command: str, params: dict) -> None:

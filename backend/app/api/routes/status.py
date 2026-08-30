@@ -9,6 +9,7 @@ from app.api.deps import DbDep, get_current_user, get_hostcomm_client
 from app.api.schemas import ok
 from app.db.models import SamplePoint
 from app.services.cache import status_cache
+from app.services.state_policy import enrich_status_snapshot
 
 router = APIRouter(prefix="/api", tags=["status"])
 
@@ -21,7 +22,7 @@ async def get_status(request: Request):
     snapshot = await status_cache.get_snapshot()
     quality = status_cache.comm_quality(link_online)
 
-    payload = dict(snapshot)
+    payload = enrich_status_snapshot(snapshot)
     payload["comm_quality"] = quality
     payload["last_update"] = status_cache.last_update
     return ok(payload)

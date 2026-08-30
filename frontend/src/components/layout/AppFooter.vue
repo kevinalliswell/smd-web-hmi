@@ -3,11 +3,13 @@ import { storeToRefs } from 'pinia'
 import { useDeviceStore } from '@/stores/device'
 
 const device = useDeviceStore()
-const { commQuality, lastUpdate } = storeToRefs(device)
+const { backendConnected, commQuality, lastUpdate } = storeToRefs(device)
 </script>
 
 <template>
   <footer id="footer">
+    <span>后端实时：{{ backendConnected ? 'connected' : 'disconnected' }}</span>
+    <span class="sep">·</span>
     <span>HostComm：{{ commQuality }}</span>
     <span class="sep">·</span>
     <span class="muted">最近更新：{{ lastUpdate || '—' }}</span>

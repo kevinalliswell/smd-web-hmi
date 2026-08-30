@@ -31,6 +31,9 @@ async def test_t13_status_structure():
     data = resp.json()["data"]
     assert "comm_quality" in data
     assert data["system"]["current_state"] == "Standby"
+    assert data["system"]["operation_state"] == "idle"
+    assert data["system"]["can_start_test"] is True
+    assert data["system"]["can_stop_test"] is False
 
 
 # ---------------------------------------------------- T13b 未认证 401

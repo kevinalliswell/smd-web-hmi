@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, onUnmounted } from 'vue'
+import { computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import AppHeader from '@/components/layout/AppHeader.vue'
 import AppSidebar from '@/components/layout/AppSidebar.vue'
@@ -19,12 +19,21 @@ const isChrome = computed(() => route.name !== 'login' && auth.isLoggedIn)
 const ws = useWebSocket()
 onMounted(() => {
   auth.checkToken()
-  if (auth.isLoggedIn) {
-    ws.connect()
-    // 拉取活跃报警，使顶栏/侧栏徽章即时显示（后续由 WS 实时更新）
-    alarms.loadActive().catch(() => {})
-  }
 })
+
+watch(
+  () => auth.isLoggedIn,
+  (loggedIn) => {
+    if (loggedIn) {
+      ws.connect()
+      // 拉取活跃报警，使顶栏/侧栏徽章即时显示（后续由 WS 实时更新）
+      alarms.loadActive().catch(() => {})
+    } else {
+      ws.disconnect()
+    }
+  },
+  { immediate: true },
+)
 onUnmounted(() => ws.disconnect())
 </script>
 

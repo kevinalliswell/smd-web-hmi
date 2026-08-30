@@ -15,7 +15,7 @@ import TareModal from '@/components/command/TareModal.vue'
 
 const device = useDeviceStore()
 const test = useTestStore()
-const { snapshot, currentState, isRunning } = storeToRefs(device)
+const { snapshot, currentState, isRunning, canStartTest, canStopTest } = storeToRefs(device)
 const { currentTest } = storeToRefs(test)
 const { canOperate } = useRole()
 
@@ -120,11 +120,11 @@ onBeforeUnmount(() => clearInterval(timer))
         <div class="card ops">
           <div class="card-title">操作</div>
           <template v-if="canOperate()">
-            <button class="primary" :disabled="isRunning" @click="showStart = true">▶ 启动试验</button>
+            <button class="primary" :disabled="!canStartTest" @click="showStart = true">▶ 启动试验</button>
             <button :disabled="!isRunning || isHeld" @click="runCommand('pause_hold')">⏸ 暂停/保持</button>
             <button :disabled="!isHeld" @click="runCommand('resume_test')">⏵ 继续试验</button>
             <button :disabled="!tareAllowed" :class="{ primary: tareAllowed }" @click="showTare = true">⚖ 天平去皮</button>
-            <button class="danger" :disabled="!isRunning" @click="showStop = true">■ 停止试验</button>
+            <button class="danger" :disabled="!canStopTest" @click="showStop = true">■ 停止试验</button>
             <p class="ops-hint muted">CO 相关操作（启动/停止）需二次确认；命令仅为请求，最终由控制板与硬接线联锁裁决。</p>
           </template>
           <p v-else class="ops-hint muted">当前角色（仅查看）无操作权限。</p>

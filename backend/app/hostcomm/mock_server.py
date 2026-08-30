@@ -64,10 +64,13 @@ def _crc_hex(values: dict[str, Any]) -> str:
 _STATE_SEQUENCE = [
     "Standby",
     "Precheck",
+    "LeakCheck",
+    "N2Purge",
+    "GasSwitch",
     "Heating",
-    "Holding",
-    "Reducing",
-    "Cooling",
+    "Hold1580",
+    "N2Replace",
+    "End",
     "Standby",
 ]
 
@@ -248,9 +251,9 @@ class MockHostCommServer:
             self._test_id = payload.get("params", {}).get("test_id")
             self._state = "Precheck"
         elif command == "stop_test":
-            self._state = "Cooling"
+            self._state = "N2Replace"
         elif command == "pause_hold":
-            self._state = "Holding"
+            self._state = "Hold"
         elif command == "set_parameters":
             # 保存下发的参数，使后续 get_parameters 回读一致（模拟 STM32 保存+回读）
             values = payload.get("params", {}).get("values")
@@ -360,7 +363,7 @@ class MockHostCommServer:
     def _status_snapshot(self) -> dict[str, Any]:
         t = time.monotonic() - self._t0
         wobble = math.sin(t / 5.0)
-        pv = 25.0 + (1200.0 if self._state in ("Heating", "Holding", "Reducing") else 0.0)
+        pv = 25.0 + (1200.0 if self._state in ("GasSwitch", "Heating", "Hold1580", "Hold") else 0.0)
         pv += wobble * 2.0 + random.uniform(-0.3, 0.3)
         return make_frame(
             "status_snapshot",
