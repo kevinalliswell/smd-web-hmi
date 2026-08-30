@@ -3,14 +3,13 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Request
-from sqlalchemy import select
 
 from app.api.deps import DbDep, get_current_user, get_hostcomm_client
 from app.api.schemas import ok
-from app.db.models import SamplePoint
 from app.services.cache import status_cache
 from app.services.sampling_health import sampling_health
 from app.services.state_policy import enrich_status_snapshot
+from app.services.trend_service import query_downsampled_points
 
 router = APIRouter(prefix="/api", tags=["status"])
 
@@ -42,37 +41,11 @@ async def get_trends(
 
     时间参数为 ISO 8601 字符串（同一部署时区下字符串可比）。
     """
-    stmt = select(SamplePoint)
-    if from_ts:
-        stmt = stmt.where(SamplePoint.ts >= from_ts)
-    if to_ts:
-        stmt = stmt.where(SamplePoint.ts <= to_ts)
-    if test_id:
-        stmt = stmt.where(SamplePoint.test_id == test_id)
-    stmt = stmt.order_by(SamplePoint.ts)
-
-    rows = (await db.execute(stmt)).scalars().all()
-    total = len(rows)
-    stride = max(1, (total + max_points - 1) // max_points) if max_points > 0 else 1
-    sampled = rows[::stride]
-    return ok(
-        {
-            "total": total,
-            "stride": stride,
-            "points": [
-                {
-                    "ts": s.ts,
-                    "test_id": s.test_id,
-                    "furnace_pv": s.furnace_pv,
-                    "burden_temp": s.burden_temp,
-                    "delta_p": s.delta_p,
-                    "displacement": s.displacement,
-                    "drip_weight": s.drip_weight,
-                    "n2_pv": s.n2_pv,
-                    "co_pv": s.co_pv,
-                    "current_state": s.current_state,
-                }
-                for s in sampled
-            ],
-        }
+    result = await query_downsampled_points(
+        db,
+        from_ts=from_ts,
+        to_ts=to_ts,
+        test_id=test_id,
+        max_points=max_points,
     )
+    return ok(result)

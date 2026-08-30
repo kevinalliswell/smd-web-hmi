@@ -23,6 +23,7 @@ const samples = ref([])
 const events = ref([])
 const alarms = ref([])
 const loading = ref(false)
+const processing = ref(false)
 const banner = ref(null)
 
 async function loadTests() {
@@ -46,24 +47,32 @@ async function openTest(t) {
 }
 
 async function onGenerateReport() {
-  if (!selected.value) return
+  if (!selected.value || processing.value) return
+  processing.value = true
   try {
+    banner.value = { type: 'info', text: '报告任务已提交，正在后台生成…' }
     const r = await generateReport(selected.value.test_id)
     await downloadFile(reportDownloadUrl(r.id), `${selected.value.test_id}-report.html`)
     banner.value = { type: 'ok', text: `报告已生成并下载（#${r.id}）` }
   } catch (e) {
     banner.value = { type: 'err', text: '生成失败：' + (e.response?.data?.message || e.message) }
+  } finally {
+    processing.value = false
   }
 }
 
 async function onExportLogs() {
-  if (!selected.value) return
+  if (!selected.value || processing.value) return
+  processing.value = true
   try {
+    banner.value = { type: 'info', text: '日志导出任务已提交，正在后台处理…' }
     const r = await exportLogs(selected.value.test_id)
     await downloadFile(logDownloadUrl(r.task_id), `${selected.value.test_id}-logs.zip`)
     banner.value = { type: 'ok', text: '日志已导出' }
   } catch (e) {
     banner.value = { type: 'err', text: '导出失败：' + (e.response?.data?.message || e.message) }
+  } finally {
+    processing.value = false
   }
 }
 
@@ -130,8 +139,8 @@ onMounted(loadTests)
               <div class="card-title">{{ selected.test_id }}</div>
               <div class="spacer" />
               <template v-if="canOperate()">
-                <button @click="onExportLogs">导出日志</button>
-                <button class="primary" @click="onGenerateReport">生成报告</button>
+                <button :disabled="processing" @click="onExportLogs">导出日志</button>
+                <button class="primary" :disabled="processing" @click="onGenerateReport">生成报告</button>
               </template>
             </div>
             <div class="meta">
@@ -182,6 +191,7 @@ onMounted(loadTests)
 .banner { border-radius: 6px; padding: 8px 12px; font-size: 12px; }
 .banner.ok { background: var(--green-dim); border: 1px solid var(--green); color: #86efac; }
 .banner.err { background: var(--red-dim); border: 1px solid var(--red); color: #fca5a5; }
+.banner.info { background: var(--accent-dim); border: 1px solid var(--accent); color: var(--accent); }
 .layout { display: grid; grid-template-columns: 360px 1fr; gap: 16px; align-items: start; }
 .detail { display: flex; flex-direction: column; gap: 16px; }
 .card-title { font-weight: 700; margin-bottom: 10px; }

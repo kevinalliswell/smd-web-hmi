@@ -11,6 +11,7 @@ from app.api.deps import DbDep, get_current_user
 from app.api.schemas import err, ok
 from app.db.models import AlarmLog, EventLog, SamplePoint, TestSession
 from app.hostcomm.protocol import now_iso
+from app.services.trend_service import query_downsampled_points
 
 router = APIRouter(prefix="/api/tests", tags=["tests"], dependencies=[Depends(get_current_user)])
 
@@ -92,32 +93,7 @@ async def test_detail(test_id: str, db: DbDep):
 @router.get("/{test_id}/samples")
 async def test_samples(test_id: str, db: DbDep, max_points: int = 1000):
     """试验曲线数据（等距降采样到 max_points 以内）。权限：Observer+。"""
-    rows = (
-        (await db.execute(select(SamplePoint).where(SamplePoint.test_id == test_id).order_by(SamplePoint.ts)))
-        .scalars()
-        .all()
-    )
-    total = len(rows)
-    stride = max(1, (total + max_points - 1) // max_points) if max_points > 0 else 1
-    sampled = rows[::stride]
-    return ok(
-        {
-            "total": total,
-            "stride": stride,
-            "points": [
-                {
-                    "ts": s.ts,
-                    "furnace_pv": s.furnace_pv,
-                    "burden_temp": s.burden_temp,
-                    "delta_p": s.delta_p,
-                    "displacement": s.displacement,
-                    "drip_weight": s.drip_weight,
-                    "current_state": s.current_state,
-                }
-                for s in sampled
-            ],
-        }
-    )
+    return ok(await query_downsampled_points(db, test_id=test_id, max_points=max_points))
 
 
 @router.get("/{test_id}/events")

@@ -4,16 +4,18 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from sqlalchemy import select
 
 from app.api.deps import DbDep, UserDep, get_current_user, require_role
 from app.api.schemas import err, ok
-from app.db.models import ReportExport
+from app.db.database import get_sessionmaker
+from app.db.models import ReportExport, TestSession
 from app.services import report_service
-from app.services.test_id import InvalidTestIdError
+from app.services.background_jobs import BackgroundJobCapacityError, background_jobs
+from app.services.test_id import InvalidTestIdError, validate_test_id
 
 router = APIRouter(prefix="/api/reports", tags=["reports"])
 
@@ -43,26 +45,53 @@ async def list_reports(db: DbDep):
     )
 
 
-@router.post("/generate", dependencies=[Depends(require_role("operator"))])
+@router.post(
+    "/generate",
+    dependencies=[Depends(require_role("operator"))],
+    status_code=status.HTTP_202_ACCEPTED,
+)
 async def generate_report(body: GenerateReportRequest, user: UserDep, db: DbDep):
-    """生成报告。权限：Operator+。"""
+    """提交报告生成任务并立即返回。权限：Operator+。"""
     try:
-        record = await report_service.generate_report(
-            db, body.test_id, operator_id=user.username, fmt=body.format, options=body.options
-        )
+        test_id = validate_test_id(body.test_id)
     except InvalidTestIdError as exc:
         raise HTTPException(status_code=422, detail=err("invalid_test_id", str(exc)))
-    except ValueError as exc:
-        raise HTTPException(status_code=404, detail=err("test_not_found", str(exc)))
-    return ok(
-        {
+    if await db.scalar(select(TestSession.id).where(TestSession.test_id == test_id)) is None:
+        raise HTTPException(status_code=404, detail=err("test_not_found", f"试验不存在: {test_id}"))
+
+    async def run_report():
+        sessionmaker = get_sessionmaker()
+        async with sessionmaker() as session:
+            record = await report_service.generate_report(
+                session,
+                test_id,
+                operator_id=user.username,
+                fmt=body.format,
+                options=body.options,
+            )
+        return {
             "id": record.id,
             "test_id": record.test_id,
             "generated_at": record.generated_at,
             "format": record.format,
             "file_size_bytes": record.file_size_bytes,
+            "download_url": f"/api/reports/{record.id}/download",
         }
-    )
+
+    try:
+        task_id = background_jobs.submit("report", run_report)
+    except BackgroundJobCapacityError as exc:
+        raise HTTPException(status_code=503, detail=err("job_queue_full", "后台任务队列已满，请稍后重试")) from exc
+    return ok({"task_id": task_id, "status": "pending", "progress": 0})
+
+
+@router.get("/tasks/{task_id}", dependencies=[Depends(require_role("operator"))])
+async def report_task_status(task_id: str):
+    """查询报告生成任务状态。"""
+    snapshot = background_jobs.snapshot(task_id)
+    if snapshot is None or snapshot["kind"] != "report":
+        raise HTTPException(status_code=404, detail=err("not_found", "报告任务不存在"))
+    return ok(snapshot)
 
 
 @router.get("/{report_id}/download", dependencies=[Depends(get_current_user)])

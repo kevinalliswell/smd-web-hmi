@@ -137,3 +137,34 @@ async def test_export_logs(db_session, monkeypatch, tmp_path):
         assert any("parameter_snapshot.csv" in n for n in names)
         sample_csv = zf.read(f"{test_id}_sample_point.csv").decode("utf-8")
         assert sample_csv.count("\n") >= 7  # 表头 + 6 行
+
+
+async def test_log_export_enforces_uncompressed_size_limit(db_session, monkeypatch, tmp_path):
+    from app.core import config
+
+    monkeypatch.setattr(type(config.get_settings()), "exports_dir", property(lambda self: tmp_path))
+    test_id = await _seed(db_session, "TEST-LIMIT")
+
+    with pytest.raises(log_export_service.ExportSizeLimitError):
+        await log_export_service.export_test_logs(
+            db_session,
+            test_id,
+            task_id="a" * 32,
+            max_uncompressed_bytes=10,
+        )
+
+    assert not (tmp_path / f"{'a' * 32}.zip").exists()
+
+
+async def test_report_metrics_are_computed_in_database(db_session):
+    test_id = await _seed(db_session, "TEST-SQL-METRICS")
+
+    metrics = await report_service.compute_metrics_from_database(db_session, test_id, original_height_mm=2.0)
+
+    assert metrics["furnace_pv_max"] == 1100.0
+    assert metrics["burden_temp_max"] == 1090.0
+    assert metrics["delta_p_max"] == 100.0
+    assert metrics["delta_p_max_temp"] == 1090.0
+    assert metrics["td_drip_temp"] == 690.0
+    assert metrics["t10"] == 290.0
+    assert metrics["t40"] == 490.0

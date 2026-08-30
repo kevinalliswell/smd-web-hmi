@@ -10,6 +10,7 @@ docs/待确认事项与接口对齐清单 Q9）；若 options 提供 original_he
 
 from __future__ import annotations
 
+import asyncio
 import html
 import json
 from datetime import datetime
@@ -20,7 +21,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
-from app.db.models import AlarmLog, EventLog, ParameterSnapshot, ReportExport, SamplePoint, TestSession
+from app.db.models import AlarmLog, ParameterSnapshot, ReportExport, SamplePoint, TestSession
 from app.hostcomm.protocol import now_iso
 from app.services.test_id import InvalidTestIdError, validate_test_id
 
@@ -89,11 +90,76 @@ def compute_metrics(samples: list[SamplePoint], original_height_mm: float | None
     return metrics
 
 
+async def compute_metrics_from_database(
+    session: AsyncSession,
+    test_id: str,
+    original_height_mm: float | None,
+) -> dict[str, Any]:
+    """用常量内存的 SQL 聚合计算报告指标。"""
+    aggregate = (
+        await session.execute(
+            select(
+                func.max(SamplePoint.furnace_pv).label("furnace_pv_max"),
+                func.max(SamplePoint.burden_temp).label("burden_temp_max"),
+                func.max(SamplePoint.delta_p).label("delta_p_max"),
+                func.max(SamplePoint.drip_weight).label("drip_weight_total"),
+                func.max(SamplePoint.displacement).label("displacement_max"),
+            ).where(SamplePoint.test_id == test_id)
+        )
+    ).one()
+
+    delta_p_max_temp = await session.scalar(
+        select(SamplePoint.burden_temp)
+        .where(SamplePoint.test_id == test_id, SamplePoint.delta_p.is_not(None))
+        .order_by(SamplePoint.delta_p.desc(), SamplePoint.id)
+        .limit(1)
+    )
+    td_drip_temp = await session.scalar(
+        select(SamplePoint.burden_temp)
+        .where(SamplePoint.test_id == test_id, SamplePoint.drip_weight > 0.5)
+        .order_by(SamplePoint.ts, SamplePoint.id)
+        .limit(1)
+    )
+
+    metrics: dict[str, Any] = {
+        "furnace_pv_max": aggregate.furnace_pv_max,
+        "burden_temp_max": aggregate.burden_temp_max,
+        "delta_p_max": aggregate.delta_p_max,
+        "delta_p_max_temp": delta_p_max_temp,
+        "drip_weight_total": aggregate.drip_weight_total,
+        "td_drip_temp": td_drip_temp,
+        "displacement_max": aggregate.displacement_max,
+        "original_height_mm": original_height_mm,
+    }
+    if original_height_mm and original_height_mm > 0:
+
+        async def temp_at_shrink(pct: float) -> float | None:
+            return await session.scalar(
+                select(SamplePoint.burden_temp)
+                .where(
+                    SamplePoint.test_id == test_id,
+                    SamplePoint.displacement >= original_height_mm * pct,
+                )
+                .order_by(SamplePoint.ts, SamplePoint.id)
+                .limit(1)
+            )
+
+        metrics["t10"] = await temp_at_shrink(0.10)
+        metrics["t40"] = await temp_at_shrink(0.40)
+        metrics["delta_h_pct"] = (
+            aggregate.displacement_max / original_height_mm * 100 if aggregate.displacement_max is not None else None
+        )
+    else:
+        metrics["t10"] = None
+        metrics["t40"] = None
+        metrics["delta_h_pct"] = None
+    return metrics
+
+
 def _render_html(
     test: TestSession,
     metrics: dict[str, Any],
     sample_count: int,
-    events: list[EventLog],
     alarms: list[AlarmLog],
     params: ParameterSnapshot | None,
 ) -> str:
@@ -200,21 +266,18 @@ async def generate_report(
     if test is None:
         raise ValueError(f"试验不存在: {test_id}")
 
-    samples = list(
-        (
-            await session.execute(select(SamplePoint).where(SamplePoint.test_id == test_id).order_by(SamplePoint.ts))
-        ).scalars()
-    )
     sample_count = await session.scalar(
         select(func.count()).select_from(SamplePoint).where(SamplePoint.test_id == test_id)
     )
     alarms = list(
         (
-            await session.execute(select(AlarmLog).where(AlarmLog.test_id == test_id).order_by(AlarmLog.level.desc()))
+            await session.execute(
+                select(AlarmLog)
+                .where(AlarmLog.test_id == test_id)
+                .order_by(AlarmLog.level.desc(), AlarmLog.id.desc())
+                .limit(50)
+            )
         ).scalars()
-    )
-    events = list(
-        (await session.execute(select(EventLog).where(EventLog.test_id == test_id).order_by(EventLog.ts))).scalars()
     )
     params = await session.scalar(
         select(ParameterSnapshot)
@@ -222,8 +285,8 @@ async def generate_report(
         .order_by(ParameterSnapshot.id.desc())
     )
 
-    metrics = compute_metrics(samples, _num(options.get("original_height_mm")))
-    content = _render_html(test, metrics, int(sample_count or 0), events, alarms, params)
+    metrics = await compute_metrics_from_database(session, test_id, _num(options.get("original_height_mm")))
+    content = _render_html(test, metrics, int(sample_count or 0), alarms, params)
 
     settings = get_settings()
     stamp = datetime.now().strftime("%Y%m%d%H%M%S")
@@ -232,8 +295,8 @@ async def generate_report(
     if not path.is_relative_to(reports_dir):
         # test_id 已有白名单；这里保留最终写入点的纵深防御。
         raise InvalidTestIdError("报告路径超出报告目录")
-    path.write_text(content, encoding="utf-8")
-    size = path.stat().st_size
+    await asyncio.to_thread(path.write_text, content, encoding="utf-8")
+    size = (await asyncio.to_thread(path.stat)).st_size
 
     record = ReportExport(
         test_id=test_id,

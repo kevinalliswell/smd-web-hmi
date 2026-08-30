@@ -34,6 +34,7 @@ async function onGenerate() {
   busy.value = true
   banner.value = null
   try {
+    banner.value = { type: 'info', text: '报告任务已提交，正在后台生成…' }
     const options = {}
     const h = Number(heightMm.value)
     if (heightMm.value !== '' && !Number.isNaN(h)) options.original_height_mm = h
@@ -52,6 +53,7 @@ async function onExportLogs() {
   busy.value = true
   banner.value = null
   try {
+    banner.value = { type: 'info', text: '日志导出任务已提交，正在后台处理…' }
     const r = await exportLogs(selectedTest.value)
     await downloadFile(logDownloadUrl(r.task_id), `${selectedTest.value}-logs.zip`)
     banner.value = { type: 'ok', text: `日志已导出（${r.entries.join(', ')}）` }
@@ -134,6 +136,7 @@ onMounted(loadAll)
 .banner { border-radius: 6px; padding: 8px 12px; font-size: 12px; }
 .banner.ok { background: var(--green-dim); border: 1px solid var(--green); color: #86efac; }
 .banner.err { background: var(--red-dim); border: 1px solid var(--red); color: #fca5a5; }
+.banner.info { background: var(--accent-dim); border: 1px solid var(--accent); color: var(--accent); }
 .card-title { font-weight: 700; margin-bottom: 10px; }
 .form { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
 .form label { color: var(--text-sec); font-size: 12px; }
