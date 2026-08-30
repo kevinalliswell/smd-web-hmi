@@ -5,6 +5,7 @@ from __future__ import annotations
 import secrets
 from functools import lru_cache
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -30,6 +31,7 @@ class Settings(BaseSettings):
     smd_jwt_secret: str = ""
     smd_jwt_expire_minutes: int = 480
     smd_jwt_algorithm: str = "HS256"
+    smd_cors_origins: str = ""
 
     # ---- HostComm ----
     hostcomm_host: str = "192.168.1.100"
@@ -62,6 +64,35 @@ class Settings(BaseSettings):
         path = raw if raw.is_absolute() else (BACKEND_DIR / raw)
         path.parent.mkdir(parents=True, exist_ok=True)
         return f"sqlite+aiosqlite:///{path}"
+
+    @property
+    def cors_origins(self) -> list[str]:
+        """返回允许的跨域 Origin；生产默认同源，Mock 开发默认通配。"""
+        configured = [item.strip() for item in self.smd_cors_origins.split(",") if item.strip()]
+        if not configured:
+            return ["*"] if self.hostcomm_mock else []
+        if "*" in configured:
+            if not self.hostcomm_mock:
+                raise RuntimeError("生产模式禁止使用 CORS 通配符，请配置明确的 SMD_CORS_ORIGINS")
+            return ["*"]
+
+        origins: list[str] = []
+        for origin in configured:
+            parsed = urlsplit(origin)
+            if (
+                parsed.scheme not in {"http", "https"}
+                or not parsed.netloc
+                or parsed.username is not None
+                or parsed.password is not None
+                or parsed.path not in {"", "/"}
+                or parsed.query
+                or parsed.fragment
+            ):
+                raise RuntimeError(f"非法 CORS Origin: {origin}")
+            normalized = f"{parsed.scheme}://{parsed.netloc}"
+            if normalized not in origins:
+                origins.append(normalized)
+        return origins
 
     @property
     def db_path_resolved(self) -> Path:
