@@ -1,4 +1,4 @@
-"""日志写库服务：sample_point / event_log / alarm_log（只追加）。
+"""日志写库服务：sample_point / event_log / alarm_log / parameter_snapshot（只追加）。
 
 安全红线 7：这些表只追加，本服务只提供 INSERT，不提供 DELETE / UPDATE。
 """
@@ -11,11 +11,36 @@ from typing import Any
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models import AlarmLog, DeviceStatus, EventLog, SamplePoint
+from app.db.models import AlarmLog, DeviceStatus, EventLog, ParameterSnapshot, SamplePoint
 from app.hostcomm.protocol import now_iso
 
 # device_status 滚动缓冲保留条数（唯一允许 DELETE 的表）
 DEVICE_STATUS_KEEP = 1000
+
+
+async def append_parameter_snapshot(
+    session: AsyncSession,
+    readback: dict[str, Any],
+    *,
+    test_id: str | None,
+    operator_id: str | None,
+    source: str,
+) -> None:
+    """追加一条设备参数回读快照，并保留其试验归属。"""
+    values = readback.get("params") or readback.get("values") or {}
+    session.add(
+        ParameterSnapshot(
+            test_id=test_id,
+            ts=now_iso(),
+            operator_id=operator_id,
+            source=source,
+            fw_version=readback.get("fw_version"),
+            profile_version=readback.get("device_profile_version"),
+            param_crc=readback.get("parameter_crc"),
+            params_json=json.dumps(values, ensure_ascii=False, sort_keys=True, separators=(",", ":")),
+        )
+    )
+    await session.commit()
 
 
 async def append_sample_point(

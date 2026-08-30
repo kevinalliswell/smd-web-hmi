@@ -8,7 +8,7 @@ from types import SimpleNamespace
 
 from sqlalchemy import func, select
 
-from app.db.models import AlarmLog, ReportExport, SamplePoint, TestSession
+from app.db.models import AlarmLog, ParameterSnapshot, ReportExport, SamplePoint, TestSession
 from app.services import log_export_service, report_service
 
 
@@ -75,6 +75,30 @@ async def test_generate_report(db_session, monkeypatch, tmp_path):
     content = Path(record.file_path).read_text(encoding="utf-8")
     assert test_id in content
     assert "ΔPmax" in content
+
+
+async def test_report_never_falls_back_to_unrelated_global_parameter_snapshot(db_session, monkeypatch, tmp_path):
+    """缺少本试验快照时明确显示缺失，不能引用另一炉的全局最新参数。"""
+    from app.core import config
+
+    monkeypatch.setattr(type(config.get_settings()), "reports_dir", property(lambda self: tmp_path))
+    test_id = await _seed(db_session, "TEST-NO-PARAMS")
+    db_session.add(
+        ParameterSnapshot(
+            test_id="OTHER-TEST",
+            ts="2026-06-10T00:00:00Z",
+            operator_id="adm",
+            source="test_start",
+            params_json='{"marker":"UNRELATED-GLOBAL"}',
+        )
+    )
+    await db_session.commit()
+
+    record = await report_service.generate_report(db_session, test_id, operator_id="adm")
+    content = Path(record.file_path).read_text(encoding="utf-8")
+
+    assert "UNRELATED-GLOBAL" not in content
+    assert "无本试验参数快照" in content
 
 
 # ----------------------------------------------------- 日志导出（zip + 条目）

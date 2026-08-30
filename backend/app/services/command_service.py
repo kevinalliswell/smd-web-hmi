@@ -19,9 +19,13 @@ import time
 import uuid
 from dataclasses import dataclass, field
 
+from app.core.logging import get_logger
 from app.hostcomm.client import HostCommNotConnectedError, HostCommTimeoutError
 from app.hostcomm.protocol import now_iso
+from app.services import logging_service
 from app.services.state_policy import parameter_changes_allowed
+
+logger = get_logger("service.command")
 
 # ---- 命令权限矩阵（命令 → 允许角色集合）规格 6.2 -------------------------
 _ROLES_OPERATOR_UP = {"operator", "admin", "maintainer"}
@@ -209,7 +213,15 @@ class CommandService:
 
             # 命令被控制板受理后，处理试验会话生命周期（建/收会话）
             if result_payload.get("result") == "accepted":
-                await self._handle_lifecycle(db_session, command, params, operator_id, result_payload)
+                await self._handle_lifecycle(
+                    db_session,
+                    command,
+                    params,
+                    operator_id,
+                    role,
+                    client_ip,
+                    result_payload,
+                )
             return result_payload
         finally:
             if reserved_test_id is not None:
@@ -293,7 +305,14 @@ class CommandService:
             )
 
     async def _handle_lifecycle(
-        self, db_session, command: str, params: dict, operator_id: str, result_payload: dict
+        self,
+        db_session,
+        command: str,
+        params: dict,
+        operator_id: str,
+        role: str,
+        client_ip: str | None,
+        result_payload: dict,
     ) -> None:
         """start_test → 建 test_session 并标记进行中；stop_test → 收尾。"""
         if db_session is None:
@@ -316,6 +335,13 @@ class CommandService:
             )
             await db_session.commit()
             active_test.start(test_id)
+            await self._capture_start_parameters(
+                db_session,
+                test_id=test_id,
+                operator_id=operator_id,
+                role=role,
+                client_ip=client_ip,
+            )
 
         elif command == "stop_test":
             test_id = active_test.stop()
@@ -331,6 +357,54 @@ class CommandService:
                 row.end_reason = "operator_stop"
                 row.state_at_end = result_payload.get("current_state")
                 await db_session.commit()
+
+    async def _capture_start_parameters(
+        self,
+        db_session,
+        *,
+        test_id: str,
+        operator_id: str,
+        role: str,
+        client_ip: str | None,
+    ) -> None:
+        """试验已实际启动后立即归档参数；失败只审计，不伪装成启动失败。"""
+        reason_code = "parameter_snapshot_failed"
+        try:
+            readback = await self._client.get_parameters()
+            await logging_service.append_parameter_snapshot(
+                db_session,
+                readback,
+                test_id=test_id,
+                operator_id=operator_id,
+                source="test_start",
+            )
+            return
+        except HostCommTimeoutError:
+            reason_code = "device_comm_timeout"
+        except HostCommNotConnectedError:
+            reason_code = "device_comm_fault"
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("parameter_snapshot.capture_failed", test_id=test_id, error=str(exc))
+
+        try:
+            await db_session.rollback()
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("parameter_snapshot.rollback_failed", test_id=test_id, error=str(exc))
+            return
+        try:
+            await audit_action(
+                db_session,
+                operator_id=operator_id,
+                role=role,
+                action_type="capture_start_parameters",
+                params={"test_id": test_id},
+                result="error",
+                reason_code=reason_code,
+                test_id=test_id,
+                client_ip=client_ip,
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("parameter_snapshot.audit_failed", test_id=test_id, error=str(exc))
 
     async def _write_audit(
         self,
