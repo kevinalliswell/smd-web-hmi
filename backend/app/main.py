@@ -57,9 +57,15 @@ async def _persist_snapshot(payload: dict) -> None:
     from app.services.test_runtime import active_test
 
     try:
+        settings = get_settings()
         sessionmaker = get_sessionmaker()
         async with sessionmaker() as session:
-            await logging_service.append_device_status(session, payload)
+            await logging_service.append_device_status(
+                session,
+                payload,
+                retention_hours=settings.smd_device_status_retention_hours,
+                cleanup_interval_seconds=settings.smd_device_status_cleanup_interval_seconds,
+            )
             test_id = active_test.active_test_id or (payload.get("state_machine", {}) or {}).get("test_id")
             if test_id:
                 await logging_service.append_sample_point(session, test_id, payload)
