@@ -20,6 +20,7 @@ _PBKDF2_ALGO = "sha256"
 
 # ---------------------------------------------------------------- 密码哈希
 
+
 def hash_password(password: str) -> str:
     """返回 ``pbkdf2_sha256$rounds$salt_hex$hash_hex`` 格式的密码哈希。"""
     salt = secrets.token_bytes(16)
@@ -44,6 +45,7 @@ def verify_password(password: str, hashed: str) -> bool:
 
 
 # ---------------------------------------------------------------- JWT
+
 
 def create_access_token(username: str, role: str) -> tuple[str, datetime]:
     """签发 JWT，返回 (token, 过期时间)。"""

@@ -55,38 +55,88 @@ async def export_test_logs(
     with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
         if "sample" in types:
             cols = [
-                "id", "test_id", "ts", "source", "furnace_pv", "furnace_sv", "burden_temp",
-                "burden_temp_v", "temp_output_pct", "program_step", "n2_sp", "n2_pv", "co_sp",
-                "co_pv", "drip_weight", "delta_p", "delta_p_v", "displacement", "displacement_v",
-                "current_state", "safety_relay",
+                "id",
+                "test_id",
+                "ts",
+                "source",
+                "furnace_pv",
+                "furnace_sv",
+                "burden_temp",
+                "burden_temp_v",
+                "temp_output_pct",
+                "program_step",
+                "n2_sp",
+                "n2_pv",
+                "co_sp",
+                "co_pv",
+                "drip_weight",
+                "delta_p",
+                "delta_p_v",
+                "displacement",
+                "displacement_v",
+                "current_state",
+                "safety_relay",
             ]
-            rows = (await session.execute(
-                select(SamplePoint).where(SamplePoint.test_id == test_id).order_by(SamplePoint.ts)
-            )).scalars().all()
+            rows = (
+                (
+                    await session.execute(
+                        select(SamplePoint).where(SamplePoint.test_id == test_id).order_by(SamplePoint.ts)
+                    )
+                )
+                .scalars()
+                .all()
+            )
             zf.writestr(f"{test_id}_sample_point.csv", _rows_to_csv(cols, [_to_dict(r, cols) for r in rows]))
             entries.append("sample_point.csv")
 
         if "event" in types:
             cols = ["id", "test_id", "ts", "source", "event_code", "level", "text", "operator_id"]
-            rows = (await session.execute(
-                select(EventLog).where(EventLog.test_id == test_id).order_by(EventLog.ts)
-            )).scalars().all()
+            rows = (
+                (await session.execute(select(EventLog).where(EventLog.test_id == test_id).order_by(EventLog.ts)))
+                .scalars()
+                .all()
+            )
             zf.writestr(f"{test_id}_event_log.csv", _rows_to_csv(cols, [_to_dict(r, cols) for r in rows]))
             entries.append("event_log.csv")
 
         if "alarm" in types:
-            cols = ["id", "test_id", "alarm_code", "level", "occur_time", "clear_time", "ack_time", "ack_operator", "text", "latched"]
-            rows = (await session.execute(
-                select(AlarmLog).where(AlarmLog.test_id == test_id).order_by(AlarmLog.occur_time)
-            )).scalars().all()
+            cols = [
+                "id",
+                "test_id",
+                "alarm_code",
+                "level",
+                "occur_time",
+                "clear_time",
+                "ack_time",
+                "ack_operator",
+                "text",
+                "latched",
+            ]
+            rows = (
+                (
+                    await session.execute(
+                        select(AlarmLog).where(AlarmLog.test_id == test_id).order_by(AlarmLog.occur_time)
+                    )
+                )
+                .scalars()
+                .all()
+            )
             zf.writestr(f"{test_id}_alarm_log.csv", _rows_to_csv(cols, [_to_dict(r, cols) for r in rows]))
             entries.append("alarm_log.csv")
 
         if "parameter" in types:
             cols = ["id", "test_id", "ts", "operator_id", "source", "fw_version", "param_crc", "params_json"]
-            rows = (await session.execute(
-                select(ParameterSnapshot).where(ParameterSnapshot.test_id == test_id).order_by(ParameterSnapshot.id)
-            )).scalars().all()
+            rows = (
+                (
+                    await session.execute(
+                        select(ParameterSnapshot)
+                        .where(ParameterSnapshot.test_id == test_id)
+                        .order_by(ParameterSnapshot.id)
+                    )
+                )
+                .scalars()
+                .all()
+            )
             zf.writestr(f"{test_id}_parameter_snapshot.csv", _rows_to_csv(cols, [_to_dict(r, cols) for r in rows]))
             entries.append("parameter_snapshot.csv")
 

@@ -29,6 +29,7 @@ class _FakeWS:
 
 async def test_e2e_realtime_status_pipeline(monkeypatch):
     """Mock 周期推送 → 1s 内经生产回调广播 status_update 到已连接 WS，且缓存更新。"""
+
     # 本测试聚焦实时推送链路，跳过真实 DB 落库
     async def _noop(_payload):
         return None

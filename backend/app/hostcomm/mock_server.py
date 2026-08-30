@@ -60,6 +60,7 @@ def _crc_hex(values: dict[str, Any]) -> str:
     raw = json.dumps(values, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     return "0x" + format(binascii.crc32(raw.encode("utf-8")) & 0xFFFFFFFF, "08X")
 
+
 _STATE_SEQUENCE = [
     "Standby",
     "Precheck",
@@ -147,11 +148,7 @@ class MockHostCommServer:
                 for frame in parser.feed(data):
                     await self._on_frame(frame, writer)
                     # hello 之后启动周期状态推送（若开启）
-                    if (
-                        frame.get("type") == "hello"
-                        and self.status_interval
-                        and push_task is None
-                    ):
+                    if frame.get("type") == "hello" and self.status_interval and push_task is None:
                         push_task = asyncio.create_task(self._push_loop(writer))
                     # hello 之后启动演示报警循环（若开启）
                     if frame.get("type") == "hello" and self.demo_alarms and alarm_task is None:
@@ -203,9 +200,7 @@ class MockHostCommServer:
 
         # 其它类型忽略（真实控制板会返回 error，此处保持容错）
 
-    async def _on_command(
-        self, frame: dict[str, Any], payload: dict[str, Any], writer: asyncio.StreamWriter
-    ) -> None:
+    async def _on_command(self, frame: dict[str, Any], payload: dict[str, Any], writer: asyncio.StreamWriter) -> None:
         command = payload.get("command", "")
         req_id = frame.get("msg_id")
 
@@ -495,9 +490,7 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="故障注入，例如 disconnect_after=10s（当前仅解析，占位）",
     )
     parser.add_argument("--status-interval", type=float, default=1.0)
-    parser.add_argument(
-        "--demo-alarms", action="store_true", help="周期性注入演示报警（联调/演示用）"
-    )
+    parser.add_argument("--demo-alarms", action="store_true", help="周期性注入演示报警（联调/演示用）")
     return parser.parse_args(argv)
 
 

@@ -60,9 +60,7 @@ def _crc():
 async def test_set_parameters_full_chain(db_session):
     client = _FakeClient(accept=True)
     service = ParameterService(client, _FakeCache("Standby"))
-    result = await service.set_parameters(
-        VALUES, _crc(), operator_id="adm", role="admin", db_session=db_session
-    )
+    result = await service.set_parameters(VALUES, _crc(), operator_id="adm", role="admin", db_session=db_session)
     assert result["readback_ok"] is True
     assert result["parameter_crc"] == "0xABCD1234"
     # 下发到控制板的载荷含 values + param_crc
@@ -79,9 +77,7 @@ async def test_set_parameters_full_chain(db_session):
 async def test_set_parameters_running_rejected(db_session):
     service = ParameterService(_FakeClient(), _FakeCache("Reducing"))
     with pytest.raises(CommandError) as ei:
-        await service.set_parameters(
-            VALUES, _crc(), operator_id="adm", role="admin", db_session=db_session
-        )
+        await service.set_parameters(VALUES, _crc(), operator_id="adm", role="admin", db_session=db_session)
     assert ei.value.error_code == "state_not_allowed"
     # 未下发，无审计
     assert await db_session.scalar(select(func.count()).select_from(OperatorAction)) == 0
@@ -91,9 +87,7 @@ async def test_set_parameters_running_rejected(db_session):
 async def test_set_parameters_bad_crc(db_session):
     service = ParameterService(_FakeClient(), _FakeCache("Standby"))
     with pytest.raises(CommandError) as ei:
-        await service.set_parameters(
-            VALUES, "deadbeef", operator_id="adm", role="admin", db_session=db_session
-        )
+        await service.set_parameters(VALUES, "deadbeef", operator_id="adm", role="admin", db_session=db_session)
     assert ei.value.error_code == "parameter_crc_error"
 
 
@@ -101,9 +95,7 @@ async def test_set_parameters_bad_crc(db_session):
 async def test_set_parameters_device_rejected(db_session):
     service = ParameterService(_FakeClient(accept=False, reason_code="invalid_state"), _FakeCache())
     with pytest.raises(CommandError) as ei:
-        await service.set_parameters(
-            VALUES, _crc(), operator_id="adm", role="admin", db_session=db_session
-        )
+        await service.set_parameters(VALUES, _crc(), operator_id="adm", role="admin", db_session=db_session)
     assert ei.value.status_code == 400
     assert ei.value.error_code == "invalid_state"
     # 有 1 条 rejected 审计，但无快照
@@ -113,13 +105,9 @@ async def test_set_parameters_device_rejected(db_session):
 
 # ----------------------------------------------------- 回读不一致
 async def test_set_parameters_readback_mismatch(db_session):
-    service = ParameterService(
-        _FakeClient(accept=True, readback={"process": {"end_temp_deg_c": 9999}}), _FakeCache()
-    )
+    service = ParameterService(_FakeClient(accept=True, readback={"process": {"end_temp_deg_c": 9999}}), _FakeCache())
     with pytest.raises(CommandError) as ei:
-        await service.set_parameters(
-            VALUES, _crc(), operator_id="adm", role="admin", db_session=db_session
-        )
+        await service.set_parameters(VALUES, _crc(), operator_id="adm", role="admin", db_session=db_session)
     assert ei.value.status_code == 409
     assert ei.value.error_code == "parameter_readback_mismatch"
     # accepted 审计 + mismatch 审计 = 2，无快照

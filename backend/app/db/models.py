@@ -6,14 +6,7 @@
 
 from __future__ import annotations
 
-from sqlalchemy import (
-    CheckConstraint,
-    Index,
-    Integer,
-    String,
-    Text,
-    Float,
-)
+from sqlalchemy import CheckConstraint, Float, Index, Integer, String, Text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 

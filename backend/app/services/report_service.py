@@ -68,6 +68,7 @@ def compute_metrics(samples: list[SamplePoint], original_height_mm: float | None
     metrics["displacement_max"] = max(disp_vals, default=None)
     metrics["original_height_mm"] = original_height_mm
     if original_height_mm and original_height_mm > 0:
+
         def temp_at_shrink(pct: float) -> float | None:
             target = original_height_mm * pct
             return next((t for d, t in disps if d is not None and d >= target), None)
@@ -110,17 +111,24 @@ def _render_html(
             row("总滴落量", _fmt(metrics["drip_weight_total"], 2, " g")),
             row("滴落温度 Td", _fmt(metrics["td_drip_temp"], 1, " ℃")),
             row("最大位移", _fmt(metrics["displacement_max"], 2, " mm")),
-            row("T10（10% 收缩温度）", _fmt(metrics["t10"], 1, " ℃") + (f" {h_note}" if metrics["t10"] is None else "")),
-            row("T40（40% 收缩温度）", _fmt(metrics["t40"], 1, " ℃") + (f" {h_note}" if metrics["t40"] is None else "")),
+            row(
+                "T10（10% 收缩温度）", _fmt(metrics["t10"], 1, " ℃") + (f" {h_note}" if metrics["t10"] is None else "")
+            ),
+            row(
+                "T40（40% 收缩温度）", _fmt(metrics["t40"], 1, " ℃") + (f" {h_note}" if metrics["t40"] is None else "")
+            ),
             row("收缩率 ΔH", _fmt(metrics["delta_h_pct"], 1, " %")),
         ]
     )
 
-    alarm_rows = "".join(
-        f"<tr><td>L{a.level}</td><td>{e(a.alarm_code)}</td><td>{e(a.text or '')}</td>"
-        f"<td>{e(a.occur_time)}</td><td>{e(a.clear_time or '—')}</td></tr>"
-        for a in alarms[:50]
-    ) or "<tr><td colspan='5'>无报警</td></tr>"
+    alarm_rows = (
+        "".join(
+            f"<tr><td>L{a.level}</td><td>{e(a.alarm_code)}</td><td>{e(a.text or '')}</td>"
+            f"<td>{e(a.occur_time)}</td><td>{e(a.clear_time or '—')}</td></tr>"
+            for a in alarms[:50]
+        )
+        or "<tr><td colspan='5'>无报警</td></tr>"
+    )
 
     params_summary = ""
     if params is not None:
@@ -191,13 +199,17 @@ async def generate_report(
         raise ValueError(f"试验不存在: {test_id}")
 
     samples = list(
-        (await session.execute(select(SamplePoint).where(SamplePoint.test_id == test_id).order_by(SamplePoint.ts))).scalars()
+        (
+            await session.execute(select(SamplePoint).where(SamplePoint.test_id == test_id).order_by(SamplePoint.ts))
+        ).scalars()
     )
     sample_count = await session.scalar(
         select(func.count()).select_from(SamplePoint).where(SamplePoint.test_id == test_id)
     )
     alarms = list(
-        (await session.execute(select(AlarmLog).where(AlarmLog.test_id == test_id).order_by(AlarmLog.level.desc()))).scalars()
+        (
+            await session.execute(select(AlarmLog).where(AlarmLog.test_id == test_id).order_by(AlarmLog.level.desc()))
+        ).scalars()
     )
     events = list(
         (await session.execute(select(EventLog).where(EventLog.test_id == test_id).order_by(EventLog.ts))).scalars()

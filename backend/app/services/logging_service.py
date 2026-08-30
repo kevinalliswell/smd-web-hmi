@@ -95,11 +95,7 @@ async def append_device_status(
     await session.commit()
 
     # 裁剪：删除超出保留窗口的最旧记录
-    ids = (
-        await session.execute(
-            select(DeviceStatus.id).order_by(DeviceStatus.id.desc()).offset(keep)
-        )
-    ).scalars().all()
+    ids = (await session.execute(select(DeviceStatus.id).order_by(DeviceStatus.id.desc()).offset(keep))).scalars().all()
     if ids:
         await session.execute(delete(DeviceStatus).where(DeviceStatus.id.in_(ids)))
         await session.commit()

@@ -12,9 +12,7 @@ from app.db.models import UserAccount
 
 
 async def _mk_user(db, username="bob", role="operator"):
-    res = await users_route.create_user(
-        users_route.CreateUserRequest(username=username, password="pw", role=role), db
-    )
+    res = await users_route.create_user(users_route.CreateUserRequest(username=username, password="pw", role=role), db)
     row = await db.scalar(select(UserAccount).where(UserAccount.username == username))
     return row
 
@@ -47,12 +45,8 @@ async def test_self_lockout_blocked(db_session):
     row = await db_session.scalar(select(UserAccount).where(UserAccount.username == "root"))
     me = CurrentUser("root", "admin")
     with pytest.raises(HTTPException) as ei:
-        await users_route.update_user(
-            row.id, users_route.UpdateUserRequest(is_active=False), me, db_session
-        )
+        await users_route.update_user(row.id, users_route.UpdateUserRequest(is_active=False), me, db_session)
     assert ei.value.detail["error_code"] == "self_lockout"
     with pytest.raises(HTTPException) as ei2:
-        await users_route.update_user(
-            row.id, users_route.UpdateUserRequest(role="observer"), me, db_session
-        )
+        await users_route.update_user(row.id, users_route.UpdateUserRequest(role="observer"), me, db_session)
     assert ei2.value.detail["error_code"] == "self_lockout"

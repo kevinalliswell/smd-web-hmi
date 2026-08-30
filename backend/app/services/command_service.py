@@ -215,9 +215,7 @@ class CommandService:
 
         # 命令被控制板受理后，处理试验会话生命周期（建/收会话）
         if result_label == "accepted":
-            await self._handle_lifecycle(
-                db_session, command, params, operator_id, result_payload
-            )
+            await self._handle_lifecycle(db_session, command, params, operator_id, result_payload)
         return result_payload
 
     async def _handle_lifecycle(
@@ -235,9 +233,7 @@ class CommandService:
             test_id = params.get("test_id")
             if not test_id:
                 return
-            exists = await db_session.scalar(
-                select(TestSession).where(TestSession.test_id == test_id)
-            )
+            exists = await db_session.scalar(select(TestSession).where(TestSession.test_id == test_id))
             if exists is None:
                 db_session.add(
                     TestSession(
@@ -252,9 +248,7 @@ class CommandService:
         elif command == "stop_test":
             test_id = active_test.stop()
             if test_id:
-                row = await db_session.scalar(
-                    select(TestSession).where(TestSession.test_id == test_id)
-                )
+                row = await db_session.scalar(select(TestSession).where(TestSession.test_id == test_id))
                 if row is not None and row.end_time is None:
                     row.end_time = now_iso()
                     row.end_reason = "operator_stop"

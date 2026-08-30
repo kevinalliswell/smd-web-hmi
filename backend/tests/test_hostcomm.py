@@ -48,9 +48,7 @@ async def test_t03_reconnect():
     port = free_port()
     srv = MockHostCommServer(port=port, status_interval=None)
     await srv.start()
-    client = HostCommClient(
-        "127.0.0.1", port, heartbeat_interval=0.2, command_timeout=1.0, reconnect_base=0.2
-    )
+    client = HostCommClient("127.0.0.1", port, heartbeat_interval=0.2, command_timeout=1.0, reconnect_base=0.2)
     await client.connect()
     assert client.is_online
 
@@ -105,9 +103,7 @@ async def test_t05_command_timeout():
     await client.connect()
     try:
         with pytest.raises(HostCommTimeoutError):
-            await client.send_command(
-                "tare_balance", {}, operator_id="op001", role="operator"
-            )
+            await client.send_command("tare_balance", {}, operator_id="op001", role="operator")
     finally:
         await client.close()
         await srv.stop()

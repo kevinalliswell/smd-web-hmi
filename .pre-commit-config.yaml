@@ -1,0 +1,15 @@
+# 提交前钩子（CLAUDE.md §5：black + isort；ESLint 待 issue #12 配好前端 lint 后加入）。
+# 启用：pip install pre-commit && pre-commit install
+# 工具配置统一读取 backend/pyproject.toml。
+repos:
+  - repo: https://github.com/psf/black
+    rev: 24.10.0
+    hooks:
+      - id: black
+        files: ^backend/
+
+  - repo: https://github.com/PyCQA/isort
+    rev: 5.13.2
+    hooks:
+      - id: isort
+        files: ^backend/
