@@ -10,7 +10,7 @@ import asyncio
 from types import SimpleNamespace
 
 import app.main as main_module
-from app.api.ws_manager import ws_manager
+from app.api.ws_manager import ConnectionContext, ws_manager
 from app.hostcomm.mock_server import MockHostCommServer
 from app.services.cache import status_cache
 from tests.conftest import free_port
@@ -53,7 +53,11 @@ async def test_e2e_realtime_status_pipeline(monkeypatch):
     await client.start()
 
     ws = _FakeWS()
-    await ws_manager.connect(ws)
+    await ws_manager.connect(
+        ws,
+        ConnectionContext(username="test", role="observer"),
+        max_connections_per_user=1,
+    )
     try:
         # 等待 Mock 推送经全链路到达 WS（应在 1s 内）
         for _ in range(20):
