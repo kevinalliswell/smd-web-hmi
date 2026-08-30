@@ -5,12 +5,19 @@ from __future__ import annotations
 import secrets
 from functools import lru_cache
 from pathlib import Path
+from typing import Protocol
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # 仓库根 / backend 目录定位（用于解析相对 DB 路径与 .env 位置）
 BACKEND_DIR = Path(__file__).resolve().parents[2]
+
+
+class WarningLogger(Protocol):
+    """启动校验所需的最小日志接口。"""
+
+    def warning(self, event: str, **kwargs) -> None: ...
 
 
 class Settings(BaseSettings):
@@ -50,10 +57,29 @@ class Settings(BaseSettings):
 
     @property
     def jwt_secret(self) -> str:
-        """返回 JWT 密钥；若未配置则进程内生成临时密钥（仅开发，重启即失效）。"""
+        """返回已校验的 JWT 密钥；临时密钥仅允许 HostComm Mock 开发模式。"""
+        self._validate_jwt_secret()
         if self.smd_jwt_secret:
             return self.smd_jwt_secret
         return _ephemeral_secret()
+
+    def validate_startup(self, logger: WarningLogger) -> None:
+        """启动前校验安全配置，并显式告警开发临时密钥。"""
+        self._validate_jwt_secret()
+        if not self.smd_jwt_secret:
+            logger.warning(
+                "security.ephemeral_jwt_secret",
+                note="仅允许 HOSTCOMM_MOCK=true 的开发环境；重启后现有令牌失效",
+            )
+
+    def _validate_jwt_secret(self) -> None:
+        """强制生产密钥存在且 UTF-8 编码后至少 32 字节。"""
+        if self.smd_jwt_secret:
+            if len(self.smd_jwt_secret.encode("utf-8")) < 32:
+                raise RuntimeError("SMD_JWT_SECRET 必须至少包含 32 字节")
+            return
+        if not self.hostcomm_mock:
+            raise RuntimeError("生产模式必须配置 SMD_JWT_SECRET（至少 32 字节），拒绝启动")
 
     @property
     def db_url(self) -> str:
