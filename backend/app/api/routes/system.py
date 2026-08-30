@@ -6,9 +6,11 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
 from app import __version__
-from app.api.deps import get_hostcomm_client, require_role
+from app.api.deps import DbDep, UserDep, get_command_service, get_hostcomm_client, require_role
 from app.api.schemas import err, ok
 from app.core.config import get_settings
+from app.hostcomm.protocol import now_iso
+from app.services.command_service import CommandError
 
 router = APIRouter(prefix="/api/system", tags=["system"])
 
@@ -44,15 +46,21 @@ async def info(request: Request):
 
 
 @router.post("/sync-time", dependencies=[Depends(require_role("admin"))])
-async def sync_time(request: Request):
+async def sync_time(request: Request, user: UserDep, db: DbDep):
     """通过 HostComm 下发 sync_time 校时命令。权限：Admin。"""
-    from app.hostcomm.protocol import now_iso
-
-    client = get_hostcomm_client(request)
-    if client is None or not getattr(client, "is_online", False):
-        raise HTTPException(status_code=503, detail=err("device_comm_fault", "HostComm 未连接"))
     ts = now_iso()
-    result = await client.send_command("sync_time", {"timestamp": ts}, operator_id="system", role="admin")
+    service = get_command_service(request)
+    try:
+        result = await service.execute(
+            "sync_time",
+            {"timestamp": ts},
+            operator_id=user.username,
+            role=user.role,
+            client_ip=request.client.host if request.client else None,
+            db_session=db,
+        )
+    except CommandError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=err(exc.error_code, exc.message))
     return ok({"sent_time": ts, "result": result.get("result"), "reason_code": result.get("reason_code")})
 
 
