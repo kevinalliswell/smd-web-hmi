@@ -3,6 +3,7 @@ import { useAuthStore } from '@/stores/auth'
 
 const routes = [
   { path: '/login', name: 'login', component: () => import('@/pages/LoginPage.vue') },
+  { path: '/change-password', name: 'change-password', component: () => import('@/pages/ChangePasswordPage.vue'), meta: { title: '修改初始密码' } },
   { path: '/', redirect: '/overview' },
   { path: '/overview', name: 'overview', component: () => import('@/pages/OverviewPage.vue'), meta: { title: '实时总览' } },
   { path: '/trend', name: 'trend', component: () => import('@/pages/TrendPage.vue'), meta: { title: '趋势曲线' } },
@@ -23,10 +24,16 @@ const router = createRouter({
 })
 
 // 全局前置守卫：未登录跳登录页；无权限跳总览
-router.beforeEach((to) => {
+export function routeGuard(to) {
   const auth = useAuthStore()
   if (!auth.isLoggedIn && to.name !== 'login') {
     return { name: 'login' }
+  }
+  if (auth.isLoggedIn && auth.mustChangePassword && to.name !== 'change-password') {
+    return { name: 'change-password' }
+  }
+  if (auth.isLoggedIn && !auth.mustChangePassword && to.name === 'change-password') {
+    return { name: 'overview' }
   }
   if (auth.isLoggedIn && to.name === 'login') {
     return { name: 'overview' }
@@ -35,6 +42,8 @@ router.beforeEach((to) => {
     return { name: 'overview' }
   }
   return true
-})
+}
+
+router.beforeEach(routeGuard)
 
 export default router

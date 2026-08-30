@@ -89,7 +89,7 @@ npm install
 npm run dev          # 开发服务器（/api、/ws 代理到 localhost:8000）
 ```
 
-默认账户 `admin / admin`（首次登录后请尽快修改密码）。
+默认账户 `admin / admin`。首次登录只能进入安全改密页，修改初始密码并重新登录后方可使用业务功能。
 
 ### 运行测试
 

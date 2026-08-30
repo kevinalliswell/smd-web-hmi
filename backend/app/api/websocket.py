@@ -27,8 +27,11 @@ async def realtime(ws: WebSocket, token: str | None = None) -> None:
         await ws.close(code=WS_CLOSE_UNAUTHORIZED)
         return
     try:
-        decode_access_token(token)
+        payload = decode_access_token(token)
     except jwt.PyJWTError:
+        await ws.close(code=WS_CLOSE_UNAUTHORIZED)
+        return
+    if payload.get("must_change_password"):
         await ws.close(code=WS_CLOSE_UNAUTHORIZED)
         return
 
