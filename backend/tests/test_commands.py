@@ -6,6 +6,7 @@ import pytest
 from sqlalchemy import func, select
 
 from app.db.models import OperatorAction
+from app.hostcomm.client import HostCommTimeoutError
 from app.services.command_service import (
     CommandError,
     CommandService,
@@ -21,12 +22,15 @@ from app.services.command_service import (
 class _FakeClient:
     is_online = True
 
-    def __init__(self, result="accepted"):
+    def __init__(self, result="accepted", error=None):
         self._result = result
+        self._error = error
         self.sent: list[tuple] = []
 
     async def send_command(self, command, params, *, operator_id, role, confirm_token=None):
         self.sent.append((command, params))
+        if self._error is not None:
+            raise self._error
         return {
             "request_msg_id": "x",
             "command": command,
@@ -116,6 +120,24 @@ async def test_t10_operator_action_logged(db_session):
     assert row.action_type == "tare_balance"
     assert row.operator_id == "op001"
     assert row.result == "accepted"
+
+
+async def test_command_timeout_has_explicit_audit_reason(db_session):
+    """命令通信超时应保留原异常，并写入稳定的审计原因码。"""
+    service = CommandService(_FakeClient(error=HostCommTimeoutError("timeout")), _FakeCache("Standby"))
+
+    with pytest.raises(HostCommTimeoutError):
+        await service.execute(
+            "tare_balance",
+            {},
+            operator_id="op001",
+            role="operator",
+            db_session=db_session,
+        )
+
+    row = (await db_session.execute(select(OperatorAction))).scalar_one()
+    assert row.result == "error"
+    assert row.reason_code == "device_comm_timeout"
 
 
 # ---------------------------------------------------- T12 set_parameters CRC

@@ -2,7 +2,7 @@
 
 规格见开发规格说明书第 5.3 节。要点：
 - 连接后先 hello/hello_ack 协商能力。
-- 周期心跳（默认 2s），连续 N 次超时标记 degraded。
+- 周期心跳（默认 2s），连续 N 次超时后断线并进入自动重连。
 - 断线自动重连（指数退避 1→2→4→8→30s 上限）。
 - 请求/响应匹配：command 按 request_msg_id；status/parameters 按下一帧类型。
 - 收帧分发：status_snapshot 更新缓存并广播，event 写日志并广播。
@@ -91,6 +91,12 @@ class HostCommClient:
         self._reader_task: asyncio.Task | None = None
         self._heartbeat_task: asyncio.Task | None = None
         self._reconnect_task: asyncio.Task | None = None
+        self._callback_queues: dict[str, asyncio.Queue[tuple[Callback, dict[str, Any]]]] = {
+            "data": asyncio.Queue(),
+            "comm": asyncio.Queue(),
+        }
+        self._callback_workers: dict[str, asyncio.Task[None]] = {}
+        self._connection_loss_lock = asyncio.Lock()
 
         # 状态
         self._connected = False
@@ -157,19 +163,25 @@ class HostCommClient:
                 self._reconnect_task = asyncio.create_task(self._reconnect_loop(), name="hostcomm-reconnect")
 
     async def _open(self) -> None:
-        self._reader, self._writer = await asyncio.open_connection(self.host, self.port)
-        self._parser = FrameParser()
-        self._connected = True
-        # 启动收帧任务
-        self._reader_task = asyncio.create_task(self._reader_loop(), name="hostcomm-reader")
-        # 握手
-        self.hello_ack = await self._handshake()
-        logger.info("hostcomm.connected", host=self.host, port=self.port, caps=self.capabilities)
-        await self._set_comm_quality("online")
-        # 启动心跳
-        self._last_heartbeat_ack = time.monotonic()
-        self._missed_heartbeats = 0
-        self._heartbeat_task = asyncio.create_task(self._heartbeat_loop(), name="hostcomm-hb")
+        try:
+            self._reader, self._writer = await asyncio.open_connection(self.host, self.port)
+            self._parser = FrameParser()
+            self._connected = True
+            # 启动收帧任务
+            self._reader_task = asyncio.create_task(self._reader_loop(), name="hostcomm-reader")
+            # 握手
+            self.hello_ack = await self._handshake()
+            logger.info("hostcomm.connected", host=self.host, port=self.port, caps=self.capabilities)
+            await self._set_comm_quality("online")
+            # 启动心跳
+            self._last_heartbeat_ack = time.monotonic()
+            self._missed_heartbeats = 0
+            self._heartbeat_task = asyncio.create_task(self._heartbeat_loop(), name="hostcomm-hb")
+        except BaseException:
+            # open_connection 成功但握手失败时也必须回滚，防止旧 reader 在
+            # 下一次重连后继续读取新连接。
+            await self._teardown_connection()
+            raise
 
     async def _handshake(self) -> dict[str, Any]:
         frame = make_frame(
@@ -183,26 +195,45 @@ class HostCommClient:
         """主动断开并停止所有后台任务（不再自动重连）。"""
         self._stopping = True
         await self._teardown_connection()
-        for task in (self._reconnect_task,):
-            if task is not None:
-                task.cancel()
+        reconnect_task = self._reconnect_task
+        if reconnect_task is not None and reconnect_task is not asyncio.current_task():
+            reconnect_task.cancel()
+            await asyncio.gather(reconnect_task, return_exceptions=True)
         self._reconnect_task = None
         await self._set_comm_quality("offline")
+        workers = list(self._callback_workers.values())
+        for task in workers:
+            task.cancel()
+        if workers:
+            await asyncio.gather(*workers, return_exceptions=True)
+        self._callback_workers.clear()
+        for queue in self._callback_queues.values():
+            while not queue.empty():
+                queue.get_nowait()
+                queue.task_done()
 
     async def _teardown_connection(self) -> None:
         self._connected = False
-        for task in (self._heartbeat_task, self._reader_task):
-            if task is not None and task is not asyncio.current_task():
-                task.cancel()
+        tasks = [
+            task
+            for task in (self._heartbeat_task, self._reader_task)
+            if task is not None and task is not asyncio.current_task()
+        ]
+        for task in tasks:
+            task.cancel()
         self._heartbeat_task = None
         self._reader_task = None
-        if self._writer is not None:
-            try:
-                self._writer.close()
-            except Exception:  # noqa: BLE001
-                pass
+        writer = self._writer
         self._reader = None
         self._writer = None
+        if writer is not None:
+            try:
+                writer.close()
+                await asyncio.wait_for(writer.wait_closed(), timeout=1.0)
+            except Exception:  # noqa: BLE001
+                pass
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
         # 解除所有挂起请求
         self._fail_pending(HostCommNotConnectedError("connection closed"))
 
@@ -219,27 +250,32 @@ class HostCommClient:
 
     # ----------------------------------------------------------- 收帧循环
     async def _reader_loop(self) -> None:
-        assert self._reader is not None
+        reader = self._reader
+        parser = self._parser
+        assert reader is not None
         try:
             while True:
-                data = await self._reader.read(4096)
+                data = await reader.read(4096)
                 if not data:
                     raise ConnectionError("peer closed connection")
-                for frame in self._parser.feed(data):
+                for frame in parser.feed(data):
                     await self._dispatch(frame)
         except asyncio.CancelledError:
             raise
         except Exception as exc:  # noqa: BLE001
             logger.warning("hostcomm.reader_lost", error=str(exc))
-            await self._on_connection_lost()
+            # 旧连接的 reader 若延迟退出，不得拆掉刚建立的新连接。
+            if self._reader_task is asyncio.current_task():
+                await self._on_connection_lost()
 
     async def _on_connection_lost(self) -> None:
-        if self._stopping:
-            return
-        await self._teardown_connection()
-        await self._set_comm_quality("offline")
-        if self.auto_reconnect and (self._reconnect_task is None or self._reconnect_task.done()):
-            self._reconnect_task = asyncio.create_task(self._reconnect_loop(), name="hostcomm-reconnect")
+        async with self._connection_loss_lock:
+            if self._stopping:
+                return
+            await self._teardown_connection()
+            await self._set_comm_quality("offline")
+            if self.auto_reconnect and (self._reconnect_task is None or self._reconnect_task.done()):
+                self._reconnect_task = asyncio.create_task(self._reconnect_loop(), name="hostcomm-reconnect")
 
     async def _reconnect_loop(self) -> None:
         delay = self.reconnect_base
@@ -253,6 +289,8 @@ class HostCommClient:
                 logger.info("hostcomm.reconnected")
                 return
             except Exception as exc:  # noqa: BLE001
+                # _open 自身会回滚；这里再次保证未来实现变化也不会遗留半连接。
+                await self._teardown_connection()
                 logger.warning("hostcomm.reconnect_failed", error=str(exc))
                 delay = min(delay * 2, self.reconnect_max)
 
@@ -269,8 +307,9 @@ class HostCommClient:
 
         if msg_type == "status_snapshot":
             await self._set_comm_quality("online")
-            await self._emit(self.on_status, payload)
+            # 先唤醒请求方，再把 DB/WS 回调放到独立任务，保持收帧循环畅通。
             self._resolve_waiter("status_snapshot", frame)
+            self._schedule_callback(self.on_status, payload)
             return
 
         if msg_type in ("hello_ack", "parameters_snapshot"):
@@ -285,7 +324,7 @@ class HostCommClient:
             return
 
         if msg_type == "event":
-            await self._emit(self.on_event, payload)
+            self._schedule_callback(self.on_event, payload)
             return
 
         if msg_type == "error":
@@ -293,6 +332,30 @@ class HostCommClient:
             return
 
         logger.debug("hostcomm.unhandled_frame", type=msg_type)
+
+    def _schedule_callback(self, cb: Callback | None, payload: dict[str, Any], *, channel: str = "data") -> None:
+        if cb is None:
+            return
+        queue = self._callback_queues[channel]
+        queue.put_nowait((cb, payload))
+        worker = self._callback_workers.get(channel)
+        if worker is None or worker.done():
+            worker = asyncio.create_task(self._callback_worker(channel), name=f"hostcomm-callback-{channel}")
+            self._callback_workers[channel] = worker
+            worker.add_done_callback(lambda task: self._forget_callback_worker(channel, task))
+
+    def _forget_callback_worker(self, channel: str, task: asyncio.Task[None]) -> None:
+        if self._callback_workers.get(channel) is task:
+            self._callback_workers.pop(channel, None)
+
+    async def _callback_worker(self, channel: str) -> None:
+        queue = self._callback_queues[channel]
+        while True:
+            cb, payload = await queue.get()
+            try:
+                await self._emit(cb, payload)
+            finally:
+                queue.task_done()
 
     async def _emit(self, cb: Callback | None, payload: dict[str, Any]) -> None:
         if cb is None:
@@ -395,13 +458,27 @@ class HostCommClient:
                 try:
                     frame = make_frame("heartbeat", {"client_id": self.client_id}, prefix="pc-hb")
                     await self._send(frame)
-                except HostCommNotConnectedError:
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning("hostcomm.heartbeat_send_failed", error=str(exc))
+                    await self._on_connection_lost()
                     return
                 # 检查心跳新鲜度
                 if self._last_heartbeat_ack is not None:
                     elapsed = time.monotonic() - self._last_heartbeat_ack
-                    if elapsed > self.heartbeat_interval * self.timeout_count:
-                        self._missed_heartbeats += 1
+                    interval = max(self.heartbeat_interval, 0.001)
+                    self._missed_heartbeats = int(elapsed / interval)
+                    if elapsed >= interval * self.timeout_count:
+                        self._missed_heartbeats = max(self._missed_heartbeats, self.timeout_count)
+                        logger.warning(
+                            "hostcomm.heartbeat_timeout",
+                            missed=self._missed_heartbeats,
+                            elapsed_s=round(elapsed, 3),
+                        )
+                        await self._on_connection_lost()
+                        return
+                    # 刚发送的本轮 heartbeat 尚未来得及被 reader 处理，不因
+                    # 单个周期边界的调度抖动反复闪烁 degraded。
+                    if self._missed_heartbeats > 1:
                         await self._set_comm_quality("degraded")
         except asyncio.CancelledError:
             raise
@@ -414,7 +491,7 @@ class HostCommClient:
             return
         self._comm_quality = quality
         logger.info("hostcomm.comm_quality", quality=quality)
-        await self._emit(self.on_comm_status, {"status": quality})
+        self._schedule_callback(self.on_comm_status, {"status": quality}, channel="comm")
 
 
 # ---- 简易 CLI：/hostcomm-ping 使用（只读握手）-----------------------------

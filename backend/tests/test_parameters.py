@@ -6,6 +6,7 @@ import pytest
 from sqlalchemy import func, select
 
 from app.db.models import OperatorAction, ParameterSnapshot
+from app.hostcomm.client import HostCommTimeoutError
 from app.services.command_service import CommandError, compute_param_crc
 from app.services.parameter_service import ParameterService
 
@@ -18,10 +19,11 @@ VALUES = {
 class _FakeClient:
     is_online = True
 
-    def __init__(self, accept=True, reason_code="ok", readback=None):
+    def __init__(self, accept=True, reason_code="ok", readback=None, readback_error=None):
         self._accept = accept
         self._reason = reason_code
         self._readback = readback
+        self._readback_error = readback_error
         self.last_set = None
 
     async def send_command(self, command, params, *, operator_id, role, confirm_token=None):
@@ -35,6 +37,8 @@ class _FakeClient:
         }
 
     async def get_parameters(self):
+        if self._readback_error is not None:
+            raise self._readback_error
         vals = self._readback if self._readback is not None else (self.last_set or {}).get("values", {})
         return {
             "fw_version": "FW-X",
@@ -112,4 +116,20 @@ async def test_set_parameters_readback_mismatch(db_session):
     assert ei.value.error_code == "parameter_readback_mismatch"
     # accepted 审计 + mismatch 审计 = 2，无快照
     assert await db_session.scalar(select(func.count()).select_from(OperatorAction)) == 2
+    assert await db_session.scalar(select(func.count()).select_from(ParameterSnapshot)) == 0
+
+
+async def test_set_parameters_readback_timeout_is_audited(db_session):
+    """控制板已受理但回读超时时，必须留下明确失败审计并向上保留超时语义。"""
+    client = _FakeClient(readback_error=HostCommTimeoutError("readback timeout"))
+    service = ParameterService(client, _FakeCache())
+
+    with pytest.raises(HostCommTimeoutError):
+        await service.set_parameters(VALUES, _crc(), operator_id="adm", role="admin", db_session=db_session)
+
+    actions = (await db_session.execute(select(OperatorAction).order_by(OperatorAction.id))).scalars().all()
+    assert [(row.result, row.reason_code) for row in actions] == [
+        ("accepted", "ok"),
+        ("error", "device_comm_timeout"),
+    ]
     assert await db_session.scalar(select(func.count()).select_from(ParameterSnapshot)) == 0

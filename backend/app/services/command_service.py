@@ -19,6 +19,7 @@ import time
 import uuid
 from dataclasses import dataclass, field
 
+from app.hostcomm.client import HostCommNotConnectedError, HostCommTimeoutError
 from app.hostcomm.protocol import now_iso
 from app.services.state_policy import parameter_changes_allowed
 
@@ -273,6 +274,12 @@ class CommandService:
             result_label = result_payload.get("result", "error")
             reason_code = result_payload.get("reason_code")
             return result_payload
+        except HostCommTimeoutError:
+            reason_code = "device_comm_timeout"
+            raise
+        except HostCommNotConnectedError:
+            reason_code = "device_comm_fault"
+            raise
         finally:
             await self._write_audit(
                 db_session,
