@@ -140,6 +140,26 @@ async def test_command_timeout_has_explicit_audit_reason(db_session):
     assert row.reason_code == "device_comm_timeout"
 
 
+@pytest.mark.parametrize("test_id", ["../startup", r"..\startup", "bad:name", "bad*name", "x" * 65])
+async def test_start_rejects_unsafe_test_id_before_device_command(db_session, test_id):
+    client = _FakeClient()
+    service = CommandService(client, _FakeCache("Standby"))
+
+    with pytest.raises(CommandError) as exc:
+        await service.execute(
+            "start_test",
+            {"test_id": test_id},
+            operator_id="op001",
+            role="operator",
+            confirm_token=confirm_tokens.issue(),
+            db_session=db_session,
+        )
+
+    assert exc.value.status_code == 400
+    assert exc.value.error_code == "invalid_test_id"
+    assert client.sent == []
+
+
 # ---------------------------------------------------- T12 set_parameters CRC
 def test_t12_parameter_crc():
     """T12：CRC 不匹配 → 400 parameter_crc_error，不下发；匹配则通过。"""

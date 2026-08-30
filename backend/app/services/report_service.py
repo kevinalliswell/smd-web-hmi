@@ -22,6 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import get_settings
 from app.db.models import AlarmLog, EventLog, ParameterSnapshot, ReportExport, SamplePoint, TestSession
 from app.hostcomm.protocol import now_iso
+from app.services.test_id import InvalidTestIdError, validate_test_id
 
 
 def _num(v: Any) -> float | None:
@@ -189,6 +190,7 @@ async def generate_report(
     options: dict[str, Any] | None = None,
 ) -> ReportExport:
     """生成报告并登记 report_export。当前支持 html。"""
+    test_id = validate_test_id(test_id)
     options = options or {}
     if fmt != "html":
         # 其它格式（pdf/xlsx）留待后续；先以 html 兜底并在 notes 注明
@@ -225,7 +227,11 @@ async def generate_report(
 
     settings = get_settings()
     stamp = datetime.now().strftime("%Y%m%d%H%M%S")
-    path = settings.reports_dir / f"{test_id}-{stamp}.html"
+    reports_dir = settings.reports_dir.resolve()
+    path = (reports_dir / f"{test_id}-{stamp}.html").resolve()
+    if not path.is_relative_to(reports_dir):
+        # test_id 已有白名单；这里保留最终写入点的纵深防御。
+        raise InvalidTestIdError("报告路径超出报告目录")
     path.write_text(content, encoding="utf-8")
     size = path.stat().st_size
 

@@ -24,6 +24,7 @@ from app.hostcomm.client import HostCommNotConnectedError, HostCommTimeoutError
 from app.hostcomm.protocol import now_iso
 from app.services import logging_service
 from app.services.state_policy import parameter_changes_allowed
+from app.services.test_id import InvalidTestIdError, validate_test_id
 
 logger = get_logger("service.command")
 
@@ -230,9 +231,13 @@ class CommandService:
     async def _reserve_start(self, command: str, params: dict, db_session) -> str | None:
         if command != "start_test":
             return None
-        test_id = str(params.get("test_id") or "").strip()
-        if not test_id:
+        raw_test_id = params.get("test_id")
+        if raw_test_id is None or (isinstance(raw_test_id, str) and not raw_test_id.strip()):
             raise CommandError(400, "test_id_required", "启动试验必须提供试验编号")
+        try:
+            test_id = validate_test_id(raw_test_id)
+        except InvalidTestIdError as exc:
+            raise CommandError(400, "invalid_test_id", str(exc)) from exc
         if db_session is None:
             raise CommandError(503, "database_unavailable", "无法校验试验编号")
 
