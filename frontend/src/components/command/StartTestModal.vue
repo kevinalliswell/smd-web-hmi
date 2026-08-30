@@ -1,10 +1,12 @@
 <script setup>
 // 启动试验：输入试验编号 → 二次确认（含 CO 安全提示）→ 经后端获取 confirm_token 后下发。
-import { ref } from 'vue'
+import { onMounted, ref } from 'vue'
 import { requestConfirmToken, sendCommand } from '@/api/commands'
+import { fetchNextTestId } from '@/api/tests'
 
 const emit = defineEmits(['close', 'done'])
-const testId = ref(suggestTestId())
+const initialSuggestion = suggestTestId()
+const testId = ref(initialSuggestion)
 const error = ref('')
 const submitting = ref(false)
 const confirming = ref(false)
@@ -14,6 +16,15 @@ function suggestTestId() {
   const ymd = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`
   return `TEST-${ymd}-001`
 }
+
+onMounted(async () => {
+  try {
+    const suggested = await fetchNextTestId()
+    if (suggested && testId.value === initialSuggestion) testId.value = suggested
+  } catch {
+    // 后端不可用时保留本地兜底编号，提交时仍会执行唯一性校验。
+  }
+})
 
 async function onStart() {
   // 第一步：弹出二次确认

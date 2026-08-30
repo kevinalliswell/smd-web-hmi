@@ -12,6 +12,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import binascii
 import json
 import time
@@ -41,6 +42,11 @@ COMMAND_PERMISSIONS: dict[str, set[str]] = {
 
 # CO 相关命令：必须二次确认（规格 6.3）
 CO_COMMANDS = {"start_test", "stop_test"}
+
+# CommandService 按请求构造，因此待启动占位必须是进程级，防止两个并发请求在
+# 任一会话落库前同时通过撞号检查并下发到控制板。
+_start_reservation_lock = asyncio.Lock()
+_pending_start_test_id: str | None = None
 
 
 @dataclass
@@ -183,12 +189,79 @@ class CommandService:
         # 2. 状态校验
         current_state = self._cache.get_field("system.current_state")
         check_state(command, current_state)
-        # 3. CO 命令二次确认
-        check_confirm_token(command, confirm_token)
-        # 4. set_parameters CRC 校验
-        check_parameter_crc(command, params)
+        reserved_test_id = await self._reserve_start(command, params, db_session)
+        try:
+            # 3. CO 命令二次确认
+            check_confirm_token(command, confirm_token)
+            # 4. set_parameters CRC 校验
+            check_parameter_crc(command, params)
 
-        result_payload: dict
+            result_payload = await self._send_with_audit(
+                command,
+                params,
+                operator_id=operator_id,
+                role=role,
+                confirm_token=confirm_token,
+                client_ip=client_ip,
+                db_session=db_session,
+            )
+
+            # 命令被控制板受理后，处理试验会话生命周期（建/收会话）
+            if result_payload.get("result") == "accepted":
+                await self._handle_lifecycle(db_session, command, params, operator_id, result_payload)
+            return result_payload
+        finally:
+            if reserved_test_id is not None:
+                await self._release_start(reserved_test_id)
+
+    async def _reserve_start(self, command: str, params: dict, db_session) -> str | None:
+        if command != "start_test":
+            return None
+        test_id = str(params.get("test_id") or "").strip()
+        if not test_id:
+            raise CommandError(400, "test_id_required", "启动试验必须提供试验编号")
+        if db_session is None:
+            raise CommandError(503, "database_unavailable", "无法校验试验编号")
+
+        global _pending_start_test_id
+        async with _start_reservation_lock:
+            if _pending_start_test_id is not None:
+                raise CommandError(409, "test_start_in_progress", "另一个试验启动请求正在处理")
+
+            from sqlalchemy import select
+
+            from app.db.models import TestSession
+
+            exists = await db_session.scalar(select(TestSession.id).where(TestSession.test_id == test_id))
+            if exists is not None:
+                raise CommandError(409, "test_id_exists", f"试验编号已存在: {test_id}")
+            open_session = await db_session.scalar(
+                select(TestSession.test_id).where(TestSession.end_time.is_(None)).order_by(TestSession.id.desc())
+            )
+            if open_session is not None:
+                raise CommandError(409, "test_session_active", f"试验 {open_session} 尚未闭合")
+
+            params["test_id"] = test_id
+            _pending_start_test_id = test_id
+            return test_id
+
+    async def _release_start(self, test_id: str) -> None:
+        global _pending_start_test_id
+        async with _start_reservation_lock:
+            if _pending_start_test_id == test_id:
+                _pending_start_test_id = None
+
+    async def _send_with_audit(
+        self,
+        command: str,
+        params: dict,
+        *,
+        operator_id: str,
+        role: str,
+        confirm_token: str | None,
+        client_ip: str | None,
+        db_session,
+    ) -> dict:
         result_label = "error"
         reason_code = None
         try:
@@ -199,6 +272,7 @@ class CommandService:
             )
             result_label = result_payload.get("result", "error")
             reason_code = result_payload.get("reason_code")
+            return result_payload
         finally:
             await self._write_audit(
                 db_session,
@@ -210,11 +284,6 @@ class CommandService:
                 reason_code=reason_code,
                 client_ip=client_ip,
             )
-
-        # 命令被控制板受理后，处理试验会话生命周期（建/收会话）
-        if result_label == "accepted":
-            await self._handle_lifecycle(db_session, command, params, operator_id, result_payload)
-        return result_payload
 
     async def _handle_lifecycle(
         self, db_session, command: str, params: dict, operator_id: str, result_payload: dict
@@ -231,27 +300,30 @@ class CommandService:
             test_id = params.get("test_id")
             if not test_id:
                 return
-            exists = await db_session.scalar(select(TestSession).where(TestSession.test_id == test_id))
-            if exists is None:
-                db_session.add(
-                    TestSession(
-                        test_id=test_id,
-                        operator_id=operator_id,
-                        start_time=now_iso(),
-                    )
+            db_session.add(
+                TestSession(
+                    test_id=test_id,
+                    operator_id=operator_id,
+                    start_time=now_iso(),
                 )
-                await db_session.commit()
+            )
+            await db_session.commit()
             active_test.start(test_id)
 
         elif command == "stop_test":
             test_id = active_test.stop()
+            row = None
             if test_id:
                 row = await db_session.scalar(select(TestSession).where(TestSession.test_id == test_id))
-                if row is not None and row.end_time is None:
-                    row.end_time = now_iso()
-                    row.end_reason = "operator_stop"
-                    row.state_at_end = result_payload.get("current_state")
-                    await db_session.commit()
+            if row is None or row.end_time is not None:
+                row = await db_session.scalar(
+                    select(TestSession).where(TestSession.end_time.is_(None)).order_by(TestSession.id.desc())
+                )
+            if row is not None and row.end_time is None:
+                row.end_time = now_iso()
+                row.end_reason = "operator_stop"
+                row.state_at_end = result_payload.get("current_state")
+                await db_session.commit()
 
     async def _write_audit(
         self,

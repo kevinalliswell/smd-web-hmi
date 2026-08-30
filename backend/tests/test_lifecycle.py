@@ -7,14 +7,19 @@ from sqlalchemy import func, select
 
 from app.db.models import DeviceStatus, SamplePoint, TestSession
 from app.services import logging_service
-from app.services.command_service import CommandService, confirm_tokens
+from app.services.command_service import CommandError, CommandService, confirm_tokens
 from app.services.test_runtime import active_test
+from app.services.test_session_service import reconcile_test_sessions
 
 
 class _FakeClient:
     is_online = True
 
+    def __init__(self):
+        self.commands = []
+
     async def send_command(self, command, params, *, operator_id, role, confirm_token=None):
+        self.commands.append(command)
         # start/stop 受控停止均推进到一个具体状态
         state = "Precheck" if command == "start_test" else "Cooling"
         return {
@@ -68,6 +73,34 @@ async def test_start_test_creates_session(db_session):
     assert row.end_time is None
 
 
+async def test_start_test_rejects_existing_id_before_device_command(db_session):
+    db_session.add(
+        TestSession(
+            test_id="TEST-20260610-001",
+            operator_id="old-op",
+            start_time="2026-06-10T01:00:00Z",
+            end_time="2026-06-10T02:00:00Z",
+        )
+    )
+    await db_session.commit()
+    client = _FakeClient()
+    service = CommandService(client, _FakeCache())
+
+    with pytest.raises(CommandError) as exc:
+        await service.execute(
+            "start_test",
+            {"test_id": "TEST-20260610-001"},
+            operator_id="op002",
+            role="operator",
+            confirm_token=confirm_tokens.issue(),
+            db_session=db_session,
+        )
+
+    assert exc.value.status_code == 409
+    assert exc.value.error_code == "test_id_exists"
+    assert client.commands == []
+
+
 # ---------------------------------------------------- 进行中写入 sample_point
 async def test_sample_point_written(db_session):
     """进行中试验写入 sample_point，核心字段正确。"""
@@ -108,6 +141,72 @@ async def test_stop_test_closes_session(db_session):
     assert row.end_time is not None
     assert row.end_reason == "operator_stop"
     assert row.state_at_end == "Cooling"
+
+
+async def test_stop_test_closes_latest_open_session_after_runtime_loss(db_session):
+    row = TestSession(
+        test_id="TEST-20260610-003",
+        operator_id="op001",
+        start_time="2026-06-10T03:00:00Z",
+    )
+    db_session.add(row)
+    await db_session.commit()
+    active_test.stop()  # 模拟后端重启导致内存单例丢失
+
+    service = CommandService(_FakeClient(), _FakeCache())
+    await service.execute(
+        "stop_test",
+        {},
+        operator_id="op001",
+        role="operator",
+        confirm_token=confirm_tokens.issue(),
+        db_session=db_session,
+    )
+
+    await db_session.refresh(row)
+    assert row.end_time is not None
+    assert row.end_reason == "operator_stop"
+
+
+async def test_reconcile_restores_matching_running_session(db_session):
+    row = TestSession(
+        test_id="TEST-20260610-004",
+        operator_id="op001",
+        start_time="2026-06-10T04:00:00Z",
+    )
+    db_session.add(row)
+    await db_session.commit()
+
+    result = await reconcile_test_sessions(
+        db_session,
+        {"state_machine": {"test_id": row.test_id, "current_state": "GasSwitch"}},
+    )
+
+    await db_session.refresh(row)
+    assert result["restored_test_id"] == row.test_id
+    assert active_test.active_test_id == row.test_id
+    assert row.end_time is None
+
+
+async def test_reconcile_closes_stale_session_when_device_is_idle(db_session):
+    row = TestSession(
+        test_id="TEST-20260610-005",
+        operator_id="op001",
+        start_time="2026-06-10T05:00:00Z",
+    )
+    db_session.add(row)
+    await db_session.commit()
+
+    result = await reconcile_test_sessions(
+        db_session,
+        {"state_machine": {"test_id": None, "current_state": "Standby"}},
+    )
+
+    await db_session.refresh(row)
+    assert result["closed"] == 1
+    assert active_test.active_test_id is None
+    assert row.end_time is not None
+    assert row.end_reason == "backend_restart"
 
 
 # ---------------------------------------------------- device_status 滚动裁剪
