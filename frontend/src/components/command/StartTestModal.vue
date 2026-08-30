@@ -78,7 +78,7 @@ async function onConfirm() {
 .dialog { background: var(--bg-card); border: 1px solid var(--border-hi); border-radius: 10px; width: 420px; padding: 20px; display: flex; flex-direction: column; gap: 10px; }
 .dlg-title { font-size: 16px; font-weight: 700; }
 label { font-size: 12px; color: var(--text-sec); }
-.co-warn { background: var(--yellow-dim); border: 1px solid var(--yellow); color: #fde68a; border-radius: 6px; padding: 10px; font-size: 12px; line-height: 1.6; }
-.err { color: #fca5a5; font-size: 12px; }
+.co-warn { background: var(--yellow-dim); border: 1px solid var(--yellow); color: var(--warning-text); border-radius: 6px; padding: 10px; font-size: 12px; line-height: 1.6; }
+.err { color: var(--danger-text); font-size: 12px; }
 .actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 6px; }
 </style>

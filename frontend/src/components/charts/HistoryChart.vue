@@ -11,6 +11,7 @@ import {
   Tooltip,
   Legend,
 } from 'chart.js'
+import { getChartTheme, subscribeChartTheme } from '@/utils/chartTheme'
 
 Chart.register(LineController, LineElement, PointElement, LinearScale, CategoryScale, Tooltip, Legend)
 
@@ -20,8 +21,7 @@ const props = defineProps({
 
 const canvas = ref(null)
 let chart = null
-const GRID = 'rgba(138,146,170,0.12)'
-const TICK = '#8892aa'
+let unsubscribeTheme = null
 
 function buildData() {
   const labels = props.points.map((p) => (p.ts || '').slice(11, 19))
@@ -39,6 +39,7 @@ function buildData() {
 }
 
 function render() {
+  const colors = getChartTheme()
   if (chart) {
     chart.data = buildData()
     chart.update('none')
@@ -53,18 +54,22 @@ function render() {
       animation: false,
       interaction: { intersect: false, mode: 'index' },
       scales: {
-        x: { grid: { color: GRID }, ticks: { color: TICK, maxTicksLimit: 10 } },
-        yTemp: { position: 'left', grid: { color: GRID }, ticks: { color: '#38bdf8' }, title: { display: true, text: '温度 ℃', color: '#38bdf8' } },
-        yAux: { position: 'right', grid: { drawOnChartArea: false }, ticks: { color: TICK }, title: { display: true, text: 'Pa / mm / g', color: TICK } },
+        x: { grid: { color: colors.grid }, ticks: { color: colors.tick, maxTicksLimit: 10 } },
+        yTemp: { position: 'left', grid: { color: colors.grid }, ticks: { color: colors.accent }, title: { display: true, text: '温度 ℃', color: colors.accent } },
+        yAux: { position: 'right', grid: { drawOnChartArea: false }, ticks: { color: colors.tick }, title: { display: true, text: 'Pa / mm / g', color: colors.tick } },
       },
-      plugins: { legend: { labels: { color: TICK, boxWidth: 12 } } },
+      plugins: { legend: { labels: { color: colors.tick, boxWidth: 12 } } },
     },
   })
 }
 
-onMounted(render)
+onMounted(() => {
+  render()
+  unsubscribeTheme = subscribeChartTheme(() => chart)
+})
 watch(() => props.points, render, { deep: false })
 onBeforeUnmount(() => {
+  unsubscribeTheme?.()
   chart?.destroy()
   chart = null
 })
@@ -80,4 +85,5 @@ onBeforeUnmount(() => {
 <style scoped>
 .chart-wrap { position: relative; height: 320px; width: 100%; }
 .empty { position: absolute; inset: 0; display: grid; place-items: center; }
+@media (max-width: 560px) { .chart-wrap { height: 250px; } }
 </style>

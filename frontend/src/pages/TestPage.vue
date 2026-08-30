@@ -93,7 +93,7 @@ onBeforeUnmount(() => clearInterval(timer))
 <template>
   <div class="page">
     <div class="page-head">
-      <div class="page-title">当前试验</div>
+      <h1 class="page-title">当前试验</h1>
       <div class="state-badge" :class="{ running: isRunning }">{{ currentState }}</div>
       <div v-if="currentTest" class="test-id mono">{{ currentTest.test_id }}</div>
       <div class="spacer" />
@@ -166,6 +166,7 @@ onBeforeUnmount(() => clearInterval(timer))
 .proc-row:last-child { border-bottom: none; }
 .proc-label { color: var(--text-sec); font-size: 12px; }
 .proc-val { font-size: 14px; }
-.co-tag { display: inline-block; margin-left: 4px; font-size: 9px; font-weight: 700; background: var(--orange); color: #1a1208; border-radius: 3px; padding: 0 3px; }
+.co-tag { display: inline-block; margin-left: 4px; font-size: 9px; font-weight: 700; background: var(--orange); color: var(--on-orange); border-radius: 3px; padding: 0 3px; }
 @media (max-width: 1100px) { .row { grid-template-columns: 1fr; } }
+@media (max-width: 560px) { .page-head { align-items: flex-start; flex-wrap: wrap; } .elapsed { width: 100%; } }
 </style>

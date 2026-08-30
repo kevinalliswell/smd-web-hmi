@@ -45,8 +45,8 @@ async function onConfirm() {
 <style scoped>
 .overlay { position: fixed; inset: 0; background: rgba(0,0,0,.6); display: flex; align-items: center; justify-content: center; z-index: 100; }
 .dialog { background: var(--bg-card); border: 1px solid var(--red); border-radius: 10px; width: 420px; padding: 20px; display: flex; flex-direction: column; gap: 10px; }
-.dlg-title { font-size: 16px; font-weight: 700; color: #fca5a5; }
-.co-warn { background: var(--red-dim); border: 1px solid var(--red); color: #fca5a5; border-radius: 6px; padding: 10px; font-size: 12px; line-height: 1.6; }
-.err { color: #fca5a5; font-size: 12px; }
+.dlg-title { font-size: 16px; font-weight: 700; color: var(--danger-text); }
+.co-warn { background: var(--red-dim); border: 1px solid var(--red); color: var(--danger-text); border-radius: 6px; padding: 10px; font-size: 12px; line-height: 1.6; }
+.err { color: var(--danger-text); font-size: 12px; }
 .actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 6px; }
 </style>

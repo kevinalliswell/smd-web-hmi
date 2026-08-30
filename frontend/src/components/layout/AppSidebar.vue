@@ -1,7 +1,31 @@
 <script setup>
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useAlarmsStore } from '@/stores/alarms'
 import { useRole } from '@/composables/useRole'
+
+const props = defineProps({ open: { type: Boolean, default: false } })
+defineEmits(['navigate'])
+
+const isMobile = ref(false)
+const navigationHidden = computed(() => isMobile.value && !props.open)
+let mediaQuery = null
+
+function updateMobile(event) {
+  isMobile.value = event.matches
+}
+
+onMounted(() => {
+  mediaQuery = window.matchMedia('(max-width: 900px)')
+  updateMobile(mediaQuery)
+  if (mediaQuery.addEventListener) mediaQuery.addEventListener('change', updateMobile)
+  else mediaQuery.addListener?.(updateMobile)
+})
+
+onBeforeUnmount(() => {
+  if (mediaQuery?.removeEventListener) mediaQuery.removeEventListener('change', updateMobile)
+  else mediaQuery?.removeListener?.(updateMobile)
+})
 
 const alarms = useAlarmsStore()
 const { unackedCount } = storeToRefs(alarms)
@@ -42,7 +66,13 @@ function visible(item) {
 </script>
 
 <template>
-  <nav id="nav">
+  <nav
+    id="primary-navigation"
+    :class="{ open }"
+    aria-label="主导航"
+    :aria-hidden="navigationHidden ? 'true' : undefined"
+    :inert="navigationHidden ? '' : undefined"
+  >
     <template v-for="group in groups" :key="group.title">
       <div class="nav-section">{{ group.title }}</div>
       <template v-for="item in group.items" :key="item.name">
@@ -51,6 +81,7 @@ function visible(item) {
           :to="{ name: item.name }"
           class="nav-item"
           active-class="active"
+          @click="$emit('navigate')"
         >
           <span class="nav-icon">{{ item.icon }}</span>{{ item.label }}
           <span v-if="item.badge && unackedCount" class="nav-badge">{{ unackedCount }}</span>
@@ -61,7 +92,7 @@ function visible(item) {
 </template>
 
 <style scoped>
-#nav {
+#primary-navigation {
   width: var(--nav-w); background: var(--bg-card); border-right: 1px solid var(--border);
   display: flex; flex-direction: column; overflow-y: auto; flex-shrink: 0; padding-bottom: 12px;
 }
@@ -79,5 +110,27 @@ function visible(item) {
 .nav-badge {
   margin-left: auto; background: var(--red); color: #fff; font-size: 10px;
   font-weight: 700; border-radius: 8px; padding: 1px 5px;
+}
+
+@media (max-width: 900px) {
+  #primary-navigation {
+    position: fixed;
+    z-index: 30;
+    top: var(--header-h);
+    bottom: var(--footer-h);
+    left: 0;
+    width: min(82vw, 280px);
+    box-shadow: var(--shadow-lg);
+    transform: translateX(-105%);
+    visibility: hidden;
+    pointer-events: none;
+    transition: transform .2s ease, visibility 0s linear .2s;
+  }
+  #primary-navigation.open {
+    visibility: visible;
+    pointer-events: auto;
+    transform: translateX(0);
+    transition-delay: 0s;
+  }
 }
 </style>

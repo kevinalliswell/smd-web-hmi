@@ -2,6 +2,7 @@
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import ThemeToggle from '@/components/shared/ThemeToggle.vue'
 
 const router = useRouter()
 const auth = useAuthStore()
@@ -27,6 +28,7 @@ async function onSubmit() {
 
 <template>
   <div class="login-wrap">
+    <ThemeToggle class="login-theme" />
     <form class="login-card" @submit.prevent="onSubmit">
       <div class="login-brand">熔滴炉 Web 上位机</div>
       <div class="login-sub muted">GB/T 34211 · 本地工业上位机</div>
@@ -48,15 +50,17 @@ async function onSubmit() {
 </template>
 
 <style scoped>
-.login-wrap { display: flex; align-items: center; justify-content: center; height: 100%; }
+.login-wrap { position: relative; display: flex; align-items: center; justify-content: center; min-height: 100%; padding: 20px; }
+.login-theme { position: absolute; top: 16px; right: 16px; }
 .login-card {
-  width: 340px; background: var(--bg-card); border: 1px solid var(--border);
+  width: min(100%, 360px); background: var(--bg-card); border: 1px solid var(--border);
   border-radius: 12px; padding: 28px; display: flex; flex-direction: column; gap: 8px;
 }
 .login-brand { font-size: 20px; font-weight: 700; text-align: center; }
 .login-sub { text-align: center; margin-bottom: 16px; font-size: 12px; }
 label { font-size: 12px; color: var(--text-sec); margin-top: 8px; }
-.login-error { color: #fca5a5; background: var(--red-dim); border: 1px solid var(--red); border-radius: 5px; padding: 8px; font-size: 12px; margin-top: 8px; }
+.login-error { color: var(--danger-text); background: var(--red-dim); border: 1px solid var(--red); border-radius: 5px; padding: 8px; font-size: 12px; margin-top: 8px; }
 .login-btn { margin-top: 16px; }
 .login-hint { margin-top: 14px; font-size: 11px; text-align: center; line-height: 1.5; }
+@media (max-width: 420px) { .login-card { padding: 22px 18px; } .login-theme { top: 10px; right: 10px; } }
 </style>

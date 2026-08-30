@@ -42,6 +42,6 @@ async function onConfirm() {
 .overlay { position: fixed; inset: 0; background: rgba(0,0,0,.6); display: flex; align-items: center; justify-content: center; z-index: 100; }
 .dialog { background: var(--bg-card); border: 1px solid var(--border-hi); border-radius: 10px; width: 400px; padding: 20px; display: flex; flex-direction: column; gap: 12px; }
 .dlg-title { font-size: 16px; font-weight: 700; }
-.err { color: #fca5a5; font-size: 12px; }
+.err { color: var(--danger-text); font-size: 12px; }
 .actions { display: flex; justify-content: flex-end; gap: 10px; }
 </style>

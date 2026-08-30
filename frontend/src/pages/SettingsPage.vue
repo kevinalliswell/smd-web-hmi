@@ -105,7 +105,7 @@ onMounted(loadAll)
 
 <template>
   <div class="page">
-    <div class="page-title">系统设置</div>
+    <h1 class="page-title">系统设置</h1>
     <div v-if="banner" class="banner" :class="banner.type">{{ banner.text }}</div>
 
     <!-- 系统信息 -->
@@ -183,8 +183,8 @@ onMounted(loadAll)
 .page { display: flex; flex-direction: column; gap: 16px; }
 .page-title { font-size: 18px; font-weight: 700; }
 .banner { border-radius: 6px; padding: 8px 12px; font-size: 12px; }
-.banner.ok { background: var(--green-dim); border: 1px solid var(--green); color: #86efac; }
-.banner.err { background: var(--red-dim); border: 1px solid var(--red); color: #fca5a5; }
+.banner.ok { background: var(--green-dim); border: 1px solid var(--green); color: var(--success-text); }
+.banner.err { background: var(--red-dim); border: 1px solid var(--red); color: var(--danger-text); }
 .card-title { font-weight: 700; margin-bottom: 10px; }
 .sub-title { font-weight: 600; margin: 12px 0 8px; color: var(--text-sec); font-size: 12px; }
 .kv { border-collapse: collapse; font-size: 13px; }
@@ -201,4 +201,5 @@ onMounted(loadAll)
 .on { color: var(--green); }
 .off { color: var(--text-muted); }
 .new-user { margin-top: 8px; }
+@media (max-width: 560px) { .form { align-items: stretch; flex-direction: column; } .ops { flex-wrap: wrap; } }
 </style>
