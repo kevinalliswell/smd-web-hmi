@@ -4,6 +4,7 @@ import { useRole } from '@/composables/useRole'
 import { useAuthStore } from '@/stores/auth'
 import { fetchHealth, fetchSystemInfo, syncTime } from '@/api/system'
 import { fetchUsers, createUser, updateUser, changePassword } from '@/api/users'
+import PasswordResetDialog from '@/components/users/PasswordResetDialog.vue'
 
 const { canConfigure } = useRole()
 const auth = useAuthStore()
@@ -12,6 +13,10 @@ const banner = ref(null)
 const health = ref(null)
 const info = ref(null)
 const users = ref([])
+const resetTarget = ref(null)
+const resetOpen = ref(false)
+const resetLoading = ref(false)
+const resetError = ref('')
 
 const ROLES = ['observer', 'operator', 'admin', 'maintainer']
 const newUser = reactive({ username: '', password: '', role: 'observer', display_name: '' })
@@ -68,14 +73,25 @@ async function onToggleActive(u) {
   }
 }
 
-async function onResetPassword(u) {
-  const np = window.prompt(`为 ${u.username} 设置新密码：`)
-  if (!np) return
+function openResetPassword(u) {
+  resetTarget.value = u
+  resetError.value = ''
+  resetOpen.value = true
+}
+
+async function onResetPassword(newPassword) {
+  if (!resetTarget.value) return
+  resetLoading.value = true
+  resetError.value = ''
   try {
-    await updateUser(u.id, { new_password: np })
-    notify('ok', `${u.username} 密码已重置`)
+    await updateUser(resetTarget.value.id, { new_password: newPassword })
+    notify('ok', `${resetTarget.value.username} 密码已重置`)
+    resetOpen.value = false
+    resetTarget.value = null
   } catch (e) {
-    notify('err', '重置失败：' + (e.response?.data?.message || e.message))
+    resetError.value = e.response?.data?.message || e.message || '重置失败'
+  } finally {
+    resetLoading.value = false
   }
 }
 
@@ -155,7 +171,7 @@ onMounted(loadAll)
             </td>
             <td class="ops">
               <button @click="onToggleActive(u)">{{ u.is_active ? '停用' : '启用' }}</button>
-              <button @click="onResetPassword(u)">重置密码</button>
+              <button @click="openResetPassword(u)">重置密码</button>
             </td>
           </tr>
         </tbody>
@@ -176,6 +192,14 @@ onMounted(loadAll)
     </div>
 
     <p v-else class="muted">用户管理与校时需要 Admin 及以上角色。</p>
+
+    <PasswordResetDialog
+      v-model="resetOpen"
+      :username="resetTarget?.username || ''"
+      :loading="resetLoading"
+      :error="resetError"
+      @submit="onResetPassword"
+    />
   </div>
 </template>
 
