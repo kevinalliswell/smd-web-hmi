@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
+
 import pytest
 from sqlalchemy import func, select
 
@@ -251,11 +253,50 @@ async def test_reconcile_closes_stale_session_when_device_is_idle(db_session):
 
 # ---------------------------------------------------- device_status 滚动裁剪
 async def test_device_status_prune(db_session):
-    """device_status 写入后裁剪到保留窗口（唯一允许 DELETE 的表）。"""
-    for i in range(5):
-        await logging_service.append_device_status(db_session, _snapshot(pv=i), keep=3)
-    count = await db_session.scalar(select(func.count()).select_from(DeviceStatus))
-    assert count == 3
+    """按时间而非 id 裁剪，并限制清理执行频率。"""
+    now = [datetime(2026, 8, 30, 12, 0, tzinfo=timezone.utc)]
+    monotonic = [100.0]
+    pruner = logging_service.DeviceStatusPruner(
+        clock=lambda: monotonic[0],
+        utc_clock=lambda: now[0],
+    )
+    recent = DeviceStatus(ts=(now[0] - timedelta(hours=1)).isoformat(), status_json="{}")
+    old_with_newer_id = DeviceStatus(ts=(now[0] - timedelta(hours=25)).isoformat(), status_json="{}")
+    db_session.add_all([recent, old_with_newer_id])
+    await db_session.commit()
+
+    await logging_service.append_device_status(
+        db_session,
+        _snapshot(pv=1),
+        retention_hours=24,
+        cleanup_interval_seconds=300,
+        pruner=pruner,
+    )
+    assert await db_session.get(DeviceStatus, recent.id) is not None
+    assert await db_session.get(DeviceStatus, old_with_newer_id.id) is None
+
+    old_during_cooldown = DeviceStatus(ts=(now[0] - timedelta(hours=26)).isoformat(), status_json="{}")
+    db_session.add(old_during_cooldown)
+    await db_session.commit()
+    await logging_service.append_device_status(
+        db_session,
+        _snapshot(pv=2),
+        retention_hours=24,
+        cleanup_interval_seconds=300,
+        pruner=pruner,
+    )
+    assert await db_session.get(DeviceStatus, old_during_cooldown.id) is not None
+
+    monotonic[0] += 301
+    await logging_service.append_device_status(
+        db_session,
+        _snapshot(pv=3),
+        retention_hours=24,
+        cleanup_interval_seconds=300,
+        pruner=pruner,
+    )
+    assert await db_session.get(DeviceStatus, old_during_cooldown.id) is None
+    assert await db_session.scalar(select(func.count()).select_from(DeviceStatus)) == 4
 
 
 async def test_snapshot_write_failures_raise_and_clear_visible_alarm(monkeypatch):
@@ -273,10 +314,10 @@ async def test_snapshot_write_failures_raise_and_clear_visible_alarm(monkeypatch
     async def broadcast(msg_type, data):
         broadcasts.append((msg_type, data))
 
-    async def fail_write(session, payload):
+    async def fail_write(session, payload, **kwargs):
         raise RuntimeError("database is locked")
 
-    async def successful_write(*args):
+    async def successful_write(*args, **kwargs):
         return None
 
     monkeypatch.setattr(main_module, "get_sessionmaker", lambda: FakeSessionContext)

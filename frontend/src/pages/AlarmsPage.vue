@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { onMounted, ref } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useAlarmsStore } from '@/stores/alarms'
 import { useRole } from '@/composables/useRole'
@@ -12,8 +12,6 @@ const { canOperate } = useRole()
 
 const tab = ref('active')
 const banner = ref('')
-
-const criticalAlarms = computed(() => sortedActive.value.filter((a) => (a.level ?? 0) >= 3))
 
 async function onAck(alarm) {
   banner.value = ''

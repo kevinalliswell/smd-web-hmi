@@ -1,6 +1,7 @@
 <script setup>
 // 历史曲线回放：静态多通道折线图（炉温/料层温度 左轴 ℃；压差/位移/重量 右轴）。
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { formatTime } from '@/utils/dateTime'
 import {
   Chart,
   LineController,
@@ -24,7 +25,7 @@ let chart = null
 let unsubscribeTheme = null
 
 function buildData() {
-  const labels = props.points.map((p) => (p.ts || '').slice(11, 19))
+  const labels = props.points.map((p) => formatTime(p.ts))
   const col = (key) => props.points.map((p) => p[key])
   return {
     labels,

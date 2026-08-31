@@ -63,16 +63,16 @@ onMounted(async () => {
 
     <div class="card filters">
       <div class="f">
-        <label>起</label>
-        <input v-model="fromTs" type="datetime-local" />
+        <label for="trend-from">起</label>
+        <input id="trend-from" v-model="fromTs" type="datetime-local" />
       </div>
       <div class="f">
-        <label>止</label>
-        <input v-model="toTs" type="datetime-local" />
+        <label for="trend-to">止</label>
+        <input id="trend-to" v-model="toTs" type="datetime-local" />
       </div>
       <div class="f">
-        <label>试验</label>
-        <select v-model="testId">
+        <label for="trend-test">试验</label>
+        <select id="trend-test" v-model="testId">
           <option value="">（全部）</option>
           <option v-for="t in tests" :key="t.test_id" :value="t.test_id">{{ t.test_id }}</option>
         </select>

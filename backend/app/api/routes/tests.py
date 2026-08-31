@@ -9,6 +9,7 @@ from sqlalchemy import func, select
 
 from app.api.deps import DbDep, get_current_user
 from app.api.schemas import err, ok
+from app.api.validation import EventLimit, MaxPoints, Page, PageSize, TestIdPath
 from app.db.models import AlarmLog, EventLog, SamplePoint, TestSession
 from app.hostcomm.protocol import now_iso
 from app.services.trend_service import query_downsampled_points
@@ -17,9 +18,9 @@ router = APIRouter(prefix="/api/tests", tags=["tests"], dependencies=[Depends(ge
 
 
 @router.get("")
-async def list_tests(db: DbDep, page: int = 1, size: int = 20):
+async def list_tests(db: DbDep, page: Page = 1, size: PageSize = 20):
     """历史试验列表（分页）。权限：Observer+。"""
-    offset = max(0, (page - 1) * size)
+    offset = (page - 1) * size
     result = await db.execute(select(TestSession).order_by(TestSession.id.desc()).limit(size).offset(offset))
     rows = result.scalars().all()
     return ok(
@@ -65,7 +66,7 @@ async def next_test_id(db: DbDep, day: str | None = None):
 
 
 @router.get("/{test_id}")
-async def test_detail(test_id: str, db: DbDep):
+async def test_detail(test_id: TestIdPath, db: DbDep):
     """试验详情 + 统计摘要。权限：Observer+。"""
     result = await db.execute(select(TestSession).where(TestSession.test_id == test_id))
     r = result.scalar_one_or_none()
@@ -91,13 +92,13 @@ async def test_detail(test_id: str, db: DbDep):
 
 
 @router.get("/{test_id}/samples")
-async def test_samples(test_id: str, db: DbDep, max_points: int = 1000):
+async def test_samples(test_id: TestIdPath, db: DbDep, max_points: MaxPoints = 1000):
     """试验曲线数据（等距降采样到 max_points 以内）。权限：Observer+。"""
     return ok(await query_downsampled_points(db, test_id=test_id, max_points=max_points))
 
 
 @router.get("/{test_id}/events")
-async def test_events(test_id: str, db: DbDep, limit: int = 500):
+async def test_events(test_id: TestIdPath, db: DbDep, limit: EventLimit = 500):
     """该试验事件日志。权限：Observer+。"""
     rows = (
         (await db.execute(select(EventLog).where(EventLog.test_id == test_id).order_by(EventLog.ts).limit(limit)))
@@ -110,7 +111,7 @@ async def test_events(test_id: str, db: DbDep, limit: int = 500):
 
 
 @router.get("/{test_id}/alarms")
-async def test_alarms(test_id: str, db: DbDep):
+async def test_alarms(test_id: TestIdPath, db: DbDep):
     """该试验报警记录。权限：Observer+。"""
     rows = (
         (await db.execute(select(AlarmLog).where(AlarmLog.test_id == test_id).order_by(AlarmLog.occur_time)))

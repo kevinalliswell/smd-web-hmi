@@ -49,4 +49,19 @@ describe('useTheme', () => {
     expect(listener.mock.calls[0][0].detail).toEqual({ theme: 'light' })
     window.removeEventListener('smd-theme-change', listener)
   })
+
+  it('Web Storage 不可用时仍能初始化和切换主题', () => {
+    const getItem = vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+      throw new DOMException('storage unavailable', 'SecurityError')
+    })
+    const setItem = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new DOMException('storage unavailable', 'SecurityError')
+    })
+
+    expect(() => initTheme()).not.toThrow()
+    expect(() => toggleTheme()).not.toThrow()
+
+    getItem.mockRestore()
+    setItem.mockRestore()
+  })
 })

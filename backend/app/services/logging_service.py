@@ -5,17 +5,63 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
+import time
+from collections.abc import Callable
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import AlarmLog, DeviceStatus, EventLog, ParameterSnapshot, SamplePoint
 from app.hostcomm.protocol import now_iso
 
-# device_status 滚动缓冲保留条数（唯一允许 DELETE 的表）
-DEVICE_STATUS_KEEP = 1000
+DEVICE_STATUS_RETENTION_HOURS = 24
+DEVICE_STATUS_CLEANUP_INTERVAL_SECONDS = 300
+
+
+class DeviceStatusPruner:
+    """按 UTC 时间窗批量清理，且在进程内限制执行频率。"""
+
+    def __init__(
+        self,
+        *,
+        clock: Callable[[], float] = time.monotonic,
+        utc_clock: Callable[[], datetime] = lambda: datetime.now(timezone.utc),
+    ) -> None:
+        self._clock = clock
+        self._utc_clock = utc_clock
+        self._last_cleanup_at: float | None = None
+        self._lock = asyncio.Lock()
+
+    async def prune_if_due(
+        self,
+        session: AsyncSession,
+        *,
+        retention_hours: int,
+        cleanup_interval_seconds: int,
+    ) -> int:
+        """到达清理间隔时删除窗口外记录，否则不访问数据库。"""
+        now_tick = self._clock()
+        if self._last_cleanup_at is not None and now_tick - self._last_cleanup_at < cleanup_interval_seconds:
+            return 0
+
+        async with self._lock:
+            now_tick = self._clock()
+            if self._last_cleanup_at is not None and now_tick - self._last_cleanup_at < cleanup_interval_seconds:
+                return 0
+            cutoff = (self._utc_clock() - timedelta(hours=retention_hours)).isoformat(timespec="seconds")
+            result = await session.execute(
+                delete(DeviceStatus).where(func.datetime(DeviceStatus.ts) < func.datetime(cutoff))
+            )
+            await session.commit()
+            self._last_cleanup_at = now_tick
+            return result.rowcount or 0
+
+
+device_status_pruner = DeviceStatusPruner()
 
 
 async def append_parameter_snapshot(
@@ -109,21 +155,25 @@ async def append_event(
 
 
 async def append_device_status(
-    session: AsyncSession, snapshot: dict[str, Any], *, keep: int = DEVICE_STATUS_KEEP
+    session: AsyncSession,
+    snapshot: dict[str, Any],
+    *,
+    retention_hours: int = DEVICE_STATUS_RETENTION_HOURS,
+    cleanup_interval_seconds: int = DEVICE_STATUS_CLEANUP_INTERVAL_SECONDS,
+    pruner: DeviceStatusPruner = device_status_pruner,
 ) -> None:
-    """写入 device_status 滚动缓冲，并裁剪到最近 ``keep`` 条。
+    """写入滚动缓冲，并按 UTC 时间窗定期批量裁剪。
 
     注意：device_status 是规格中**唯一**允许 DELETE 旧记录的表（第 2.8 节）。
     sample_point / event_log / alarm_log 严禁删除。
     """
     session.add(DeviceStatus(ts=now_iso(), status_json=json.dumps(snapshot, ensure_ascii=False)))
     await session.commit()
-
-    # 裁剪：删除超出保留窗口的最旧记录
-    ids = (await session.execute(select(DeviceStatus.id).order_by(DeviceStatus.id.desc()).offset(keep))).scalars().all()
-    if ids:
-        await session.execute(delete(DeviceStatus).where(DeviceStatus.id.in_(ids)))
-        await session.commit()
+    await pruner.prune_if_due(
+        session,
+        retention_hours=retention_hours,
+        cleanup_interval_seconds=cleanup_interval_seconds,
+    )
 
 
 async def append_alarm(

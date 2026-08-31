@@ -80,3 +80,25 @@ async def test_background_job_has_runtime_timeout():
 
     assert manager.snapshot(task_id)["message"] == "任务执行超时"
     await manager.shutdown()
+
+
+async def test_background_job_timeout_includes_queue_wait():
+    manager = BackgroundJobManager(max_concurrency=1, job_timeout_seconds=0.01)
+    queued_started = False
+
+    async def queued_runner():
+        nonlocal queued_started
+        queued_started = True
+        return {}
+
+    await manager._semaphore.acquire()
+    queued_id = manager.submit("report", queued_runner)
+    for _ in range(20):
+        if manager.snapshot(queued_id)["status"] == "failed":
+            break
+        await asyncio.sleep(0.005)
+
+    assert manager.snapshot(queued_id)["message"] == "任务执行超时"
+    assert queued_started is False
+    manager._semaphore.release()
+    await manager.shutdown()

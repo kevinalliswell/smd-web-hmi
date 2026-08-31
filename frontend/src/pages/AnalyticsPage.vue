@@ -101,8 +101,8 @@ onMounted(async () => {
         <div v-if="!tests.length" class="muted">暂无试验</div>
         <div class="picker-foot">
           <div class="f">
-            <label>H (mm)</label>
-            <input v-model="heightMm" class="height-input" placeholder="可选" />
+            <label for="analytics-height">H (mm)</label>
+            <input id="analytics-height" v-model="heightMm" class="height-input" placeholder="可选" />
           </div>
           <button class="primary" :disabled="loading || !selected.size" @click="runCompare">对比</button>
         </div>
@@ -114,7 +114,7 @@ onMounted(async () => {
           <div class="card-head">
             <div class="card-title">叠加曲线</div>
             <div class="spacer" />
-            <select v-model="channel" @change="onChannelChange">
+            <select v-model="channel" aria-label="对比通道" @change="onChannelChange">
               <option v-for="c in CHANNELS" :key="c.key" :value="c.key">{{ c.label }}</option>
             </select>
           </div>

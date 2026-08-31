@@ -1,10 +1,11 @@
 <script setup>
 import { ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import ThemeToggle from '@/components/shared/ThemeToggle.vue'
 
 const router = useRouter()
+const route = useRoute()
 const auth = useAuthStore()
 
 const username = ref('')
@@ -16,8 +17,8 @@ async function onSubmit() {
   error.value = ''
   loading.value = true
   try {
-    await auth.login(username.value, password.value)
-    router.push({ name: 'overview' })
+    const result = await auth.login(username.value, password.value)
+    router.push({ name: result.must_change_password ? 'change-password' : 'overview' })
   } catch (e) {
     error.value = e.response?.data?.message || '登录失败，请检查用户名或密码'
   } finally {
@@ -30,21 +31,23 @@ async function onSubmit() {
   <div class="login-wrap">
     <ThemeToggle class="login-theme" />
     <form class="login-card" @submit.prevent="onSubmit">
-      <div class="login-brand">熔滴炉 Web 上位机</div>
+      <h1 class="login-brand">熔滴炉 Web 上位机</h1>
       <div class="login-sub muted">GB/T 34211 · 本地工业上位机</div>
 
-      <label>用户名</label>
-      <input v-model="username" autocomplete="username" placeholder="用户名" autofocus />
+      <div v-if="route.query.passwordChanged" class="login-success">密码已更新，请使用新密码登录。</div>
 
-      <label>密码</label>
-      <input v-model="password" type="password" autocomplete="current-password" placeholder="密码" />
+      <label for="login-username">用户名</label>
+      <input id="login-username" v-model="username" autocomplete="username" placeholder="用户名" autofocus />
+
+      <label for="login-password">密码</label>
+      <input id="login-password" v-model="password" type="password" autocomplete="current-password" placeholder="密码" />
 
       <div v-if="error" class="login-error">{{ error }}</div>
 
       <button class="primary login-btn" type="submit" :disabled="loading">
         {{ loading ? '登录中…' : '登录' }}
       </button>
-      <div class="login-hint muted">首次部署默认账户 admin / admin，登录后请尽快修改密码。</div>
+      <div class="login-hint muted">首次部署默认账户 admin / admin，首次登录必须修改初始密码。</div>
     </form>
   </div>
 </template>
@@ -60,6 +63,7 @@ async function onSubmit() {
 .login-sub { text-align: center; margin-bottom: 16px; font-size: 12px; }
 label { font-size: 12px; color: var(--text-sec); margin-top: 8px; }
 .login-error { color: var(--danger-text); background: var(--red-dim); border: 1px solid var(--red); border-radius: 5px; padding: 8px; font-size: 12px; margin-top: 8px; }
+.login-success { color: var(--success-text); background: var(--green-dim); border: 1px solid var(--green); border-radius: 5px; padding: 8px; font-size: 12px; }
 .login-btn { margin-top: 16px; }
 .login-hint { margin-top: 14px; font-size: 11px; text-align: center; line-height: 1.5; }
 @media (max-width: 420px) { .login-card { padding: 22px 18px; } .login-theme { top: 10px; right: 10px; } }

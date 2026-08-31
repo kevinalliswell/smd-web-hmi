@@ -143,8 +143,9 @@ onMounted(load)
           <div class="card-title">{{ groupLabel(g) }}</div>
           <div class="fields">
             <div v-for="f in Object.keys(form[g])" :key="f" class="field">
-              <label>{{ fieldLabel(f) }}</label>
+              <label :for="`parameter-${g}-${f}`">{{ fieldLabel(f) }}</label>
               <input
+                :id="`parameter-${g}-${f}`"
                 :value="form[g][f]"
                 :disabled="!editable"
                 :class="{ changed: Number(original?.[g]?.[f]) !== Number(form[g][f]) }"

@@ -35,7 +35,7 @@ xcopy /e /i /q app "%OLD%\app" >nul
 copy "%TEMP%\smd-env.bak" "%OLD%\app\backend\.env" >nul
 
 echo [4/5] Updating dependencies (offline, from wheels\) ...
-"%OLD%\venv\Scripts\python" -m pip install --no-index --find-links=wheels -r "%OLD%\app\backend\requirements.txt"
+"%OLD%\venv\Scripts\python" -m pip install --require-hashes --no-index --find-links=wheels -r "%OLD%\app\backend\requirements.lock"
 if errorlevel 1 goto fail
 
 echo [5/5] Database migration (alembic upgrade head) ...

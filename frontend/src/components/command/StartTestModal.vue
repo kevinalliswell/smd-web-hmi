@@ -3,6 +3,7 @@
 import { onMounted, ref } from 'vue'
 import { requestConfirmToken, sendCommand } from '@/api/commands'
 import { fetchNextTestId } from '@/api/tests'
+import ConfirmDialog from '@/components/shared/ConfirmDialog.vue'
 
 const emit = defineEmits(['close', 'done'])
 const initialSuggestion = suggestTestId()
@@ -26,8 +27,9 @@ onMounted(async () => {
   }
 })
 
-async function onStart() {
+function onStart() {
   // 第一步：弹出二次确认
+  error.value = ''
   confirming.value = true
 }
 
@@ -39,37 +41,46 @@ async function onConfirm() {
     const { confirm_token } = await requestConfirmToken('start_test')
     const result = await sendCommand('start_test', { test_id: testId.value }, confirm_token)
     emit('done', result)
+    confirming.value = false
     emit('close')
   } catch (e) {
     error.value = e.response?.data?.message || '启动失败'
   } finally {
     submitting.value = false
-    confirming.value = false
   }
 }
 </script>
 
 <template>
-  <div class="overlay" @click.self="emit('close')">
-    <div class="dialog">
-      <div class="dlg-title">启动试验</div>
-      <label>试验编号</label>
-      <input v-model="testId" />
-      <div v-if="error" class="err">{{ error }}</div>
-
-      <div v-if="confirming" class="co-warn">
-        ⚠ 本试验涉及 CO 工艺阶段。请确认现场排风、CO 监测与安全继电器均正常。
-        启动请求将发送至控制板，最终由 STM32 状态机与硬接线联锁裁决。
-      </div>
+  <div class="overlay" @click.self="emit('close')" @keydown.esc="emit('close')">
+    <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="start-test-title">
+      <div id="start-test-title" class="dlg-title">启动试验</div>
+      <label for="start-test-id">试验编号</label>
+      <input id="start-test-id" v-model="testId" />
+      <div v-if="error && !confirming" class="err">{{ error }}</div>
 
       <div class="actions">
         <button @click="emit('close')">取消</button>
-        <button v-if="!confirming" class="primary" @click="onStart">下一步</button>
-        <button v-else class="danger" :disabled="submitting" @click="onConfirm">
-          {{ submitting ? '下发中…' : '确认启动' }}
-        </button>
+        <button class="primary" @click="onStart">下一步</button>
       </div>
     </div>
+
+    <ConfirmDialog
+      v-model="confirming"
+      title="启动试验"
+      confirm-text="确认启动"
+      busy-text="下发中…"
+      danger
+      :busy="submitting"
+      :close-on-confirm="false"
+      @confirm="onConfirm"
+    >
+      <div class="co-warn">
+        本试验涉及 CO 工艺阶段。请确认现场排风、CO 监测与安全继电器均正常。
+        启动请求将发送至控制板，最终由 STM32 状态机与硬接线联锁裁决。
+      </div>
+      <div v-if="error" class="err">{{ error }}</div>
+    </ConfirmDialog>
   </div>
 </template>
 

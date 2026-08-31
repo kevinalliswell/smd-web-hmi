@@ -8,10 +8,11 @@ import {
   CategoryScale,
   Tooltip,
   Legend,
+  Filler,
 } from 'chart.js'
 import { getChartTheme, subscribeChartTheme } from '@/utils/chartTheme'
 
-Chart.register(LineController, LineElement, PointElement, LinearScale, CategoryScale, Tooltip, Legend)
+Chart.register(LineController, LineElement, PointElement, LinearScale, CategoryScale, Tooltip, Legend, Filler)
 
 export function useChart() {
   let chart = null

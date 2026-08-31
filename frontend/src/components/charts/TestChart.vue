@@ -15,6 +15,7 @@ import {
 } from 'chart.js'
 import { useDeviceStore } from '@/stores/device'
 import { getChartTheme, subscribeChartTheme } from '@/utils/chartTheme'
+import { formatTime } from '@/utils/dateTime'
 
 Chart.register(LineController, LineElement, PointElement, LinearScale, CategoryScale, Tooltip, Legend)
 
@@ -63,7 +64,7 @@ watch(lastUpdate, () => {
   const s = snapshot.value || {}
   const t = s.temperature || {}
   const m = s.measurement || {}
-  const label = new Date().toLocaleTimeString('zh-CN', { hour12: false })
+  const label = formatTime(lastUpdate.value)
   const values = [
     t.furnace_pv_deg_c ?? null,
     m.burden_temp_deg_c ?? null,

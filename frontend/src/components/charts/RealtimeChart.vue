@@ -4,6 +4,7 @@ import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useDeviceStore } from '@/stores/device'
 import { useChart } from '@/composables/useChart'
+import { formatTime } from '@/utils/dateTime'
 
 const props = defineProps({
   maxPoints: { type: Number, default: 180 }, // 滚动窗口（约 30 min @ 10s 粒度）
@@ -41,7 +42,7 @@ onMounted(() => {
 // 每次快照更新（lastUpdate 变化）追加一个时间点
 watch(lastUpdate, () => {
   if (furnacePV.value === null && furnaceSV.value === null) return
-  const t = new Date().toLocaleTimeString('zh-CN', { hour12: false })
+  const t = formatTime(lastUpdate.value)
   chart.push(t, [furnacePV.value, furnaceSV.value], props.maxPoints)
 })
 

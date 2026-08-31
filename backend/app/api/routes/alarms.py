@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from sqlalchemy import select
+from sqlalchemy import select, update
 
 from app.api.deps import DbDep, UserDep, get_current_user, get_hostcomm_client
 from app.api.schemas import err, ok
+from app.api.validation import Page, PageSize
 from app.api.ws_manager import ws_manager
 from app.db.models import AlarmLog
 from app.hostcomm.protocol import now_iso
@@ -24,9 +25,9 @@ async def active_alarms(db: DbDep):
 
 
 @router.get("/history", dependencies=[Depends(get_current_user)])
-async def alarm_history(db: DbDep, page: int = 1, size: int = 50):
+async def alarm_history(db: DbDep, page: Page = 1, size: PageSize = 50):
     """历史报警（分页）。权限：Observer+。"""
-    offset = max(0, (page - 1) * size)
+    offset = (page - 1) * size
     result = await db.execute(select(AlarmLog).order_by(AlarmLog.id.desc()).limit(size).offset(offset))
     rows = result.scalars().all()
     return ok([_row(r) for r in rows])
@@ -43,6 +44,15 @@ async def ack_alarm(alarm_id: int, request: Request, user: UserDep, db: DbDep):
     alarm = await db.get(AlarmLog, alarm_id)
     if alarm is None:
         raise HTTPException(status_code=404, detail=err("not_found", "报警不存在"))
+    if alarm.ack_time is not None:
+        return ok(
+            {
+                "alarm_id": alarm_id,
+                "ack_operator": alarm.ack_operator,
+                "ack_time": alarm.ack_time,
+                "command": "already_acked",
+            }
+        )
 
     # 经 HostComm 发送 ack_alarm（尽力而为：离线时仍记录本地确认）
     client = get_hostcomm_client(request)
@@ -59,10 +69,18 @@ async def ack_alarm(alarm_id: int, request: Request, user: UserDep, db: DbDep):
         except Exception:  # noqa: BLE001
             cmd_result, reason = "error", "device_comm_fault"
 
-    # 仅更新确认字段（不删除/覆盖原始报警记录）
-    alarm.ack_time = now_iso()
-    alarm.ack_operator = user.username
+    # 首次确认采用原子 compare-and-set，避免并发请求覆盖确认人与时间。
+    ack_time = now_iso()
+    update_result = await db.execute(
+        update(AlarmLog)
+        .where(AlarmLog.id == alarm_id, AlarmLog.ack_time.is_(None))
+        .values(ack_time=ack_time, ack_operator=user.username)
+    )
     await db.commit()
+    await db.refresh(alarm)
+    first_ack = update_result.rowcount == 1
+    ack_operator = alarm.ack_operator
+    ack_time = alarm.ack_time
 
     await audit_action(
         db,
@@ -74,11 +92,19 @@ async def ack_alarm(alarm_id: int, request: Request, user: UserDep, db: DbDep):
         reason_code=reason,
         client_ip=request.client.host if request.client else None,
     )
-    await ws_manager.broadcast(
-        "alarm_ack",
-        {"alarm_id": alarm_id, "ack_operator": user.username, "ack_time": alarm.ack_time},
+    if first_ack:
+        await ws_manager.broadcast(
+            "alarm_ack",
+            {"alarm_id": alarm_id, "ack_operator": ack_operator, "ack_time": ack_time},
+        )
+    return ok(
+        {
+            "alarm_id": alarm_id,
+            "ack_operator": ack_operator,
+            "ack_time": ack_time,
+            "command": cmd_result if first_ack else "already_acked",
+        }
     )
-    return ok({"alarm_id": alarm_id, "ack_operator": user.username, "ack_time": alarm.ack_time, "command": cmd_result})
 
 
 def _row(r: AlarmLog) -> dict:
@@ -89,5 +115,6 @@ def _row(r: AlarmLog) -> dict:
         "occur_time": r.occur_time,
         "clear_time": r.clear_time,
         "ack_time": r.ack_time,
+        "ack_operator": r.ack_operator,
         "text": r.text,
     }

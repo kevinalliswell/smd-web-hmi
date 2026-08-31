@@ -9,7 +9,7 @@ import time
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-from app.api.ws_manager import ConnectionManager, ws_manager
+from app.api.ws_manager import ConnectionContext, ConnectionManager, ws_manager
 from app.core.security import create_access_token
 from app.hostcomm.client import HostCommNotConnectedError, HostCommTimeoutError
 from app.main import create_app
@@ -77,7 +77,11 @@ async def test_t15_ws_status_update_push():
             self.sent.append(message)
 
     ws = FakeWS()
-    await ws_manager.connect(ws)
+    await ws_manager.connect(
+        ws,
+        ConnectionContext(username="test", role="observer"),
+        max_connections_per_user=1,
+    )
     try:
         t0 = time.monotonic()
         await ws_manager.broadcast("status_update", {"system": {"current_state": "Standby"}})
@@ -111,8 +115,9 @@ async def test_broadcast_times_out_slow_client_without_blocking_others():
 
     manager = ConnectionManager(send_timeout=0.01)
     slow, fast = SlowWS(), FastWS()
-    await manager.connect(slow)
-    await manager.connect(fast)
+    context = ConnectionContext(username="test", role="observer")
+    await manager.connect(slow, context, max_connections_per_user=2)
+    await manager.connect(fast, context, max_connections_per_user=2)
 
     started = time.monotonic()
     await manager.broadcast("status_update", {"value": 1})

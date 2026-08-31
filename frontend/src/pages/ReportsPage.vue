@@ -5,6 +5,7 @@ import { fetchTests } from '@/api/tests'
 import { fetchReports, generateReport, reportDownloadUrl } from '@/api/reports'
 import { exportLogs, logDownloadUrl } from '@/api/logs'
 import { downloadFile } from '@/utils/download'
+import { formatDateTime } from '@/utils/dateTime'
 
 const { canOperate } = useRole()
 
@@ -88,15 +89,15 @@ onMounted(loadAll)
     <div class="card gen">
       <div class="card-title">生成</div>
       <div class="form">
-        <label>试验</label>
-        <select v-model="selectedTest">
+        <label for="report-test">试验</label>
+        <select id="report-test" v-model="selectedTest">
           <option v-for="t in tests" :key="t.test_id" :value="t.test_id">
             {{ t.test_id }}（{{ t.operator_id }}{{ t.end_time ? '' : ' · 进行中' }}）
           </option>
           <option v-if="!tests.length" value="">无可用试验</option>
         </select>
-        <label>原始料层高度 H (mm)</label>
-        <input v-model="heightMm" class="height-input" placeholder="可选，用于 T10/T40/ΔH" />
+        <label for="report-height">原始料层高度 H (mm)</label>
+        <input id="report-height" v-model="heightMm" class="height-input" placeholder="可选，用于 T10/T40/ΔH" />
       </div>
       <div v-if="canOperate()" class="actions">
         <button class="primary" :disabled="busy || !selectedTest" @click="onGenerate">生成报告</button>
@@ -116,7 +117,7 @@ onMounted(loadAll)
           <tr v-for="r in reports" :key="r.id">
             <td>{{ r.id }}</td>
             <td class="mono">{{ r.test_id }}</td>
-            <td class="small mono">{{ r.generated_at }}</td>
+            <td class="small mono">{{ formatDateTime(r.generated_at) }}</td>
             <td>{{ r.operator_id }}</td>
             <td>{{ r.format }}</td>
             <td class="small">{{ r.file_size_bytes }} B</td>
