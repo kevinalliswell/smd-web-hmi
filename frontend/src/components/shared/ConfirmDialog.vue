@@ -1,20 +1,25 @@
 <script setup>
 // 通用二次确认组件。CO/安全相关操作必须走此组件，不得使用 window.confirm()。
-defineProps({
+const props = defineProps({
   modelValue: { type: Boolean, default: false },
   title: { type: String, default: '确认操作' },
   message: { type: String, default: '' },
   confirmText: { type: String, default: '确认' },
   cancelText: { type: String, default: '取消' },
   danger: { type: Boolean, default: false },
+  busy: { type: Boolean, default: false },
+  busyText: { type: String, default: '处理中…' },
+  closeOnConfirm: { type: Boolean, default: true },
 })
 const emit = defineEmits(['update:modelValue', 'confirm', 'cancel'])
 
 function onConfirm() {
+  if (props.busy) return
   emit('confirm')
-  emit('update:modelValue', false)
+  if (props.closeOnConfirm) emit('update:modelValue', false)
 }
 function onCancel() {
+  if (props.busy) return
   emit('cancel')
   emit('update:modelValue', false)
 }
@@ -22,7 +27,7 @@ function onCancel() {
 
 <template>
   <div v-if="modelValue" class="overlay" @click.self="onCancel">
-    <div class="dialog" :class="{ danger }">
+    <div class="dialog" :class="{ danger }" role="dialog" aria-modal="true">
       <div class="dlg-title">
         <span v-if="danger" class="warn-icon">⚠</span>{{ title }}
       </div>
@@ -30,8 +35,10 @@ function onCancel() {
         <slot>{{ message }}</slot>
       </div>
       <div class="dlg-actions">
-        <button @click="onCancel">{{ cancelText }}</button>
-        <button :class="danger ? 'danger' : 'primary'" @click="onConfirm">{{ confirmText }}</button>
+        <button :disabled="busy" @click="onCancel">{{ cancelText }}</button>
+        <button :class="danger ? 'danger' : 'primary'" :disabled="busy" @click="onConfirm">
+          {{ busy ? busyText : confirmText }}
+        </button>
       </div>
     </div>
   </div>
