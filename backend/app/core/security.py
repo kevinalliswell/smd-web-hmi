@@ -47,11 +47,21 @@ def verify_password(password: str, hashed: str) -> bool:
 # ---------------------------------------------------------------- JWT
 
 
-def create_access_token(username: str, role: str) -> tuple[str, datetime]:
+def create_access_token(
+    username: str,
+    role: str,
+    *,
+    must_change_password: bool = False,
+) -> tuple[str, datetime]:
     """签发 JWT，返回 (token, 过期时间)。"""
     settings = get_settings()
     expire = datetime.now(timezone.utc) + timedelta(minutes=settings.smd_jwt_expire_minutes)
-    payload = {"sub": username, "role": role, "exp": expire}
+    payload = {
+        "sub": username,
+        "role": role,
+        "must_change_password": must_change_password,
+        "exp": expire,
+    }
     token = jwt.encode(payload, settings.jwt_secret, algorithm=settings.smd_jwt_algorithm)
     return token, expire
 

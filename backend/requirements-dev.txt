@@ -1,4 +1,4 @@
-# ===== smd-web-hmi 后端开发/测试依赖 =====
+# ===== smd-web-hmi 后端开发/测试依赖（修改后须重新生成 requirements-dev.lock） =====
 -r requirements.txt
 
 # 测试
