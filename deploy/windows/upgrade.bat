@@ -14,7 +14,7 @@ if "%~1"=="" (
 )
 set "OLD=%~1"
 cd /d "%~dp0"
-if not exist "%OLD%\app\backend\requirements.lock" (
+if not exist "%OLD%\app\backend\requirements.txt" (
   echo ERROR: %OLD% does not look like an smd-web-hmi install dir.
   exit /b 1
 )
