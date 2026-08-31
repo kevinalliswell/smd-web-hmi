@@ -64,7 +64,7 @@ smd-web-hmi/
 ```bash
 cd backend
 python -m venv .venv && source .venv/bin/activate
-pip install -r requirements-dev.txt
+pip install --require-hashes -r requirements-dev.lock
 cp ../.env.example .env          # 按需修改
 alembic upgrade head             # 建表
 uvicorn app.main:app --reload --port 8000
