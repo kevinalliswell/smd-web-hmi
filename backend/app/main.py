@@ -21,7 +21,7 @@ from app.core.logging import configure_logging, get_logger
 from app.core.security import hash_password
 from app.db.database import create_all, dispose_engine, get_sessionmaker
 from app.db.models import UserAccount
-from app.hostcomm.client import HostCommClient
+from app.hostcomm.client import HostCommClient, HostCommNotConnectedError, HostCommTimeoutError
 from app.hostcomm.protocol import now_iso
 from app.services.cache import status_cache
 from app.services.state_policy import enrich_status_snapshot
@@ -213,6 +213,14 @@ def create_app() -> FastAPI:
     @app.exception_handler(RequestValidationError)
     async def _validation_exc_handler(request: Request, exc: RequestValidationError):
         return JSONResponse(status_code=422, content=err("validation_error", str(exc.errors())))
+
+    @app.exception_handler(HostCommTimeoutError)
+    async def _hostcomm_timeout_handler(request: Request, exc: HostCommTimeoutError):
+        return JSONResponse(status_code=504, content=err("device_comm_timeout", str(exc)))
+
+    @app.exception_handler(HostCommNotConnectedError)
+    async def _hostcomm_offline_handler(request: Request, exc: HostCommNotConnectedError):
+        return JSONResponse(status_code=503, content=err("device_comm_fault", str(exc)))
 
     @app.get("/health", tags=["system"])
     async def health():  # noqa: D401

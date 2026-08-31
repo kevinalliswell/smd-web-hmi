@@ -29,10 +29,13 @@ class ConnectionLimitExceeded(Exception):
 class ConnectionManager:
     """管理已认证的 WebSocket 连接，支持向所有客户端广播。"""
 
-    def __init__(self) -> None:
+    def __init__(self, *, send_timeout: float = 1.0) -> None:
+        if send_timeout <= 0:
+            raise ValueError("send_timeout must be positive")
         self._connections: dict[WebSocket, ConnectionContext] = {}
         self._pending_by_user: dict[str, int] = {}
         self._lock = asyncio.Lock()
+        self._send_timeout = send_timeout
 
     async def connect(
         self,
@@ -81,12 +84,16 @@ class ConnectionManager:
         message = {"type": msg_type, "ts": now_iso(), "data": data}
         async with self._lock:
             targets = list(self._connections)
-        dead: list[WebSocket] = []
-        for ws in targets:
+
+        async def send(ws: WebSocket) -> WebSocket | None:
             try:
-                await ws.send_json(message)
+                await asyncio.wait_for(ws.send_json(message), timeout=self._send_timeout)
+                return None
             except Exception:  # noqa: BLE001
-                dead.append(ws)
+                return ws
+
+        # 每个客户端独立发送；慢连接只消耗自己的超时窗口。
+        dead = [ws for ws in await asyncio.gather(*(send(ws) for ws in targets)) if ws is not None]
         if dead:
             async with self._lock:
                 for ws in dead:
