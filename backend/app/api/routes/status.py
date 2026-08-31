@@ -11,6 +11,7 @@ from app.api.validation import MaxPoints, TestId
 from app.core.time import normalize_utc_iso
 from app.db.models import SamplePoint
 from app.services.cache import status_cache
+from app.services.sampling_health import sampling_health
 from app.services.state_policy import enrich_status_snapshot
 
 router = APIRouter(prefix="/api", tags=["status"])
@@ -27,6 +28,7 @@ async def get_status(request: Request):
     payload = enrich_status_snapshot(snapshot)
     payload["comm_quality"] = quality
     payload["last_update"] = status_cache.last_update
+    payload["data_persistence"] = sampling_health.snapshot()
     return ok(payload)
 
 

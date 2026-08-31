@@ -24,11 +24,41 @@ from app.db.models import UserAccount
 from app.hostcomm.client import HostCommClient, HostCommNotConnectedError, HostCommTimeoutError
 from app.hostcomm.protocol import now_iso
 from app.services.cache import status_cache
+from app.services.sampling_health import sampling_health
 from app.services.state_policy import enrich_status_snapshot
 from app.services.test_runtime import active_test
 from app.services.test_session_service import reconcile_test_sessions
 
 logger = get_logger("main")
+
+SAMPLING_ALARM_CODE = "HMI-DATA-PERSISTENCE"
+
+
+async def _broadcast_sampling_alarm(*, active: bool, test_id: str | None = None) -> None:
+    """数据库不可写时仍通过内存 WebSocket 通道暴露数据完整性风险。"""
+    if active:
+        await ws_manager.broadcast(
+            "alarm_new",
+            {
+                "alarm_id": SAMPLING_ALARM_CODE,
+                "alarm_code": SAMPLING_ALARM_CODE,
+                "level": 2,
+                "text": "上位机连续写库失败，试验采样数据可能出现缺口",
+                "occur_time": now_iso(),
+                "latched": False,
+                "test_id": test_id,
+                "source": "hmi",
+            },
+        )
+        return
+    await ws_manager.broadcast(
+        "alarm_clear",
+        {
+            "alarm_id": SAMPLING_ALARM_CODE,
+            "alarm_code": SAMPLING_ALARM_CODE,
+            "clear_time": now_iso(),
+        },
+    )
 
 
 async def _seed_admin() -> None:
@@ -59,6 +89,7 @@ async def _persist_snapshot(payload: dict) -> None:
     """
     from app.services import logging_service
 
+    test_id = active_test.active_test_id
     try:
         settings = get_settings()
         sessionmaker = get_sessionmaker()
@@ -75,7 +106,18 @@ async def _persist_snapshot(payload: dict) -> None:
             if test_id:
                 await logging_service.append_sample_point(session, test_id, payload)
     except Exception as exc:  # noqa: BLE001
-        logger.warning("persist.snapshot_failed", error=str(exc))
+        should_alarm = sampling_health.record_failure()
+        logger.warning(
+            "persist.snapshot_failed",
+            error=str(exc),
+            consecutive_failures=sampling_health.consecutive_write_failures,
+            test_id=test_id,
+        )
+        if should_alarm:
+            await _broadcast_sampling_alarm(active=True, test_id=test_id)
+    else:
+        if sampling_health.record_success():
+            await _broadcast_sampling_alarm(active=False)
 
 
 async def _reconcile_test_runtime(device_snapshot: dict | None = None) -> None:

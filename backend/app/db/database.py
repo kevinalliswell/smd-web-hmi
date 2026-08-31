@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 
+from sqlalchemy import event
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
 
 from app.core.config import get_settings
@@ -13,12 +14,29 @@ _engine: AsyncEngine | None = None
 _sessionmaker: async_sessionmaker[AsyncSession] | None = None
 
 
+def _configure_sqlite_connection(dbapi_connection, _connection_record) -> None:
+    """为每个 SQLite 连接启用读写并发和有界锁等待。"""
+    cursor = dbapi_connection.cursor()
+    try:
+        cursor.execute("PRAGMA busy_timeout=5000")
+        cursor.execute("PRAGMA journal_mode=WAL")
+    finally:
+        cursor.close()
+
+
+def _create_engine(db_url: str) -> AsyncEngine:
+    engine = create_async_engine(db_url, echo=False, future=True)
+    if engine.url.get_backend_name() == "sqlite":
+        event.listen(engine.sync_engine, "connect", _configure_sqlite_connection)
+    return engine
+
+
 def get_engine() -> AsyncEngine:
     """返回（惰性创建的）全局 AsyncEngine。"""
     global _engine, _sessionmaker
     if _engine is None:
         settings = get_settings()
-        _engine = create_async_engine(settings.db_url, echo=False, future=True)
+        _engine = _create_engine(settings.db_url)
         _sessionmaker = async_sessionmaker(_engine, expire_on_commit=False)
     return _engine
 
