@@ -53,7 +53,7 @@ watch(
   <div v-if="modelValue" class="overlay" @click.self="cancel">
     <form class="dialog" @submit.prevent="submit">
       <div class="dlg-title">重置 {{ username }} 的密码</div>
-      <p class="security-note">密码只会通过加密连接提交；请勿通过聊天或纸条传递。</p>
+      <p class="security-note">请设置独立密码，且勿通过聊天或纸条传递。</p>
 
       <label>新密码</label>
       <input v-model="password" type="password" autocomplete="new-password" autofocus />
