@@ -108,6 +108,9 @@ cd frontend && npm run test             # Vitest（store + 组件）
 [`deploy/windows/README.md`](./deploy/windows/README.md)；分支、版本与发布全流程见
 [`docs/发布与维护指南.md`](./docs/发布与维护指南.md)，变更记录见 [`CHANGELOG.md`](./CHANGELOG.md)。
 
+如调试环境必须跨域访问，使用 `SMD_CORS_ORIGINS` 配置逗号分隔的明确来源；生产模式
+禁止 `*`，且后端不启用跨域凭证。仅 `HOSTCOMM_MOCK=true` 的开发环境默认允许通配来源。
+
 ## 开发阶段
 
 D2 原型已完成 → **D3 接口联调（当前，工程基线 `v0.2.x`，联调基线 `v0.3.0`）** → D4 冷态验收。
