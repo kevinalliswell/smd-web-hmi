@@ -1,6 +1,7 @@
 <script setup>
 import { storeToRefs } from 'pinia'
 import { useDeviceStore } from '@/stores/device'
+import { formatDateTime } from '@/utils/dateTime'
 
 const device = useDeviceStore()
 const { backendConnected, commQuality, lastUpdate } = storeToRefs(device)
@@ -12,7 +13,7 @@ const { backendConnected, commQuality, lastUpdate } = storeToRefs(device)
     <span class="sep">·</span>
     <span>HostComm：{{ commQuality }}</span>
     <span class="sep">·</span>
-    <span class="muted">最近更新：{{ lastUpdate || '—' }}</span>
+    <span class="muted">最近更新：{{ formatDateTime(lastUpdate) }}</span>
     <span class="spacer" />
     <span class="muted">smd-web-hmi · D3</span>
   </footer>

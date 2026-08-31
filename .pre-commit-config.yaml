@@ -1,4 +1,4 @@
-# 提交前钩子（CLAUDE.md §5：black + isort；ESLint 待 issue #12 配好前端 lint 后加入）。
+# 提交前钩子（CLAUDE.md §5：black + isort + ESLint）。
 # 启用：pip install pre-commit && pre-commit install
 # 工具配置统一读取 backend/pyproject.toml。
 repos:
@@ -13,3 +13,12 @@ repos:
     hooks:
       - id: isort
         files: ^backend/
+
+  - repo: local
+    hooks:
+      - id: frontend-eslint
+        name: frontend eslint
+        entry: npm --prefix frontend run lint
+        language: system
+        files: ^frontend/
+        pass_filenames: false

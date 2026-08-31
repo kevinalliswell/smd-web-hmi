@@ -64,13 +64,15 @@ smd-web-hmi/
 ```bash
 cd backend
 python -m venv .venv && source .venv/bin/activate
-pip install -r requirements-dev.txt
+pip install --require-hashes -r requirements-dev.lock
 cp ../.env.example .env          # 按需修改
 alembic upgrade head             # 建表
 uvicorn app.main:app --reload --port 8000
 ```
 
-> 设 `HOSTCOMM_MOCK=true` 后，后端启动时会自动连接本地 Mock。
+> 生产模式（`HOSTCOMM_MOCK=false`）必须配置至少 32 字节的
+> `SMD_JWT_SECRET`，否则后端拒绝启动。仅 Mock 开发模式允许留空，此时会告警并
+> 生成重启即失效的临时密钥。设 `HOSTCOMM_MOCK=true` 后，后端启动时会自动连接本地 Mock。
 
 ### HostComm Mock Server（无真实控制板时，另开终端）
 
@@ -89,7 +91,7 @@ npm install
 npm run dev          # 开发服务器（/api、/ws 代理到 localhost:8000）
 ```
 
-默认账户 `admin / admin`（首次登录后请尽快修改密码）。
+默认账户 `admin / admin`。首次登录只能进入安全改密页，修改初始密码并重新登录后方可使用业务功能。
 
 ### 运行测试
 
@@ -105,6 +107,9 @@ cd frontend && npm run test             # Vitest（store + 组件）
 构建 Windows 离线安装包并创建 GitHub Release。现场安装 / 升级 / 回滚见
 [`deploy/windows/README.md`](./deploy/windows/README.md)；分支、版本与发布全流程见
 [`docs/发布与维护指南.md`](./docs/发布与维护指南.md)，变更记录见 [`CHANGELOG.md`](./CHANGELOG.md)。
+
+如调试环境必须跨域访问，使用 `SMD_CORS_ORIGINS` 配置逗号分隔的明确来源；生产模式
+禁止 `*`，且后端不启用跨域凭证。仅 `HOSTCOMM_MOCK=true` 的开发环境默认允许通配来源。
 
 ## 开发阶段
 

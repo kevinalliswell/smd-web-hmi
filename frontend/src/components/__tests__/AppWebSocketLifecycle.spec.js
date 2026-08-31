@@ -51,4 +51,27 @@ describe('App WebSocket 生命周期', () => {
 
     wrapper.unmount()
   })
+
+  it('强制修改默认密码期间不建立实时连接', async () => {
+    const pinia = createPinia()
+    setActivePinia(pinia)
+    const wrapper = shallowMount(App, {
+      global: {
+        plugins: [pinia],
+        stubs: ['RouterView', 'AppHeader', 'AppSidebar', 'AppFooter'],
+      },
+    })
+    const auth = useAuthStore()
+    wsSpies.connect.mockClear()
+    wsSpies.disconnect.mockClear()
+
+    auth.mustChangePassword = true
+    auth.token = 'forced-password-token'
+    await nextTick()
+
+    expect(wsSpies.connect).not.toHaveBeenCalled()
+    expect(wsSpies.disconnect).toHaveBeenCalled()
+
+    wrapper.unmount()
+  })
 })
