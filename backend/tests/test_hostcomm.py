@@ -34,11 +34,23 @@ async def test_t02_heartbeat_stable(mock_server):
     client = await make_client(mock_server, heartbeat_interval=0.1)
     await client.connect()
     try:
-        await asyncio.sleep(1.2)  # ~12 个心跳周期
+        # 等待服务端实际返回多个 heartbeat_ack，而不是依赖固定 sleep。
+        # 慢速 CI（尤其 Windows + coverage）可能恰好在新心跳发出、ACK 尚未
+        # 被 reader 处理的瞬间唤醒，此时 missed_heartbeats 会短暂为 1。
+        initial_frames = client.stats["frames_parsed"]
+        deadline = time.monotonic() + 5.0
+        while True:
+            stats = client.stats
+            if stats["frames_parsed"] >= initial_frames + 10 and stats["missed_heartbeats"] == 0:
+                break
+            if time.monotonic() >= deadline:
+                pytest.fail(f"等待稳定心跳 ACK 超时：{stats}")
+            await asyncio.sleep(0.02)
+
         assert client.is_online
         assert client.comm_quality == "online"
-        assert client.stats["missed_heartbeats"] == 0
-        assert client.stats["heartbeat_age_s"] is not None
+        assert stats["missed_heartbeats"] == 0
+        assert stats["heartbeat_age_s"] is not None
     finally:
         await client.close()
 
