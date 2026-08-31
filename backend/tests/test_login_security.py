@@ -120,7 +120,7 @@ async def test_login_route_returns_429_without_querying_credentials(monkeypatch,
         ),
     )
     request = SimpleNamespace(client=SimpleNamespace(host="10.0.0.8"))
-    body = LoginRequest(username="missing-user", password="candidate")
+    body = LoginRequest(username="missing_user", password="candidate")
 
     with pytest.raises(HTTPException) as first:
         await auth_route.login(body, request, db_session)

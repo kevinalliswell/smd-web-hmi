@@ -78,9 +78,10 @@ async def test_change_password_clears_forced_flag_and_writes_audit(db_session) -
 
 
 async def test_change_password_rejects_reusing_current_password(db_session) -> None:
+    current_password = "secure-admin-password"
     account = UserAccount(
         username="admin",
-        hashed_pw=hash_password("admin"),
+        hashed_pw=hash_password(current_password),
         role="admin",
         display_name=None,
         is_active=1,
@@ -92,7 +93,7 @@ async def test_change_password_rejects_reusing_current_password(db_session) -> N
 
     with pytest.raises(HTTPException) as rejected:
         await change_password(
-            ChangePasswordRequest(old_password="admin", new_password="admin"),
+            ChangePasswordRequest(old_password=current_password, new_password=current_password),
             SimpleNamespace(client=None),
             CurrentUser("admin", "admin", must_change_password=True),
             db_session,
