@@ -16,8 +16,9 @@ from typing import Any
 
 from app.core.logging import get_logger
 from app.hostcomm.client import HostCommNotConnectedError, HostCommTimeoutError
-from app.hostcomm.protocol import now_iso
+from app.services import logging_service
 from app.services.command_service import CommandError, audit_action, check_parameter_crc, check_state
+from app.services.test_runtime import active_test
 
 logger = get_logger("service.parameter")
 
@@ -144,20 +145,13 @@ class ParameterService:
 
         # 6. 写参数快照（只追加）
         if db_session is not None:
-            from app.db.models import ParameterSnapshot
-
-            db_session.add(
-                ParameterSnapshot(
-                    ts=now_iso(),
-                    operator_id=operator_id,
-                    source="set_by_hmi",
-                    fw_version=readback.get("fw_version"),
-                    profile_version=readback.get("device_profile_version"),
-                    param_crc=readback.get("parameter_crc"),
-                    params_json=_normalize(rb_values),
-                )
+            await logging_service.append_parameter_snapshot(
+                db_session,
+                readback,
+                test_id=active_test.active_test_id,
+                operator_id=operator_id,
+                source="set_by_hmi",
             )
-            await db_session.commit()
 
         return {
             "result": "accepted",

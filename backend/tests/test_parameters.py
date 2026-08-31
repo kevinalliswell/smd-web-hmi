@@ -9,6 +9,7 @@ from app.db.models import OperatorAction, ParameterSnapshot
 from app.hostcomm.client import HostCommTimeoutError
 from app.services.command_service import CommandError, compute_param_crc
 from app.services.parameter_service import ParameterService
+from app.services.test_runtime import active_test
 
 VALUES = {
     "process": {"gas_switch_temp_deg_c": 500, "end_temp_deg_c": 1580, "hold_minutes": 30},
@@ -75,6 +76,17 @@ async def test_set_parameters_full_chain(db_session):
     snap = (await db_session.execute(select(ParameterSnapshot))).scalar_one()
     assert snap.source == "set_by_hmi"
     assert snap.param_crc == "0xABCD1234"
+
+
+async def test_set_parameters_snapshot_links_active_test(db_session):
+    active_test.start("TEST-ACTIVE")
+    try:
+        service = ParameterService(_FakeClient(), _FakeCache("Standby"))
+        await service.set_parameters(VALUES, _crc(), operator_id="adm", role="admin", db_session=db_session)
+        snapshot = (await db_session.execute(select(ParameterSnapshot))).scalar_one()
+        assert snapshot.test_id == "TEST-ACTIVE"
+    finally:
+        active_test.stop()
 
 
 # ----------------------------------------------------- 运行态拒绝（安全红线 8）

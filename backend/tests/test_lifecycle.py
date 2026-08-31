@@ -8,7 +8,8 @@ import pytest
 from sqlalchemy import func, select
 
 from app import main as main_module
-from app.db.models import DeviceStatus, SamplePoint, TestSession
+from app.db.models import DeviceStatus, OperatorAction, ParameterSnapshot, SamplePoint, TestSession
+from app.hostcomm.client import HostCommTimeoutError
 from app.services import logging_service
 from app.services.command_service import CommandError, CommandService, confirm_tokens
 from app.services.sampling_health import sampling_health
@@ -19,8 +20,9 @@ from app.services.test_session_service import reconcile_test_sessions
 class _FakeClient:
     is_online = True
 
-    def __init__(self):
+    def __init__(self, parameter_error=None):
         self.commands = []
+        self.parameter_error = parameter_error
 
     async def send_command(self, command, params, *, operator_id, role, confirm_token=None):
         self.commands.append(command)
@@ -32,6 +34,16 @@ class _FakeClient:
             "result": "accepted",
             "reason_code": "ok",
             "current_state": state,
+        }
+
+    async def get_parameters(self):
+        if self.parameter_error is not None:
+            raise self.parameter_error
+        return {
+            "fw_version": "FW-START",
+            "device_profile_version": "DP-START",
+            "parameter_crc": "crc-start",
+            "params": {"process": {"end_temp_deg_c": 1580}},
         }
 
 
@@ -75,6 +87,32 @@ async def test_start_test_creates_session(db_session):
     assert row is not None
     assert row.operator_id == "op001"
     assert row.end_time is None
+    snapshot = (await db_session.execute(select(ParameterSnapshot))).scalar_one()
+    assert snapshot.test_id == "TEST-20260610-001"
+    assert snapshot.source == "test_start"
+    assert snapshot.fw_version == "FW-START"
+
+
+async def test_start_parameter_readback_failure_is_audited_without_masking_accepted_start(db_session):
+    """控制板已启动时，参数回读失败不能把 API 伪装成启动失败。"""
+    service = CommandService(_FakeClient(parameter_error=HostCommTimeoutError("timeout")), _FakeCache())
+
+    result = await service.execute(
+        "start_test",
+        {"test_id": "TEST-PARAM-TIMEOUT"},
+        operator_id="op001",
+        role="operator",
+        confirm_token=confirm_tokens.issue(),
+        db_session=db_session,
+    )
+
+    assert result["result"] == "accepted"
+    assert await db_session.scalar(select(func.count()).select_from(ParameterSnapshot)) == 0
+    actions = (await db_session.execute(select(OperatorAction).order_by(OperatorAction.id))).scalars().all()
+    assert [(row.action_type, row.result, row.reason_code) for row in actions] == [
+        ("start_test", "accepted", "ok"),
+        ("capture_start_parameters", "error", "device_comm_timeout"),
+    ]
 
 
 async def test_start_test_rejects_existing_id_before_device_command(db_session):

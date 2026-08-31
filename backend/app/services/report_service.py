@@ -138,7 +138,7 @@ def _render_html(
         except (ValueError, TypeError):
             params_summary = "<p>参数快照解析失败</p>"
     else:
-        params_summary = "<p>无参数快照</p>"
+        params_summary = "<p>无本试验参数快照</p>"
 
     return f"""<!DOCTYPE html>
 <html lang="zh-CN"><head><meta charset="UTF-8">
@@ -215,10 +215,10 @@ async def generate_report(
         (await session.execute(select(EventLog).where(EventLog.test_id == test_id).order_by(EventLog.ts))).scalars()
     )
     params = await session.scalar(
-        select(ParameterSnapshot).where(ParameterSnapshot.test_id == test_id).order_by(ParameterSnapshot.id.desc())
+        select(ParameterSnapshot)
+        .where(ParameterSnapshot.test_id == test_id, ParameterSnapshot.source == "test_start")
+        .order_by(ParameterSnapshot.id.desc())
     )
-    if params is None:
-        params = await session.scalar(select(ParameterSnapshot).order_by(ParameterSnapshot.id.desc()))
 
     metrics = compute_metrics(samples, _num(options.get("original_height_mm")))
     content = _render_html(test, metrics, int(sample_count or 0), events, alarms, params)
