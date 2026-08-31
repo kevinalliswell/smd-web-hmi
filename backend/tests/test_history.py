@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from app.api.routes import tests as tests_route
+from app.api.routes.status import get_trends
 from app.db.models import AlarmLog, EventLog, SamplePoint, TestSession
 
 
@@ -57,6 +58,18 @@ async def test_samples_downsampling(db_session):
     # 字段齐全
     p = data["points"][0]
     assert "furnace_pv" in p and "delta_p" in p and "ts" in p
+
+
+async def test_cross_test_trends_downsample_in_database(db_session):
+    tid = await _seed(db_session, test_id="TEST-TREND-SQL", n=250)
+
+    result = await get_trends(db_session, test_id=tid, max_points=80)
+    data = result["data"]
+
+    assert data["total"] == 250
+    assert data["stride"] == 4
+    assert len(data["points"]) <= 80
+    assert data["points"][0]["test_id"] == tid
 
 
 async def test_events_and_alarms(db_session):

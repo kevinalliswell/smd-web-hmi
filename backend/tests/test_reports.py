@@ -80,6 +80,20 @@ async def test_generate_report(db_session, monkeypatch, tmp_path):
     assert Path(record.file_path).resolve().is_relative_to(tmp_path.resolve())
 
 
+async def test_generate_report_uses_unique_files_for_same_test(db_session, monkeypatch, tmp_path):
+    from app.core import config
+
+    monkeypatch.setattr(type(config.get_settings()), "reports_dir", property(lambda self: tmp_path))
+    test_id = await _seed(db_session, "TEST-CONCURRENT-REPORT")
+
+    first = await report_service.generate_report(db_session, test_id, operator_id="adm")
+    second = await report_service.generate_report(db_session, test_id, operator_id="adm")
+
+    assert first.file_path != second.file_path
+    assert Path(first.file_path).exists()
+    assert Path(second.file_path).exists()
+
+
 @pytest.mark.parametrize("test_id", ["../outside", r"..\outside", "bad:name", "bad*name", "x" * 65])
 async def test_generate_report_rejects_unsafe_test_id_before_file_access(db_session, monkeypatch, tmp_path, test_id):
     from app.core import config
@@ -137,3 +151,45 @@ async def test_export_logs(db_session, monkeypatch, tmp_path):
         assert any("parameter_snapshot.csv" in n for n in names)
         sample_csv = zf.read(f"{test_id}_sample_point.csv").decode("utf-8")
         assert sample_csv.count("\n") >= 7  # 表头 + 6 行
+
+
+async def test_log_export_enforces_uncompressed_size_limit(db_session, monkeypatch, tmp_path):
+    from app.core import config
+
+    monkeypatch.setattr(type(config.get_settings()), "exports_dir", property(lambda self: tmp_path))
+    test_id = await _seed(db_session, "TEST-LIMIT")
+
+    with pytest.raises(log_export_service.ExportSizeLimitError):
+        await log_export_service.export_test_logs(
+            db_session,
+            test_id,
+            task_id="a" * 32,
+            max_uncompressed_bytes=10,
+        )
+
+    assert not (tmp_path / f"{'a' * 32}.zip").exists()
+
+
+async def test_log_export_rejects_unsafe_test_id_before_creating_archive(db_session, monkeypatch, tmp_path):
+    from app.core import config
+
+    monkeypatch.setattr(type(config.get_settings()), "exports_dir", property(lambda self: tmp_path))
+
+    with pytest.raises(InvalidTestIdError):
+        await log_export_service.export_test_logs(db_session, "../outside", task_id="a" * 32)
+
+    assert list(tmp_path.glob("*.zip")) == []
+
+
+async def test_report_metrics_are_computed_in_database(db_session):
+    test_id = await _seed(db_session, "TEST-SQL-METRICS")
+
+    metrics = await report_service.compute_metrics_from_database(db_session, test_id, original_height_mm=2.0)
+
+    assert metrics["furnace_pv_max"] == 1100.0
+    assert metrics["burden_temp_max"] == 1090.0
+    assert metrics["delta_p_max"] == 100.0
+    assert metrics["delta_p_max_temp"] == 1090.0
+    assert metrics["td_drip_temp"] == 690.0
+    assert metrics["t10"] == 290.0
+    assert metrics["t40"] == 490.0

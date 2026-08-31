@@ -23,6 +23,7 @@ from app.db.database import create_all, dispose_engine, get_sessionmaker
 from app.db.models import UserAccount
 from app.hostcomm.client import HostCommClient, HostCommNotConnectedError, HostCommTimeoutError
 from app.hostcomm.protocol import now_iso
+from app.services.background_jobs import background_jobs
 from app.services.cache import status_cache
 from app.services.sampling_health import sampling_health
 from app.services.state_policy import enrich_status_snapshot
@@ -200,6 +201,7 @@ async def lifespan(app: FastAPI):
         yield
     finally:
         await client.close()
+        await background_jobs.shutdown()
         await dispose_engine()
         logger.info("app.stopped")
 
