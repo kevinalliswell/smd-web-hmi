@@ -14,6 +14,7 @@ from app.api.schemas import err, ok
 from app.api.validation import TestId
 from app.db.models import ReportExport
 from app.services import report_service
+from app.services.test_id import InvalidTestIdError
 
 router = APIRouter(prefix="/api/reports", tags=["reports"])
 
@@ -50,6 +51,8 @@ async def generate_report(body: GenerateReportRequest, user: UserDep, db: DbDep)
         record = await report_service.generate_report(
             db, body.test_id, operator_id=user.username, fmt=body.format, options=body.options
         )
+    except InvalidTestIdError as exc:
+        raise HTTPException(status_code=422, detail=err("invalid_test_id", str(exc)))
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=err("test_not_found", str(exc)))
     return ok(

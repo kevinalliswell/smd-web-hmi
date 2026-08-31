@@ -6,10 +6,12 @@ import zipfile
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
 from sqlalchemy import func, select
 
 from app.db.models import AlarmLog, ParameterSnapshot, ReportExport, SamplePoint, TestSession
 from app.services import log_export_service, report_service
+from app.services.test_id import InvalidTestIdError
 
 
 def _sample(furnace, burden, dp, drip, disp):
@@ -75,6 +77,22 @@ async def test_generate_report(db_session, monkeypatch, tmp_path):
     content = Path(record.file_path).read_text(encoding="utf-8")
     assert test_id in content
     assert "ΔPmax" in content
+    assert Path(record.file_path).resolve().is_relative_to(tmp_path.resolve())
+
+
+@pytest.mark.parametrize("test_id", ["../outside", r"..\outside", "bad:name", "bad*name", "x" * 65])
+async def test_generate_report_rejects_unsafe_test_id_before_file_access(db_session, monkeypatch, tmp_path, test_id):
+    from app.core import config
+
+    monkeypatch.setattr(type(config.get_settings()), "reports_dir", property(lambda self: tmp_path))
+    db_session.add(TestSession(test_id=test_id, operator_id="adm", start_time="2026-06-10T00:00:00Z"))
+    await db_session.commit()
+    html_files_before = set(tmp_path.parent.rglob("*.html"))
+
+    with pytest.raises(InvalidTestIdError):
+        await report_service.generate_report(db_session, test_id, operator_id="adm")
+
+    assert set(tmp_path.parent.rglob("*.html")) == html_files_before
 
 
 async def test_report_never_falls_back_to_unrelated_global_parameter_snapshot(db_session, monkeypatch, tmp_path):
