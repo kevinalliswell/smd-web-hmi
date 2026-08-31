@@ -38,6 +38,7 @@ class Settings(BaseSettings):
     smd_jwt_secret: str = ""
     smd_jwt_expire_minutes: int = 480
     smd_jwt_algorithm: str = "HS256"
+    smd_ws_max_connections_per_user: int = Field(default=3, ge=1, le=20)
     smd_cors_origins: str = ""
 
     # ---- HostComm ----
