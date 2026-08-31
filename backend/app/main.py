@@ -29,7 +29,7 @@ logger = get_logger("main")
 
 
 async def _seed_admin() -> None:
-    """首次启动插入默认 admin/admin 账户（提示修改密码）。"""
+    """首次启动插入默认 admin/admin 账户（首次登录强制修改）。"""
     sessionmaker = get_sessionmaker()
     async with sessionmaker() as session:
         result = await session.execute(select(UserAccount).where(UserAccount.username == "admin"))
@@ -41,11 +41,12 @@ async def _seed_admin() -> None:
                     role="admin",
                     display_name="系统管理员",
                     is_active=1,
+                    must_change_password=1,
                     created_at=now_iso(),
                 )
             )
             await session.commit()
-            logger.warning("seed.admin_created", note="默认密码 admin/admin，请尽快修改")
+            logger.warning("seed.admin_created", note="默认密码 admin/admin，首次登录必须修改")
 
 
 async def _persist_snapshot(payload: dict) -> None:
@@ -118,6 +119,7 @@ async def lifespan(app: FastAPI):
     """应用生命周期：建表、播种、启动 HostComm。"""
     settings = get_settings()
     configure_logging()
+    settings.validate_startup(logger)
     logger.info("app.starting", version=__version__, mock=settings.hostcomm_mock)
 
     # 开发/联调：按 ORM 元数据建表（生产用 alembic upgrade head）
@@ -138,15 +140,20 @@ async def lifespan(app: FastAPI):
 
 def create_app() -> FastAPI:
     app = FastAPI(title="smd-web-hmi 后端", version=__version__, lifespan=lifespan)
+    settings = get_settings()
 
-    # 本地工控机：允许同网段浏览器访问
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=["*"],
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
-    )
+    # 生产同源部署默认不开放 CORS；跨域调试须显式列出来源。
+    # Mock 开发模式允许通配，但 JWT 不使用 Cookie，始终禁用跨域凭证。
+    cors_origins = settings.cors_origins
+    if cors_origins:
+        wildcard = cors_origins == ["*"]
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=cors_origins,
+            allow_credentials=False,
+            allow_methods=["*"] if wildcard else ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+            allow_headers=["*"] if wildcard else ["Authorization", "Content-Type"],
+        )
 
     # REST 路由
     for module in (
@@ -191,7 +198,7 @@ def create_app() -> FastAPI:
     # 生产形态：托管前端构建产物（vite build 输出），同源伺服免 CORS。
     # 未配置且默认位置无产物时不注册任何路由（开发模式走 Vite dev server）。
     # 注意：SPA 回退是 catch-all 路由，必须在所有 API 路由之后注册。
-    dist_dir = get_settings().frontend_dist_dir
+    dist_dir = settings.frontend_dist_dir
     if dist_dir is not None:
         if (dist_dir / "assets").is_dir():
             app.mount("/assets", StaticFiles(directory=dist_dir / "assets"), name="assets")

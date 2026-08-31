@@ -1,6 +1,7 @@
 <script setup>
 // 报警表：可用于活跃报警（带确认按钮）或历史报警。L3 行红色高亮。
 import AlarmBadge from './AlarmBadge.vue'
+import { formatDateTime } from '@/utils/dateTime'
 
 defineProps({
   alarms: { type: Array, default: () => [] },
@@ -31,8 +32,8 @@ const emit = defineEmits(['ack'])
         <td><AlarmBadge :level="a.level ?? 0" /></td>
         <td class="mono">{{ a.alarm_code }}</td>
         <td>{{ a.text }}</td>
-        <td class="mono small">{{ a.occur_time }}</td>
-        <td v-if="showClear" class="mono small">{{ a.clear_time || '—' }}</td>
+        <td class="mono small">{{ formatDateTime(a.occur_time) }}</td>
+        <td v-if="showClear" class="mono small">{{ formatDateTime(a.clear_time) }}</td>
         <td v-if="showAck">
           <span v-if="a.ack_time" class="acked muted">✓ {{ a.ack_operator }}</span>
           <button v-else-if="canAck" class="ack-btn" @click="emit('ack', a)">确认</button>
