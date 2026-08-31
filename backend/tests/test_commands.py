@@ -83,6 +83,22 @@ def test_t09_set_parameters_running_rejected():
     check_state("set_parameters", "Standby")
 
 
+@pytest.mark.parametrize(
+    "state",
+    ["GasSwitch", "reducing", "HOLDING", "Leak-Check", "End", "Fault/Purge", "mystery-state", None],
+)
+def test_t09_set_parameters_rejects_active_or_unknown_states(state):
+    """固件别名、大小写变体、未知/缺失状态均不得绕过参数下发防线。"""
+    with pytest.raises(CommandError) as ei:
+        check_state("set_parameters", state)
+    assert ei.value.error_code == "state_not_allowed"
+
+
+@pytest.mark.parametrize("state", ["Standby", "idle", "Complete", "Fault"])
+def test_t09_set_parameters_allows_explicit_non_running_states(state):
+    check_state("set_parameters", state)
+
+
 # ---------------------------------------------------- T10 操作日志写库
 async def test_t10_operator_action_logged(db_session):
     """T10：命令执行后 operator_action 表有记录。"""

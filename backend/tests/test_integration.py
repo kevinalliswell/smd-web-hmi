@@ -68,10 +68,13 @@ async def test_e2e_realtime_status_pipeline(monkeypatch):
         updates = [m for m in ws.sent if m["type"] == "status_update"]
         assert updates, "应在 1s 内收到 status_update 推送"
         assert updates[-1]["data"]["system"]["current_state"] == "Standby"
+        assert updates[-1]["data"]["system"]["operation_state"] == "idle"
+        assert updates[-1]["data"]["system"]["can_start_test"] is True
 
         # 内存缓存也应被同一回调更新
         snapshot = await status_cache.get_snapshot()
         assert snapshot["system"]["current_state"] == "Standby"
+        assert snapshot["system"]["operation_state"] == "idle"
         assert client.is_online
     finally:
         await ws_manager.disconnect(ws)

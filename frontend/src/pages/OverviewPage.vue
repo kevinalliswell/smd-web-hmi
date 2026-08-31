@@ -10,7 +10,7 @@ import StartTestModal from '@/components/command/StartTestModal.vue'
 import StopTestModal from '@/components/command/StopTestModal.vue'
 
 const device = useDeviceStore()
-const { snapshot, currentState, isRunning } = storeToRefs(device)
+const { snapshot, currentState, isRunning, canStartTest, canStopTest } = storeToRefs(device)
 const { canOperate } = useRole()
 
 const showStart = ref(false)
@@ -85,8 +85,8 @@ onMounted(async () => {
       <div class="card ops">
         <div class="card-title">操作</div>
         <template v-if="canOperate()">
-          <button class="primary" :disabled="isRunning" @click="showStart = true">▶ 启动试验</button>
-          <button class="danger" :disabled="!isRunning" @click="showStop = true">■ 停止试验</button>
+          <button class="primary" :disabled="!canStartTest" @click="showStart = true">▶ 启动试验</button>
+          <button class="danger" :disabled="!canStopTest" @click="showStop = true">■ 停止试验</button>
           <p class="ops-hint muted">CO 相关操作均需二次确认，最终由控制板裁决。</p>
         </template>
         <p v-else class="ops-hint muted">当前角色（仅查看）无操作权限。</p>

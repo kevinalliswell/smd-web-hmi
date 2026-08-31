@@ -4,6 +4,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useDeviceStore } from '@/stores/device'
 import { useAlarmsStore } from '@/stores/alarms'
 import { useTestStore } from '@/stores/test'
+import { fetchStatus } from '@/api/status'
 
 let socket = null
 let reconnectDelay = 1000
@@ -55,18 +56,32 @@ export function useWebSocket() {
   function connect() {
     if (!auth.token || (socket && socket.readyState <= 1)) return
     manualClose = false
-    socket = new WebSocket(wsUrl(auth.token))
+    device.setBackendConnected(false)
+    device.setCommQuality('offline')
+    const activeSocket = new WebSocket(wsUrl(auth.token))
+    socket = activeSocket
 
-    socket.onopen = () => {
+    activeSocket.onopen = () => {
+      if (socket !== activeSocket) return
       reconnectDelay = 1000
-      device.setCommQuality('online')
+      device.setBackendConnected(true)
+      // 浏览器↔后端 WS 与后端↔控制板 HostComm 是两条链路。
+      // 建连后通过 REST 读取 HostComm 当前真值，不能把 WS onopen 当作设备在线。
+      fetchStatus()
+        .then((snapshot) => {
+          if (socket === activeSocket && activeSocket.readyState === WebSocket.OPEN) {
+            device.updateSnapshot(snapshot)
+          }
+        })
+        .catch(() => {})
       // 应用层心跳
       pingTimer = setInterval(() => {
         if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ type: 'ping' }))
       }, 15000)
     }
 
-    socket.onmessage = (ev) => {
+    activeSocket.onmessage = (ev) => {
+      if (socket !== activeSocket) return
       try {
         dispatch(JSON.parse(ev.data))
       } catch {
@@ -74,25 +89,31 @@ export function useWebSocket() {
       }
     }
 
-    socket.onclose = () => {
+    activeSocket.onclose = () => {
+      if (socket !== activeSocket) return
       clearInterval(pingTimer)
+      device.setBackendConnected(false)
       device.setCommQuality('offline')
+      if (socket === activeSocket) socket = null
       if (!manualClose && auth.token) {
         setTimeout(connect, reconnectDelay)
         reconnectDelay = Math.min(reconnectDelay * 2, RECONNECT_MAX)
       }
     }
 
-    socket.onerror = () => socket?.close()
+    activeSocket.onerror = () => activeSocket.close()
   }
 
   function disconnect() {
     manualClose = true
     clearInterval(pingTimer)
     if (socket) {
-      socket.close()
+      const activeSocket = socket
+      activeSocket.close()
       socket = null
     }
+    device.setBackendConnected(false)
+    device.setCommQuality('offline')
   }
 
   return { connect, disconnect }
