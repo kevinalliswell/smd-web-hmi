@@ -11,6 +11,7 @@ import {
 import { generateReport, reportDownloadUrl } from '@/api/reports'
 import { exportLogs, logDownloadUrl } from '@/api/logs'
 import { downloadFile } from '@/utils/download'
+import { formatDateTime } from '@/utils/dateTime'
 import HistoryChart from '@/components/charts/HistoryChart.vue'
 import AlarmTable from '@/components/alarms/AlarmTable.vue'
 
@@ -106,7 +107,7 @@ onMounted(loadTests)
             >
               <td class="mono">{{ t.test_id }}</td>
               <td>{{ t.operator_id }}</td>
-              <td class="small mono">{{ (t.start_time || '').slice(0, 19) }}</td>
+              <td class="small mono">{{ formatDateTime(t.start_time) }}</td>
               <td>
                 <span v-if="!t.end_time" class="running">进行中</span>
                 <span v-else class="muted">{{ t.end_reason || '已结束' }}</span>
@@ -136,8 +137,8 @@ onMounted(loadTests)
             </div>
             <div class="meta">
               <div><span class="k">操作员</span>{{ selected.operator_id }}</div>
-              <div><span class="k">开始</span>{{ selected.start_time }}</div>
-              <div><span class="k">结束</span>{{ selected.end_time || '进行中' }}</div>
+              <div><span class="k">开始</span>{{ formatDateTime(selected.start_time) }}</div>
+              <div><span class="k">结束</span>{{ selected.end_time ? formatDateTime(selected.end_time) : '进行中' }}</div>
               <div><span class="k">结束原因</span>{{ selected.end_reason || '—' }}</div>
               <div><span class="k">采样点</span>{{ selected.sample_count }}</div>
               <div><span class="k">报警数</span>{{ selected.alarm_count }}</div>
@@ -161,7 +162,7 @@ onMounted(loadTests)
               <tbody>
                 <tr v-if="!events.length"><td colspan="5" class="empty muted">无事件</td></tr>
                 <tr v-for="(e, i) in events" :key="i">
-                  <td class="small mono">{{ e.ts }}</td>
+                  <td class="small mono">{{ formatDateTime(e.ts) }}</td>
                   <td>{{ e.source }}</td>
                   <td class="mono">{{ e.event_code }}</td>
                   <td>L{{ e.level }}</td>

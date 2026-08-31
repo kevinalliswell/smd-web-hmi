@@ -10,10 +10,10 @@ from __future__ import annotations
 
 import json
 import uuid
-from datetime import datetime
 from typing import Any
 
 from app.core.logging import get_logger
+from app.core.time import utc_now_iso
 
 logger = get_logger("hostcomm.protocol")
 
@@ -87,8 +87,8 @@ class FrameParser:
 
 
 def now_iso() -> str:
-    """返回带本地时区的 ISO 8601 时间串。"""
-    return datetime.now().astimezone().isoformat(timespec="seconds")
+    """返回 UTC ISO 8601 时间串。"""
+    return utc_now_iso()
 
 
 def new_msg_id(prefix: str = "pc") -> str:
