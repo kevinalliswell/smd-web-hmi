@@ -31,6 +31,7 @@ class LoginData(BaseModel):
     token: str
     role: str
     display_name: str | None = None
+    must_change_password: bool = False
     expires_at: datetime
 
 

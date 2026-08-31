@@ -16,6 +16,17 @@ if str(BACKEND_DIR) not in sys.path:
 from app.db.models import Base  # noqa: E402
 
 
+@pytest.fixture(autouse=True)
+def secure_test_settings(monkeypatch):
+    """测试进程显式使用合规 JWT 密钥，避免依赖开发兜底。"""
+    from app.core.config import get_settings
+
+    monkeypatch.setenv("SMD_JWT_SECRET", "test-jwt-secret-with-at-least-32-bytes")
+    get_settings.cache_clear()
+    yield
+    get_settings.cache_clear()
+
+
 def free_port() -> int:
     """返回一个本机空闲端口。"""
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)

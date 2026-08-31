@@ -9,6 +9,7 @@ export const useAuthStore = defineStore('auth', () => {
   const username = ref(localStorage.getItem('smd_username') || '')
   const role = ref(localStorage.getItem('smd_role') || '')
   const displayName = ref(localStorage.getItem('smd_display') || '')
+  const mustChangePassword = ref(localStorage.getItem('smd_must_change_password') === '1')
 
   const isLoggedIn = computed(() => !!token.value)
   const canOperate = computed(() => hasRole('operator'))
@@ -25,10 +26,12 @@ export const useAuthStore = defineStore('auth', () => {
     username.value = usernameInput
     role.value = data.role
     displayName.value = data.display_name || usernameInput
+    mustChangePassword.value = Boolean(data.must_change_password)
     localStorage.setItem('smd_token', token.value)
     localStorage.setItem('smd_username', username.value)
     localStorage.setItem('smd_role', role.value)
     localStorage.setItem('smd_display', displayName.value)
+    localStorage.setItem('smd_must_change_password', mustChangePassword.value ? '1' : '0')
     return data
   }
 
@@ -37,7 +40,8 @@ export const useAuthStore = defineStore('auth', () => {
     username.value = ''
     role.value = ''
     displayName.value = ''
-    ;['smd_token', 'smd_username', 'smd_role', 'smd_display'].forEach((k) =>
+    mustChangePassword.value = false
+    ;['smd_token', 'smd_username', 'smd_role', 'smd_display', 'smd_must_change_password'].forEach((k) =>
       localStorage.removeItem(k),
     )
   }
@@ -52,6 +56,7 @@ export const useAuthStore = defineStore('auth', () => {
     username,
     role,
     displayName,
+    mustChangePassword,
     isLoggedIn,
     canOperate,
     canAdmin,

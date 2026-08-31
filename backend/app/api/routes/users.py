@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy import select
 
@@ -10,7 +10,7 @@ from app.api.deps import DbDep, UserDep, require_role
 from app.api.schemas import err, ok
 from app.api.validation import DisplayName, LoginPassword, NewPassword, Role, Username
 from app.core.security import hash_password
-from app.db.models import UserAccount
+from app.db.models import OperatorAction, UserAccount
 from app.hostcomm.protocol import now_iso
 
 router = APIRouter(prefix="/api/users", tags=["users"])
@@ -67,6 +67,7 @@ async def create_user(body: CreateUserRequest, db: DbDep):
             role=body.role,
             display_name=body.display_name,
             is_active=1,
+            must_change_password=1,
             created_at=now_iso(),
         )
     )
@@ -93,6 +94,7 @@ async def update_user(user_id: int, body: UpdateUserRequest, user: UserDep, db: 
         account.display_name = body.display_name
     if body.new_password:
         account.hashed_pw = hash_password(body.new_password)
+        account.must_change_password = 1
     await db.commit()
     return ok(
         {"id": account.id, "username": account.username, "role": account.role, "is_active": bool(account.is_active)}
@@ -100,7 +102,7 @@ async def update_user(user_id: int, body: UpdateUserRequest, user: UserDep, db: 
 
 
 @router.post("/change-password")
-async def change_password(body: ChangePasswordRequest, user: UserDep, db: DbDep):
+async def change_password(body: ChangePasswordRequest, request: Request, user: UserDep, db: DbDep):
     """修改自己的密码。权限：登录用户。"""
     from app.core.security import verify_password
 
@@ -108,6 +110,24 @@ async def change_password(body: ChangePasswordRequest, user: UserDep, db: DbDep)
     account = result.scalar_one_or_none()
     if account is None or not verify_password(body.old_password, account.hashed_pw):
         raise HTTPException(status_code=400, detail=err("invalid_credentials", "原密码错误"))
+    if verify_password(body.new_password, account.hashed_pw):
+        raise HTTPException(status_code=400, detail=err("password_reuse", "新密码不能与当前密码相同"))
+    if len(body.new_password) < 8:
+        raise HTTPException(status_code=400, detail=err("weak_password", "新密码至少需要 8 个字符"))
     account.hashed_pw = hash_password(body.new_password)
+    account.must_change_password = 0
+    account.failed_login_attempts = 0
+    account.locked_until = None
+    db.add(
+        OperatorAction(
+            ts=now_iso(),
+            operator_id=account.username,
+            operator_role=account.role,
+            action_type="change_password",
+            result="success",
+            reason_code="self_service",
+            client_ip=request.client.host if request.client else "unknown",
+        )
+    )
     await db.commit()
-    return ok({"message": "密码已更新"})
+    return ok({"message": "密码已更新，请重新登录", "must_change_password": False})
