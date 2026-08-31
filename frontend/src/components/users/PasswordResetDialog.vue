@@ -50,17 +50,17 @@ watch(
 </script>
 
 <template>
-  <div v-if="modelValue" class="overlay" @click.self="cancel">
-    <form class="dialog" @submit.prevent="submit">
-      <div class="dlg-title">重置 {{ username }} 的密码</div>
+  <div v-if="modelValue" class="overlay" @click.self="cancel" @keydown.esc="cancel">
+    <form class="dialog" role="dialog" aria-modal="true" aria-labelledby="password-reset-title" @submit.prevent="submit">
+      <div id="password-reset-title" class="dlg-title">重置 {{ username }} 的密码</div>
       <p class="security-note">请设置独立密码，且勿通过聊天或纸条传递。</p>
 
-      <label>新密码</label>
-      <input v-model="password" type="password" autocomplete="new-password" autofocus />
+      <label for="reset-password">新密码</label>
+      <input id="reset-password" v-model="password" type="password" autocomplete="new-password" autofocus />
       <div class="strength" :class="{ ok: password.length >= 8 }">强度：{{ strength }}</div>
 
-      <label>再次输入新密码</label>
-      <input v-model="confirmation" type="password" autocomplete="new-password" />
+      <label for="reset-password-confirmation">再次输入新密码</label>
+      <input id="reset-password-confirmation" v-model="confirmation" type="password" autocomplete="new-password" />
       <div v-if="!matches" class="field-error">两次输入不一致</div>
       <div v-if="error" class="server-error">{{ error }}</div>
 
@@ -89,7 +89,7 @@ watch(
 label { color: var(--text-sec); font-size: 12px; margin-top: 6px; }
 .strength { color: var(--yellow); font-size: 11px; }
 .strength.ok { color: var(--text-sec); }
-.field-error { color: #fca5a5; font-size: 11px; }
-.server-error { color: #fca5a5; background: var(--red-dim); border: 1px solid var(--red); border-radius: 5px; padding: 8px; font-size: 12px; }
+.field-error { color: var(--danger-text); font-size: 11px; }
+.server-error { color: var(--danger-text); background: var(--red-dim); border: 1px solid var(--red); border-radius: 5px; padding: 8px; font-size: 12px; }
 .dlg-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 14px; }
 </style>

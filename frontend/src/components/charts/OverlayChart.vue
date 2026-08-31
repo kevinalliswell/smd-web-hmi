@@ -11,6 +11,7 @@ import {
   Tooltip,
   Legend,
 } from 'chart.js'
+import { getChartTheme, subscribeChartTheme } from '@/utils/chartTheme'
 
 Chart.register(LineController, LineElement, PointElement, LinearScale, CategoryScale, Tooltip, Legend)
 
@@ -22,8 +23,7 @@ const props = defineProps({
 
 const canvas = ref(null)
 let chart = null
-const GRID = 'rgba(138,146,170,0.12)'
-const TICK = '#8892aa'
+let unsubscribeTheme = null
 
 function build() {
   const maxLen = props.series.reduce((m, s) => Math.max(m, s.values.length), 0)
@@ -40,6 +40,7 @@ function build() {
 }
 
 function render() {
+  const colors = getChartTheme()
   if (chart) {
     chart.data = build()
     chart.options.scales.y.title.text = props.yLabel
@@ -55,17 +56,21 @@ function render() {
       animation: false,
       interaction: { intersect: false, mode: 'index' },
       scales: {
-        x: { grid: { color: GRID }, ticks: { color: TICK, maxTicksLimit: 12 }, title: { display: true, text: '采样序号', color: TICK } },
-        y: { grid: { color: GRID }, ticks: { color: TICK }, title: { display: true, text: props.yLabel, color: TICK } },
+        x: { grid: { color: colors.grid }, ticks: { color: colors.tick, maxTicksLimit: 12 }, title: { display: true, text: '采样序号', color: colors.tick } },
+        y: { grid: { color: colors.grid }, ticks: { color: colors.tick }, title: { display: true, text: props.yLabel, color: colors.tick } },
       },
-      plugins: { legend: { labels: { color: TICK, boxWidth: 12 } } },
+      plugins: { legend: { labels: { color: colors.tick, boxWidth: 12 } } },
     },
   })
 }
 
-onMounted(render)
+onMounted(() => {
+  render()
+  unsubscribeTheme = subscribeChartTheme(() => chart)
+})
 watch(() => [props.series, props.yLabel], render, { deep: true })
 onBeforeUnmount(() => {
+  unsubscribeTheme?.()
   chart?.destroy()
   chart = null
 })
@@ -81,4 +86,5 @@ onBeforeUnmount(() => {
 <style scoped>
 .chart-wrap { position: relative; height: 360px; width: 100%; }
 .empty { position: absolute; inset: 0; display: grid; place-items: center; }
+@media (max-width: 560px) { .chart-wrap { height: 280px; } }
 </style>

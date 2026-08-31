@@ -26,9 +26,9 @@ function onCancel() {
 </script>
 
 <template>
-  <div v-if="modelValue" class="overlay" @click.self="onCancel">
-    <div class="dialog" :class="{ danger }" role="dialog" aria-modal="true">
-      <div class="dlg-title">
+  <div v-if="modelValue" class="overlay" @click.self="onCancel" @keydown.esc.stop="onCancel">
+    <div class="dialog" :class="{ danger }" role="dialog" aria-modal="true" aria-labelledby="confirm-dialog-title">
+      <div id="confirm-dialog-title" class="dlg-title">
         <span v-if="danger" class="warn-icon">⚠</span>{{ title }}
       </div>
       <div class="dlg-body">

@@ -16,6 +16,8 @@ describe('ConfirmDialog', () => {
     expect(w.find('.dialog').exists()).toBe(true)
     expect(w.text()).toContain('确认下发')
     expect(w.text()).toContain('将下发 3 项参数')
+    expect(w.get('[role="dialog"]').attributes('aria-modal')).toBe('true')
+    expect(w.get('[role="dialog"]').attributes('aria-labelledby')).toBe('confirm-dialog-title')
   })
 
   it('点击确认按钮 emit confirm 并关闭', async () => {
@@ -36,6 +38,15 @@ describe('ConfirmDialog', () => {
   it('danger 模式应用危险样式类', () => {
     const w = mount(ConfirmDialog, { props: { modelValue: true, danger: true } })
     expect(w.find('.dialog').classes()).toContain('danger')
+  })
+
+  it('按 Escape 触发安全取消', async () => {
+    const w = mount(ConfirmDialog, { props: { modelValue: true } })
+
+    await w.get('button').trigger('keydown', { key: 'Escape' })
+
+    expect(w.emitted('cancel')).toHaveLength(1)
+    expect(w.emitted('update:modelValue')[0]).toEqual([false])
   })
 
   it('busy 时禁止确认、取消与遮罩关闭', async () => {

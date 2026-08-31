@@ -45,6 +45,6 @@ async function onConfirm() {
 </template>
 
 <style scoped>
-.co-warn { background: var(--red-dim); border: 1px solid var(--red); color: #fca5a5; border-radius: 6px; padding: 10px; font-size: 12px; line-height: 1.6; }
-.err { color: #fca5a5; font-size: 12px; }
+.co-warn { background: var(--red-dim); border: 1px solid var(--red); color: var(--danger-text); border-radius: 6px; padding: 10px; font-size: 12px; line-height: 1.6; }
+.err { color: var(--danger-text); font-size: 12px; }
 </style>

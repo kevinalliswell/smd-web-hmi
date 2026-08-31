@@ -57,4 +57,5 @@ onBeforeUnmount(() => chart.destroy())
 
 <style scoped>
 .chart-wrap { position: relative; height: 260px; width: 100%; }
+@media (max-width: 560px) { .chart-wrap { height: 220px; } }
 </style>

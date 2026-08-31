@@ -95,7 +95,7 @@ onMounted(loadTests)
 
 <template>
   <div class="page">
-    <div class="page-title">历史试验</div>
+    <h1 class="page-title">历史试验</h1>
     <div v-if="banner" class="banner" :class="banner.type">{{ banner.text }}</div>
 
     <div class="layout">
@@ -190,8 +190,8 @@ onMounted(loadTests)
 .page { display: flex; flex-direction: column; gap: 16px; }
 .page-title { font-size: 18px; font-weight: 700; }
 .banner { border-radius: 6px; padding: 8px 12px; font-size: 12px; }
-.banner.ok { background: var(--green-dim); border: 1px solid var(--green); color: #86efac; }
-.banner.err { background: var(--red-dim); border: 1px solid var(--red); color: #fca5a5; }
+.banner.ok { background: var(--green-dim); border: 1px solid var(--green); color: var(--success-text); }
+.banner.err { background: var(--red-dim); border: 1px solid var(--red); color: var(--danger-text); }
 .banner.info { background: var(--accent-dim); border: 1px solid var(--accent); color: var(--accent); }
 .layout { display: grid; grid-template-columns: 360px 1fr; gap: 16px; align-items: start; }
 .detail { display: flex; flex-direction: column; gap: 16px; }
@@ -212,4 +212,5 @@ onMounted(loadTests)
 .meta { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; font-size: 13px; }
 .meta .k { display: inline-block; min-width: 64px; color: var(--text-sec); font-size: 12px; }
 @media (max-width: 1100px) { .layout { grid-template-columns: 1fr; } }
+@media (max-width: 700px) { .meta { grid-template-columns: 1fr; } .card-head { flex-wrap: wrap; } }
 </style>

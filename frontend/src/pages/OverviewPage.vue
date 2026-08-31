@@ -50,7 +50,7 @@ onMounted(async () => {
 <template>
   <div class="page">
     <div class="page-head">
-      <div class="page-title">实时总览</div>
+      <h1 class="page-title">实时总览</h1>
       <div class="state-badge" :class="{ running: isRunning }">{{ currentState }}</div>
     </div>
 
@@ -117,4 +117,6 @@ onMounted(async () => {
 .ops button { width: 100%; }
 .ops-hint { font-size: 11px; line-height: 1.5; }
 @media (max-width: 1200px) { .kpi-grid { grid-template-columns: repeat(3, 1fr); } .row { grid-template-columns: 1fr; } }
+@media (max-width: 700px) { .kpi-grid { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 420px) { .kpi-grid { grid-template-columns: 1fr; } .kpi-val { font-size: 24px; } }
 </style>

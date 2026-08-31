@@ -124,7 +124,7 @@ onMounted(load)
 <template>
   <div class="page">
     <div class="page-head">
-      <div class="page-title">参数配置</div>
+      <h1 class="page-title">参数配置</h1>
       <div v-if="deviceCrc" class="crc mono">设备参数 CRC：{{ deviceCrc }}</div>
       <div class="spacer" />
       <button @click="load">刷新</button>
@@ -143,8 +143,9 @@ onMounted(load)
           <div class="card-title">{{ groupLabel(g) }}</div>
           <div class="fields">
             <div v-for="f in Object.keys(form[g])" :key="f" class="field">
-              <label>{{ fieldLabel(f) }}</label>
+              <label :for="`parameter-${g}-${f}`">{{ fieldLabel(f) }}</label>
               <input
+                :id="`parameter-${g}-${f}`"
                 :value="form[g][f]"
                 :disabled="!editable"
                 :class="{ changed: Number(original?.[g]?.[f]) !== Number(form[g][f]) }"
@@ -198,8 +199,8 @@ onMounted(load)
 .crc { color: var(--text-sec); font-size: 12px; }
 .spacer { flex: 1; }
 .banner { border-radius: 6px; padding: 8px 12px; font-size: 12px; }
-.banner.ok { background: var(--green-dim); border: 1px solid var(--green); color: #86efac; }
-.banner.err { background: var(--red-dim); border: 1px solid var(--red); color: #fca5a5; }
+.banner.ok { background: var(--green-dim); border: 1px solid var(--green); color: var(--success-text); }
+.banner.err { background: var(--red-dim); border: 1px solid var(--red); color: var(--danger-text); }
 .groups { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
 .card-title { font-weight: 700; margin-bottom: 10px; }
 .fields { display: flex; flex-direction: column; gap: 8px; }
@@ -213,4 +214,5 @@ onMounted(load)
 .diff th { color: var(--text-sec); font-weight: 600; }
 .diff .changed { color: var(--yellow); }
 @media (max-width: 1000px) { .groups { grid-template-columns: 1fr; } }
+@media (max-width: 560px) { .page-head, .actions { align-items: stretch; flex-direction: column; } .field input { width: 112px; } }
 </style>

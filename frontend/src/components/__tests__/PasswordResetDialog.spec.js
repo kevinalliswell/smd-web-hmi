@@ -12,6 +12,8 @@ describe('PasswordResetDialog', () => {
     expect(inputs).toHaveLength(2)
     expect(inputs.every((input) => input.attributes('type') === 'password')).toBe(true)
     expect(opened.text()).toContain('alice')
+    expect(opened.get('[role="dialog"]').attributes('aria-modal')).toBe('true')
+    expect(opened.get('[role="dialog"]').attributes('aria-labelledby')).toBe('password-reset-title')
   })
 
   it('密码过短或两次不一致时禁止提交', async () => {
@@ -47,5 +49,13 @@ describe('PasswordResetDialog', () => {
     })
     expect(wrapper.text()).toContain('重置失败')
     expect(wrapper.get('[data-test="submit"]').attributes('disabled')).toBeDefined()
+  })
+
+  it('按 Escape 可安全取消', async () => {
+    const wrapper = mount(PasswordResetDialog, { props: { modelValue: true, username: 'alice' } })
+
+    await wrapper.get('input').trigger('keydown', { key: 'Escape' })
+
+    expect(wrapper.emitted('update:modelValue')[0]).toEqual([false])
   })
 })

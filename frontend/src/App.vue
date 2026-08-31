@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, onUnmounted, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import AppHeader from '@/components/layout/AppHeader.vue'
 import AppSidebar from '@/components/layout/AppSidebar.vue'
@@ -11,15 +11,27 @@ import { useWebSocket } from '@/composables/useWebSocket'
 const route = useRoute()
 const auth = useAuthStore()
 const alarms = useAlarmsStore()
+const navigationOpen = ref(false)
 
 // 登录页不显示主框架（顶栏/侧栏/底栏）
 const isChrome = computed(() => !['login', 'change-password'].includes(route.name) && auth.isLoggedIn)
 
 // 全局 WebSocket：登录后连接，按消息分发到各 store
 const ws = useWebSocket()
+function closeNavigation() {
+  navigationOpen.value = false
+}
+
+function onKeydown(event) {
+  if (event.key === 'Escape') closeNavigation()
+}
+
 onMounted(() => {
   auth.checkToken()
+  window.addEventListener('keydown', onKeydown)
 })
+
+watch(() => route.name, closeNavigation)
 
 watch(
   () => [auth.isLoggedIn, auth.mustChangePassword],
@@ -34,16 +46,28 @@ watch(
   },
   { immediate: true },
 )
-onUnmounted(() => ws.disconnect())
+onUnmounted(() => {
+  window.removeEventListener('keydown', onKeydown)
+  ws.disconnect()
+})
 </script>
 
 <template>
   <div v-if="isChrome" class="layout">
-    <AppHeader />
+    <AppHeader
+      :navigation-open="navigationOpen"
+      @toggle-navigation="navigationOpen = !navigationOpen"
+    />
     <div class="body">
-      <AppSidebar />
+      <div
+        v-if="navigationOpen"
+        class="nav-backdrop"
+        aria-hidden="true"
+        @click="closeNavigation"
+      />
+      <AppSidebar :open="navigationOpen" @navigate="closeNavigation" />
       <main class="content">
-        <RouterView />
+        <div class="content-inner"><RouterView /></div>
       </main>
     </div>
     <AppFooter />
@@ -52,7 +76,29 @@ onUnmounted(() => ws.disconnect())
 </template>
 
 <style scoped>
-.layout { display: flex; flex-direction: column; height: 100%; }
-.body { display: flex; flex: 1; min-height: 0; }
-.content { flex: 1; overflow-y: auto; padding: 16px; }
+.layout { display: flex; flex-direction: column; height: 100%; min-width: 0; }
+.body { position: relative; display: flex; flex: 1; min-width: 0; min-height: 0; }
+.content { flex: 1; min-width: 0; overflow: auto; padding: 18px; }
+.content-inner { width: min(100%, 1600px); min-width: 0; margin: 0 auto; }
+.nav-backdrop { display: none; }
+
+@media (max-width: 900px) {
+  .content { padding: 12px; }
+  .nav-backdrop {
+    position: fixed;
+    z-index: 20;
+    inset: var(--header-h) 0 var(--footer-h) 0;
+    display: block;
+    width: auto;
+    height: auto;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: var(--overlay);
+  }
+}
+
+@media (max-width: 480px) {
+  .content { padding: 8px; }
+}
 </style>

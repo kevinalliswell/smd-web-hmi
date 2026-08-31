@@ -14,6 +14,7 @@ import {
   Legend,
 } from 'chart.js'
 import { useDeviceStore } from '@/stores/device'
+import { getChartTheme, subscribeChartTheme } from '@/utils/chartTheme'
 import { formatTime } from '@/utils/dateTime'
 
 Chart.register(LineController, LineElement, PointElement, LinearScale, CategoryScale, Tooltip, Legend)
@@ -26,11 +27,10 @@ const device = useDeviceStore()
 const { lastUpdate, snapshot } = storeToRefs(device)
 const canvas = ref(null)
 let chart = null
-
-const GRID = 'rgba(138,146,170,0.12)'
-const TICK = '#8892aa'
+let unsubscribeTheme = null
 
 onMounted(() => {
+  const colors = getChartTheme()
   chart = new Chart(canvas.value, {
     type: 'line',
     data: {
@@ -49,13 +49,14 @@ onMounted(() => {
       animation: false,
       interaction: { intersect: false, mode: 'index' },
       scales: {
-        x: { grid: { color: GRID }, ticks: { color: TICK, maxTicksLimit: 8 } },
-        yTemp: { position: 'left', grid: { color: GRID }, ticks: { color: '#38bdf8' }, title: { display: true, text: '温度 ℃', color: '#38bdf8' } },
-        yAux: { position: 'right', grid: { drawOnChartArea: false }, ticks: { color: TICK }, title: { display: true, text: 'Pa / mm / g', color: TICK } },
+        x: { grid: { color: colors.grid }, ticks: { color: colors.tick, maxTicksLimit: 8 } },
+        yTemp: { position: 'left', grid: { color: colors.grid }, ticks: { color: colors.accent }, title: { display: true, text: '温度 ℃', color: colors.accent } },
+        yAux: { position: 'right', grid: { drawOnChartArea: false }, ticks: { color: colors.tick }, title: { display: true, text: 'Pa / mm / g', color: colors.tick } },
       },
-      plugins: { legend: { labels: { color: TICK, boxWidth: 12 } } },
+      plugins: { legend: { labels: { color: colors.tick, boxWidth: 12 } } },
     },
   })
+  unsubscribeTheme = subscribeChartTheme(() => chart)
 })
 
 watch(lastUpdate, () => {
@@ -81,6 +82,7 @@ watch(lastUpdate, () => {
 })
 
 onBeforeUnmount(() => {
+  unsubscribeTheme?.()
   chart?.destroy()
   chart = null
 })
@@ -94,4 +96,5 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .chart-wrap { position: relative; height: 320px; width: 100%; }
+@media (max-width: 560px) { .chart-wrap { height: 250px; } }
 </style>

@@ -45,7 +45,7 @@ onMounted(async () => {
 <template>
   <div class="page">
     <div class="page-head">
-      <div class="page-title">报警事件</div>
+      <h1 class="page-title">报警事件</h1>
       <div class="spacer" />
       <button @click="alarms.loadActive()">刷新</button>
     </div>
@@ -87,11 +87,12 @@ onMounted(async () => {
 .page-title { font-size: 18px; font-weight: 700; }
 .spacer { flex: 1; }
 .critical-banner {
-  background: var(--red-dim); border: 1px solid var(--red); color: #fca5a5;
+  background: var(--red-dim); border: 1px solid var(--red); color: var(--danger-text);
   border-radius: 6px; padding: 10px 14px; font-weight: 600; animation: pulse 1.5s infinite;
 }
 .banner { background: var(--accent-dim); border: 1px solid var(--accent); color: var(--accent); border-radius: 6px; padding: 8px 12px; font-size: 12px; }
 .tabs { display: flex; gap: 8px; }
 .tabs button.active { background: var(--accent-dim); border-color: var(--accent); color: var(--accent); }
 .cnt { margin-left: 6px; background: var(--red); color: #fff; font-size: 10px; font-weight: 700; border-radius: 8px; padding: 1px 6px; }
+@media (max-width: 560px) { .page-head { align-items: stretch; flex-direction: column; } .tabs { overflow-x: auto; } .tabs button { white-space: nowrap; } }
 </style>
