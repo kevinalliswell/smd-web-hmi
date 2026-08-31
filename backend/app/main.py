@@ -112,6 +112,7 @@ async def lifespan(app: FastAPI):
     """应用生命周期：建表、播种、启动 HostComm。"""
     settings = get_settings()
     configure_logging()
+    settings.validate_startup(logger)
     logger.info("app.starting", version=__version__, mock=settings.hostcomm_mock)
 
     # 开发/联调：按 ORM 元数据建表（生产用 alembic upgrade head）

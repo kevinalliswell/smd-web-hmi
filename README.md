@@ -70,7 +70,9 @@ alembic upgrade head             # 建表
 uvicorn app.main:app --reload --port 8000
 ```
 
-> 设 `HOSTCOMM_MOCK=true` 后，后端启动时会自动连接本地 Mock。
+> 生产模式（`HOSTCOMM_MOCK=false`）必须配置至少 32 字节的
+> `SMD_JWT_SECRET`，否则后端拒绝启动。仅 Mock 开发模式允许留空，此时会告警并
+> 生成重启即失效的临时密钥。设 `HOSTCOMM_MOCK=true` 后，后端启动时会自动连接本地 Mock。
 
 ### HostComm Mock Server（无真实控制板时，另开终端）
 
