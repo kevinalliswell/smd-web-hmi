@@ -13,13 +13,13 @@ const auth = useAuthStore()
 const alarms = useAlarmsStore()
 
 // 登录页不显示主框架（顶栏/侧栏/底栏）
-const isChrome = computed(() => route.name !== 'login' && auth.isLoggedIn)
+const isChrome = computed(() => !['login', 'change-password'].includes(route.name) && auth.isLoggedIn)
 
 // 全局 WebSocket：登录后连接，按消息分发到各 store
 const ws = useWebSocket()
 onMounted(() => {
   auth.checkToken()
-  if (auth.isLoggedIn) {
+  if (auth.isLoggedIn && !auth.mustChangePassword) {
     ws.connect()
     // 拉取活跃报警，使顶栏/侧栏徽章即时显示（后续由 WS 实时更新）
     alarms.loadActive().catch(() => {})

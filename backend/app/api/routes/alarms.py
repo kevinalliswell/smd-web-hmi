@@ -7,6 +7,7 @@ from sqlalchemy import select, update
 
 from app.api.deps import DbDep, UserDep, get_current_user, get_hostcomm_client
 from app.api.schemas import err, ok
+from app.api.validation import Page, PageSize
 from app.api.ws_manager import ws_manager
 from app.db.models import AlarmLog
 from app.hostcomm.protocol import now_iso
@@ -24,9 +25,9 @@ async def active_alarms(db: DbDep):
 
 
 @router.get("/history", dependencies=[Depends(get_current_user)])
-async def alarm_history(db: DbDep, page: int = 1, size: int = 50):
+async def alarm_history(db: DbDep, page: Page = 1, size: PageSize = 50):
     """历史报警（分页）。权限：Observer+。"""
-    offset = max(0, (page - 1) * size)
+    offset = (page - 1) * size
     result = await db.execute(select(AlarmLog).order_by(AlarmLog.id.desc()).limit(size).offset(offset))
     rows = result.scalars().all()
     return ok([_row(r) for r in rows])
