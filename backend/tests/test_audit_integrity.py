@@ -9,6 +9,7 @@ from sqlalchemy import select
 
 from app.api.deps import CurrentUser
 from app.api.routes import alarms, system
+from app.core.time import normalize_utc_iso
 from app.db.models import AlarmLog, OperatorAction
 
 
@@ -48,10 +49,10 @@ async def test_repeated_alarm_ack_preserves_first_operator_and_time(db_session, 
 
     await db_session.refresh(alarm)
     assert alarm.ack_operator == "operator-a"
-    assert alarm.ack_time == "2026-08-30T10:01:00Z"
+    assert normalize_utc_iso(alarm.ack_time) == "2026-08-30T10:01:00+00:00"
     assert first["data"]["ack_operator"] == "operator-a"
     assert second["data"]["ack_operator"] == "operator-a"
-    assert second["data"]["ack_time"] == "2026-08-30T10:01:00Z"
+    assert normalize_utc_iso(second["data"]["ack_time"]) == "2026-08-30T10:01:00+00:00"
 
 
 class _RecordingClient:
