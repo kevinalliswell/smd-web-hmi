@@ -25,6 +25,8 @@ from app.hostcomm.client import HostCommClient
 from app.hostcomm.protocol import now_iso
 from app.services.cache import status_cache
 from app.services.state_policy import enrich_status_snapshot
+from app.services.test_runtime import active_test
+from app.services.test_session_service import reconcile_test_sessions
 
 logger = get_logger("main")
 
@@ -56,7 +58,6 @@ async def _persist_snapshot(payload: dict) -> None:
     写库失败不得影响实时推送，异常仅记录。
     """
     from app.services import logging_service
-    from app.services.test_runtime import active_test
 
     try:
         settings = get_settings()
@@ -68,11 +69,24 @@ async def _persist_snapshot(payload: dict) -> None:
                 retention_hours=settings.smd_device_status_retention_hours,
                 cleanup_interval_seconds=settings.smd_device_status_cleanup_interval_seconds,
             )
-            test_id = active_test.active_test_id or (payload.get("state_machine", {}) or {}).get("test_id")
+            # 仅已建档或已完成重启对账的会话允许写采样，避免设备上报的未知
+            # test_id 在本地形成没有 test_session 外键语义的孤儿数据。
+            test_id = active_test.active_test_id
             if test_id:
                 await logging_service.append_sample_point(session, test_id, payload)
     except Exception as exc:  # noqa: BLE001
         logger.warning("persist.snapshot_failed", error=str(exc))
+
+
+async def _reconcile_test_runtime(device_snapshot: dict | None = None) -> None:
+    """从数据库恢复运行态；首次设备快照到达后完成最终对账。"""
+    try:
+        sessionmaker = get_sessionmaker()
+        async with sessionmaker() as session:
+            result = await reconcile_test_sessions(session, device_snapshot)
+        logger.info("test_session.reconciled", **result)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("test_session.reconcile_failed", error=str(exc))
 
 
 def _build_hostcomm_client(settings) -> HostCommClient:
@@ -81,6 +95,8 @@ def _build_hostcomm_client(settings) -> HostCommClient:
 
     async def on_status(payload: dict) -> None:
         payload = enrich_status_snapshot(payload)
+        if active_test.needs_device_reconcile:
+            await _reconcile_test_runtime(payload)
         await status_cache.update(payload, ts_iso=now_iso())
         await ws_manager.broadcast("status_update", payload)
         await _persist_snapshot(payload)
@@ -127,10 +143,16 @@ async def lifespan(app: FastAPI):
     # 开发/联调：按 ORM 元数据建表（生产用 alembic upgrade head）
     await create_all()
     await _seed_admin()
+    await _reconcile_test_runtime()
 
     client = _build_hostcomm_client(settings)
     app.state.hostcomm_client = client
     await client.start()  # 失败不阻断启动，转后台重连
+    if client.is_online and active_test.needs_device_reconcile:
+        try:
+            await client.get_status()
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("test_session.initial_status_failed", error=str(exc))
 
     try:
         yield

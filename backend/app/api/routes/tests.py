@@ -2,13 +2,16 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends
+import re
+
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func, select
 
 from app.api.deps import DbDep, get_current_user
-from app.api.schemas import ok
+from app.api.schemas import err, ok
 from app.api.validation import EventLimit, MaxPoints, Page, PageSize, TestIdPath
 from app.db.models import AlarmLog, EventLog, SamplePoint, TestSession
+from app.hostcomm.protocol import now_iso
 
 router = APIRouter(prefix="/api/tests", tags=["tests"], dependencies=[Depends(get_current_user)])
 
@@ -42,6 +45,23 @@ async def current_test(db: DbDep):
     if r is None:
         return ok(None)
     return ok({"test_id": r.test_id, "operator_id": r.operator_id, "start_time": r.start_time})
+
+
+@router.get("/next-id")
+async def next_test_id(db: DbDep, day: str | None = None):
+    """生成当日下一个建议编号；最终唯一性仍由 start_test 原子校验保证。"""
+    target_day = day or now_iso()[:10].replace("-", "")
+    if not re.fullmatch(r"\d{8}", target_day):
+        raise HTTPException(status_code=422, detail=err("invalid_day", "日期必须为 YYYYMMDD"))
+
+    prefix = f"TEST-{target_day}-"
+    rows = (await db.execute(select(TestSession.test_id).where(TestSession.test_id.like(f"{prefix}%")))).scalars()
+    sequence = 0
+    for test_id in rows:
+        match = re.fullmatch(rf"{re.escape(prefix)}(\d+)", test_id)
+        if match:
+            sequence = max(sequence, int(match.group(1)))
+    return ok({"test_id": f"{prefix}{sequence + 1:03d}"})
 
 
 @router.get("/{test_id}")

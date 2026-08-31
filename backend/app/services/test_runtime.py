@@ -12,17 +12,28 @@ class TestRuntime:
 
     def __init__(self) -> None:
         self._active_test_id: str | None = None
+        self._needs_device_reconcile = False
 
     @property
     def active_test_id(self) -> str | None:
         return self._active_test_id
 
+    @property
+    def needs_device_reconcile(self) -> bool:
+        return self._needs_device_reconcile
+
     def start(self, test_id: str) -> None:
         self._active_test_id = test_id
+        self._needs_device_reconcile = False
+
+    def restore(self, test_id: str, *, needs_device_reconcile: bool) -> None:
+        self._active_test_id = test_id
+        self._needs_device_reconcile = needs_device_reconcile
 
     def stop(self) -> str | None:
         tid = self._active_test_id
         self._active_test_id = None
+        self._needs_device_reconcile = False
         return tid
 
 

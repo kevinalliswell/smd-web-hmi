@@ -11,6 +11,10 @@ vi.mock('@/api/commands', () => ({
   sendCommand: vi.fn(),
 }))
 
+vi.mock('@/api/tests', () => ({
+  fetchNextTestId: vi.fn().mockResolvedValue('TEST-20260610-001'),
+}))
+
 beforeEach(() => {
   vi.clearAllMocks()
   requestConfirmToken.mockResolvedValue({ confirm_token: 'token-1' })

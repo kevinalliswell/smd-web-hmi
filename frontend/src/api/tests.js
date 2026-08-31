@@ -9,6 +9,10 @@ export function fetchTests(page = 1, size = 20) {
   return apiClient.get('/api/tests', { params: { page, size } }).then((r) => r.data.data)
 }
 
+export function fetchNextTestId() {
+  return apiClient.get('/api/tests/next-id').then((r) => r.data.data.test_id)
+}
+
 export function fetchTestDetail(testId) {
   return apiClient.get(`/api/tests/${testId}`).then((r) => r.data.data)
 }
