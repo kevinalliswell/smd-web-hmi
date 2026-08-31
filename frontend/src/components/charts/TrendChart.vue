@@ -13,6 +13,7 @@ import {
 } from 'chart.js'
 
 import { TREND_CHANNELS } from '@/constants/trendChannels'
+import { formatMonthDayTime } from '@/utils/dateTime'
 
 Chart.register(LineController, LineElement, PointElement, LinearScale, CategoryScale, Tooltip, Legend)
 
@@ -39,7 +40,7 @@ function datasets() {
 }
 
 function render() {
-  const data = { labels: props.points.map((p) => (p.ts || '').slice(5, 19)), datasets: datasets() }
+  const data = { labels: props.points.map((p) => formatMonthDayTime(p.ts)), datasets: datasets() }
   if (chart) {
     chart.data = data
     chart.update('none')

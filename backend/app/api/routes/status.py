@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import select
 
 from app.api.deps import DbDep, get_current_user, get_hostcomm_client
-from app.api.schemas import ok
+from app.api.schemas import err, ok
+from app.api.validation import MaxPoints, TestId
+from app.core.time import normalize_utc_iso
 from app.db.models import SamplePoint
 from app.services.cache import status_cache
 from app.services.sampling_health import sampling_health
@@ -35,25 +37,28 @@ async def get_trends(
     db: DbDep,
     from_ts: str | None = None,
     to_ts: str | None = None,
-    test_id: str | None = None,
-    max_points: int = 2000,
+    test_id: TestId | None = None,
+    max_points: MaxPoints = 2000,
 ):
     """跨试验的历史趋势查询（按时间窗 + 等距降采样）。权限：Observer+。
 
-    时间参数为 ISO 8601 字符串（同一部署时区下字符串可比）。
+    时间参数为 ISO 8601 字符串，进入查询前统一换算为 UTC。
     """
     stmt = select(SamplePoint)
-    if from_ts:
-        stmt = stmt.where(SamplePoint.ts >= from_ts)
-    if to_ts:
-        stmt = stmt.where(SamplePoint.ts <= to_ts)
+    try:
+        if from_ts:
+            stmt = stmt.where(SamplePoint.ts >= normalize_utc_iso(from_ts))
+        if to_ts:
+            stmt = stmt.where(SamplePoint.ts <= normalize_utc_iso(to_ts))
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=err("invalid_timestamp", str(exc))) from exc
     if test_id:
         stmt = stmt.where(SamplePoint.test_id == test_id)
     stmt = stmt.order_by(SamplePoint.ts)
 
     rows = (await db.execute(stmt)).scalars().all()
     total = len(rows)
-    stride = max(1, (total + max_points - 1) // max_points) if max_points > 0 else 1
+    stride = max(1, (total + max_points - 1) // max_points)
     sampled = rows[::stride]
     return ok(
         {
