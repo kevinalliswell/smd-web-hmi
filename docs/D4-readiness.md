@@ -72,7 +72,7 @@ crc32、工艺阶段常量、device / auth / alarms store、AlarmBadge / Confirm
       - 安全边界：禁止强制 CO、禁止绕过联锁、禁止直接 SCR、上位机断线本地流程不受影响
 - [ ] **JWT 密钥**：生产 `.env` 填入 ≥32 字节强随机 `SMD_JWT_SECRET`
       （当前未配置时为进程内临时生成，重启即失效）。
-- [ ] **默认口令**：首次登录后立即修改 `admin/admin`。
+- [ ] **默认口令**：用 `admin/admin` 首次登录时确认系统只允许进入改密页；改密后须重新登录。
 - [ ] **数据留存**：确认 `SMD_DB_PATH` 指向持久化盘位；
       `sample_point` / `event_log` / `alarm_log` 只追加，验收期数据不得清库。
 
@@ -91,7 +91,7 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 
 # 前端（frontend/）
 npm install
-npm run dev                    # http://localhost:5173，默认 admin/admin
+npm run dev                    # http://localhost:5173，默认 admin/admin（首次登录强制改密）
 
 # 测试
 pytest -q                      # 后端

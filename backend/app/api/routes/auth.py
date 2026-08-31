@@ -56,7 +56,12 @@ async def login(body: LoginRequest, request: Request, db: DbDep):
         )
         raise HTTPException(status_code=401, detail=err("invalid_credentials", "用户名或密码错误"))
 
-    token, expires_at = create_access_token(user.username, user.role)
+    must_change_password = bool(user.must_change_password)
+    token, expires_at = create_access_token(
+        user.username,
+        user.role,
+        must_change_password=must_change_password,
+    )
     user.last_login = now_iso()
     await db.commit()
     return ok(
@@ -64,6 +69,7 @@ async def login(body: LoginRequest, request: Request, db: DbDep):
             "token": token,
             "role": user.role,
             "display_name": user.display_name,
+            "must_change_password": must_change_password,
             "expires_at": expires_at.isoformat(),
         }
     )
@@ -78,4 +84,10 @@ async def logout(user: UserDep):
 @router.get("/me")
 async def me(user: UserDep):
     """返回当前用户信息。权限：登录用户。"""
-    return ok({"username": user.username, "role": user.role})
+    return ok(
+        {
+            "username": user.username,
+            "role": user.role,
+            "must_change_password": user.must_change_password,
+        }
+    )

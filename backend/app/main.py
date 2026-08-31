@@ -29,7 +29,7 @@ logger = get_logger("main")
 
 
 async def _seed_admin() -> None:
-    """首次启动插入默认 admin/admin 账户（提示修改密码）。"""
+    """首次启动插入默认 admin/admin 账户（首次登录强制修改）。"""
     sessionmaker = get_sessionmaker()
     async with sessionmaker() as session:
         result = await session.execute(select(UserAccount).where(UserAccount.username == "admin"))
@@ -41,11 +41,12 @@ async def _seed_admin() -> None:
                     role="admin",
                     display_name="系统管理员",
                     is_active=1,
+                    must_change_password=1,
                     created_at=now_iso(),
                 )
             )
             await session.commit()
-            logger.warning("seed.admin_created", note="默认密码 admin/admin，请尽快修改")
+            logger.warning("seed.admin_created", note="默认密码 admin/admin，首次登录必须修改")
 
 
 async def _persist_snapshot(payload: dict) -> None:

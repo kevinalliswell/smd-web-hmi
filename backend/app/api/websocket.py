@@ -32,6 +32,8 @@ async def authenticate_websocket(token: str) -> ConnectionContext | None:
         payload = decode_access_token(token)
     except jwt.PyJWTError:
         return None
+    if payload.get("must_change_password"):
+        return None
     username = payload.get("sub")
     role = payload.get("role")
     if not isinstance(username, str) or not username or role not in ROLE_LEVEL:

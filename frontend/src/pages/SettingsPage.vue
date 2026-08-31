@@ -1,5 +1,6 @@
 <script setup>
 import { onMounted, reactive, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import { useRole } from '@/composables/useRole'
 import { useAuthStore } from '@/stores/auth'
 import { fetchHealth, fetchSystemInfo, syncTime } from '@/api/system'
@@ -7,6 +8,7 @@ import { fetchUsers, createUser, updateUser, changePassword } from '@/api/users'
 
 const { canConfigure } = useRole()
 const auth = useAuthStore()
+const router = useRouter()
 
 const banner = ref(null)
 const health = ref(null)
@@ -83,9 +85,8 @@ async function onChangeOwnPassword() {
   if (!pwd.old_password || !pwd.new_password) return
   try {
     await changePassword(pwd.old_password, pwd.new_password)
-    notify('ok', '密码已更新')
-    pwd.old_password = ''
-    pwd.new_password = ''
+    auth.logout()
+    await router.replace({ name: 'login', query: { passwordChanged: '1' } })
   } catch (e) {
     notify('err', '修改失败：' + (e.response?.data?.message || e.message))
   }
