@@ -24,6 +24,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
 from app.db.models import AlarmLog, EventLog, ParameterSnapshot, SamplePoint
+from app.services.test_id import validate_test_id
 
 LOG_TYPES = ("sample", "event", "alarm", "parameter")
 EXPORT_BATCH_SIZE = 1000
@@ -33,6 +34,18 @@ _TASK_ID_RE = re.compile(r"^[0-9a-f]{32}$")
 
 class ExportSizeLimitError(ValueError):
     """导出内容超过允许的未压缩体积。"""
+
+
+async def _to_thread_without_abandon(func, /, *args, **kwargs):
+    """取消调用方时先等线程结束，避免并发关闭其正在写入的 ZIP 句柄。"""
+    worker = asyncio.create_task(asyncio.to_thread(func, *args, **kwargs))
+    try:
+        return await asyncio.shield(worker)
+    except asyncio.CancelledError:
+        try:
+            await worker
+        finally:
+            raise
 
 
 def _rows_to_csv(columns: Sequence[str], rows: Sequence[dict], *, include_header: bool = True) -> str:
@@ -73,7 +86,7 @@ async def _stream_csv_entry(
 
     async def flush() -> None:
         nonlocal uncompressed_bytes, include_header
-        encoded = await asyncio.to_thread(
+        encoded = await _to_thread_without_abandon(
             _rows_to_csv,
             columns,
             [_to_dict(row, columns) for row in batch],
@@ -83,7 +96,7 @@ async def _stream_csv_entry(
         uncompressed_bytes += len(data)
         if uncompressed_bytes > max_uncompressed_bytes:
             raise ExportSizeLimitError("导出内容超过 250 MiB 上限")
-        await asyncio.to_thread(entry.write, data)
+        await _to_thread_without_abandon(entry.write, data)
         include_header = False
         batch.clear()
 
@@ -96,7 +109,7 @@ async def _stream_csv_entry(
             await flush()
     finally:
         await stream.close()
-        await asyncio.to_thread(entry.close)
+        await _to_thread_without_abandon(entry.close)
     return uncompressed_bytes
 
 
@@ -109,6 +122,7 @@ async def export_test_logs(
     max_uncompressed_bytes: int = MAX_EXPORT_UNCOMPRESSED_BYTES,
 ) -> dict:
     """导出指定试验的日志为 zip，返回 {task_id, file_path, size, entries}。"""
+    test_id = validate_test_id(test_id)
     types = [t for t in (log_types or LOG_TYPES) if t in LOG_TYPES]
     task_id = _validate_task_id(task_id or uuid.uuid4().hex)
     zip_path = export_path(task_id)

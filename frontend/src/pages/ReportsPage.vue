@@ -5,6 +5,7 @@ import { fetchTests } from '@/api/tests'
 import { fetchReports, generateReport, reportDownloadUrl } from '@/api/reports'
 import { exportLogs, logDownloadUrl } from '@/api/logs'
 import { downloadFile } from '@/utils/download'
+import { formatDateTime } from '@/utils/dateTime'
 
 const { canOperate } = useRole()
 
@@ -116,7 +117,7 @@ onMounted(loadAll)
           <tr v-for="r in reports" :key="r.id">
             <td>{{ r.id }}</td>
             <td class="mono">{{ r.test_id }}</td>
-            <td class="small mono">{{ r.generated_at }}</td>
+            <td class="small mono">{{ formatDateTime(r.generated_at) }}</td>
             <td>{{ r.operator_id }}</td>
             <td>{{ r.format }}</td>
             <td class="small">{{ r.file_size_bytes }} B</td>

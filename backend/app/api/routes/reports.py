@@ -6,11 +6,12 @@ from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import FileResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 
 from app.api.deps import DbDep, UserDep, get_current_user, require_role
 from app.api.schemas import err, ok
+from app.api.validation import TaskIdPath, TestId
 from app.db.database import get_sessionmaker
 from app.db.models import ReportExport, TestSession
 from app.services import report_service
@@ -21,9 +22,9 @@ router = APIRouter(prefix="/api/reports", tags=["reports"])
 
 
 class GenerateReportRequest(BaseModel):
-    test_id: str
-    format: str = "html"
-    options: dict = {}
+    test_id: TestId
+    format: str = Field(default="html", pattern=r"^html$")
+    options: dict = Field(default_factory=dict, max_length=20)
 
 
 @router.get("", dependencies=[Depends(get_current_user)])
@@ -86,7 +87,7 @@ async def generate_report(body: GenerateReportRequest, user: UserDep, db: DbDep)
 
 
 @router.get("/tasks/{task_id}", dependencies=[Depends(require_role("operator"))])
-async def report_task_status(task_id: str):
+async def report_task_status(task_id: TaskIdPath):
     """查询报告生成任务状态。"""
     snapshot = background_jobs.snapshot(task_id)
     if snapshot is None or snapshot["kind"] != "report":

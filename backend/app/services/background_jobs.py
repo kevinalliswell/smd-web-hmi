@@ -66,12 +66,13 @@ class BackgroundJobManager:
 
     async def _run(self, record: _JobRecord, runner: JobRunner) -> None:
         try:
-            async with self._semaphore:
-                record.status = "running"
-                record.progress = 10
-                record.result = await asyncio.wait_for(runner(), timeout=self._job_timeout_seconds)
-                record.status = "completed"
-                record.progress = 100
+            async with asyncio.timeout(self._job_timeout_seconds):
+                async with self._semaphore:
+                    record.status = "running"
+                    record.progress = 10
+                    record.result = await runner()
+                    record.status = "completed"
+                    record.progress = 100
         except asyncio.CancelledError:
             record.status = "failed"
             record.message = "任务已取消"

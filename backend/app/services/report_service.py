@@ -13,6 +13,7 @@ from __future__ import annotations
 import asyncio
 import html
 import json
+import uuid
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -24,6 +25,24 @@ from app.core.config import get_settings
 from app.db.models import AlarmLog, ParameterSnapshot, ReportExport, SamplePoint, TestSession
 from app.hostcomm.protocol import now_iso
 from app.services.test_id import InvalidTestIdError, validate_test_id
+
+
+async def _write_report_file(path: Path, content: str) -> None:
+    """以排他方式写报告；取消任务前先结束线程并清理本次生成的文件。"""
+
+    def write_exclusive() -> None:
+        with path.open("x", encoding="utf-8") as output:
+            output.write(content)
+
+    worker = asyncio.create_task(asyncio.to_thread(write_exclusive))
+    try:
+        await asyncio.shield(worker)
+    except asyncio.CancelledError:
+        try:
+            await worker
+        finally:
+            path.unlink(missing_ok=True)
+        raise
 
 
 def _num(v: Any) -> float | None:
@@ -291,11 +310,11 @@ async def generate_report(
     settings = get_settings()
     stamp = datetime.now().strftime("%Y%m%d%H%M%S")
     reports_dir = settings.reports_dir.resolve()
-    path = (reports_dir / f"{test_id}-{stamp}.html").resolve()
+    path = (reports_dir / f"{test_id}-{stamp}-{uuid.uuid4().hex}.html").resolve()
     if not path.is_relative_to(reports_dir):
         # test_id 已有白名单；这里保留最终写入点的纵深防御。
         raise InvalidTestIdError("报告路径超出报告目录")
-    await asyncio.to_thread(path.write_text, content, encoding="utf-8")
+    await _write_report_file(path, content)
     size = (await asyncio.to_thread(path.stat)).st_size
 
     record = ReportExport(

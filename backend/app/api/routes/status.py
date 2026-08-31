@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 
 from app.api.deps import DbDep, get_current_user, get_hostcomm_client
-from app.api.schemas import ok
+from app.api.schemas import err, ok
+from app.api.validation import MaxPoints, TestId
+from app.core.time import normalize_utc_iso
 from app.services.cache import status_cache
 from app.services.sampling_health import sampling_health
 from app.services.state_policy import enrich_status_snapshot
@@ -34,17 +36,22 @@ async def get_trends(
     db: DbDep,
     from_ts: str | None = None,
     to_ts: str | None = None,
-    test_id: str | None = None,
-    max_points: int = 2000,
+    test_id: TestId | None = None,
+    max_points: MaxPoints = 2000,
 ):
     """跨试验的历史趋势查询（按时间窗 + 等距降采样）。权限：Observer+。
 
-    时间参数为 ISO 8601 字符串（同一部署时区下字符串可比）。
+    时间参数为 ISO 8601 字符串，进入查询前统一换算为 UTC。
     """
+    try:
+        normalized_from = normalize_utc_iso(from_ts) if from_ts else None
+        normalized_to = normalize_utc_iso(to_ts) if to_ts else None
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=err("invalid_timestamp", str(exc))) from exc
     result = await query_downsampled_points(
         db,
-        from_ts=from_ts,
-        to_ts=to_ts,
+        from_ts=normalized_from,
+        to_ts=normalized_to,
         test_id=test_id,
         max_points=max_points,
     )
