@@ -18,7 +18,7 @@ if not exist venv\Scripts\python.exe goto fail
 
 :deps
 echo [2/4] Installing dependencies (offline, from wheels\) ...
-venv\Scripts\python -m pip install --no-index --find-links=wheels -r app\backend\requirements.txt
+venv\Scripts\python -m pip install --require-hashes --no-index --find-links=wheels -r app\backend\requirements.lock
 if errorlevel 1 goto fail
 
 echo [3/4] Writing config ...

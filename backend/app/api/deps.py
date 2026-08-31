@@ -17,18 +17,27 @@ from app.services.command_service import CommandService
 ROLE_LEVEL = {"observer": 0, "operator": 1, "admin": 2, "maintainer": 3}
 
 
+_PASSWORD_CHANGE_ALLOWED_PATHS = {
+    "/api/auth/logout",
+    "/api/auth/me",
+    "/api/users/change-password",
+}
+
+
 class CurrentUser:
     """当前登录用户（从 JWT 解析）。"""
 
-    def __init__(self, username: str, role: str) -> None:
+    def __init__(self, username: str, role: str, *, must_change_password: bool = False) -> None:
         self.username = username
         self.role = role
+        self.must_change_password = must_change_password
 
     def has_role(self, minimum: str) -> bool:
         return ROLE_LEVEL.get(self.role, -1) >= ROLE_LEVEL.get(minimum, 99)
 
 
 async def get_current_user(
+    request: Request,
     authorization: Annotated[str | None, Header()] = None,
 ) -> CurrentUser:
     """从 ``Authorization: Bearer <token>`` 解析当前用户。"""
@@ -39,7 +48,17 @@ async def get_current_user(
         payload = decode_access_token(token)
     except jwt.PyJWTError:
         raise HTTPException(status_code=401, detail={"error_code": "invalid_token", "message": "令牌无效或已过期"})
-    return CurrentUser(username=payload.get("sub", ""), role=payload.get("role", "observer"))
+    user = CurrentUser(
+        username=payload.get("sub", ""),
+        role=payload.get("role", "observer"),
+        must_change_password=bool(payload.get("must_change_password", False)),
+    )
+    if user.must_change_password and request.url.path not in _PASSWORD_CHANGE_ALLOWED_PATHS:
+        raise HTTPException(
+            status_code=403,
+            detail={"error_code": "password_change_required", "message": "必须先修改初始密码"},
+        )
+    return user
 
 
 def require_role(minimum: str):

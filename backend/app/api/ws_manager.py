@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from dataclasses import dataclass
 from typing import Any
 
 from fastapi import WebSocket
@@ -13,25 +14,69 @@ from app.hostcomm.protocol import now_iso
 logger = get_logger("ws.manager")
 
 
+@dataclass(frozen=True)
+class ConnectionContext:
+    """与一条 WebSocket 连接绑定的已验证用户上下文。"""
+
+    username: str
+    role: str
+
+
+class ConnectionLimitExceeded(Exception):
+    """单用户实时连接数达到配置上限。"""
+
+
 class ConnectionManager:
     """管理已认证的 WebSocket 连接，支持向所有客户端广播。"""
 
     def __init__(self, *, send_timeout: float = 1.0) -> None:
         if send_timeout <= 0:
             raise ValueError("send_timeout must be positive")
-        self._connections: set[WebSocket] = set()
+        self._connections: dict[WebSocket, ConnectionContext] = {}
+        self._pending_by_user: dict[str, int] = {}
         self._lock = asyncio.Lock()
         self._send_timeout = send_timeout
 
-    async def connect(self, ws: WebSocket) -> None:
-        await ws.accept()
+    async def connect(
+        self,
+        ws: WebSocket,
+        context: ConnectionContext,
+        *,
+        max_connections_per_user: int,
+    ) -> None:
+        """在原子连接数检查后接纳连接，并保存当前用户上下文。"""
         async with self._lock:
-            self._connections.add(ws)
-        logger.info("ws.connected", total=len(self._connections))
+            user_connections = sum(item.username == context.username for item in self._connections.values())
+            pending_connections = self._pending_by_user.get(context.username, 0)
+            if user_connections + pending_connections >= max_connections_per_user:
+                raise ConnectionLimitExceeded(context.username)
+            self._pending_by_user[context.username] = pending_connections + 1
+        try:
+            await ws.accept()
+        except BaseException:
+            async with self._lock:
+                self._release_pending(context.username)
+            raise
+        async with self._lock:
+            self._release_pending(context.username)
+            self._connections[ws] = context
+        logger.info(
+            "ws.connected",
+            username=context.username,
+            role=context.role,
+            total=len(self._connections),
+        )
+
+    def _release_pending(self, username: str) -> None:
+        remaining = self._pending_by_user.get(username, 0) - 1
+        if remaining > 0:
+            self._pending_by_user[username] = remaining
+        else:
+            self._pending_by_user.pop(username, None)
 
     async def disconnect(self, ws: WebSocket) -> None:
         async with self._lock:
-            self._connections.discard(ws)
+            self._connections.pop(ws, None)
         logger.info("ws.disconnected", total=len(self._connections))
 
     async def broadcast(self, msg_type: str, data: dict[str, Any]) -> None:
@@ -52,7 +97,11 @@ class ConnectionManager:
         if dead:
             async with self._lock:
                 for ws in dead:
-                    self._connections.discard(ws)
+                    self._connections.pop(ws, None)
+
+    def context_for(self, ws: WebSocket) -> ConnectionContext | None:
+        """返回连接对应的已验证用户上下文。"""
+        return self._connections.get(ws)
 
     @property
     def count(self) -> int:

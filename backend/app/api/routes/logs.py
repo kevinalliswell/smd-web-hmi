@@ -7,18 +7,19 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.api.deps import DbDep, require_role
 from app.api.schemas import err, ok
+from app.api.validation import LogType, TaskIdPath, TestId
 from app.services import log_export_service
 
 router = APIRouter(prefix="/api/logs", tags=["logs"], dependencies=[Depends(require_role("operator"))])
 
 
 class ExportLogRequest(BaseModel):
-    test_id: str
-    log_types: list[str] | None = None
+    test_id: TestId
+    log_types: list[LogType] | None = Field(default=None, max_length=4)
 
 
 @router.post("/export")
@@ -37,7 +38,7 @@ async def export_log(body: ExportLogRequest, db: DbDep):
 
 
 @router.get("/export/{task_id}")
-async def export_status(task_id: str):
+async def export_status(task_id: TaskIdPath):
     """查询导出任务状态。权限：Operator+。"""
     path = log_export_service.export_path(task_id)
     if not path.exists():
@@ -46,7 +47,7 @@ async def export_status(task_id: str):
 
 
 @router.get("/export/{task_id}/download")
-async def export_download(task_id: str):
+async def export_download(task_id: TaskIdPath):
     """下载导出文件。权限：Operator+。"""
     path = log_export_service.export_path(task_id)
     if not path.exists():
