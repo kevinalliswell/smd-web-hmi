@@ -38,6 +38,8 @@ class Settings(BaseSettings):
     smd_jwt_secret: str = ""
     smd_jwt_expire_minutes: int = 480
     smd_jwt_algorithm: str = "HS256"
+    smd_device_status_retention_hours: int = Field(default=24, ge=1, le=24 * 365)
+    smd_device_status_cleanup_interval_seconds: int = Field(default=300, ge=10, le=86400)
     smd_login_rate_limit: int = Field(default=10, ge=1, le=100)
     smd_login_rate_window_seconds: int = Field(default=60, ge=10, le=3600)
     smd_login_max_failures: int = Field(default=5, ge=1, le=20)
