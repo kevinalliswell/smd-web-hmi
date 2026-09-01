@@ -13,7 +13,8 @@ const emit = defineEmits(['ack'])
 </script>
 
 <template>
-  <table class="alarm-table">
+  <!-- 空表由调用方渲染 EmptyState：报警页的"空"是安全信息，需要肯定表述 -->
+  <table v-if="alarms.length" class="alarm-table">
     <thead>
       <tr>
         <th style="width: 56px">等级</th>
@@ -25,9 +26,6 @@ const emit = defineEmits(['ack'])
       </tr>
     </thead>
     <tbody>
-      <tr v-if="!alarms.length">
-        <td :colspan="showAck || showClear ? 6 : 4" class="empty muted">暂无记录</td>
-      </tr>
       <tr v-for="a in alarms" :key="a.alarm_id ?? a.id ?? a.alarm_code" :class="{ critical: (a.level ?? 0) >= 3 }">
         <td><AlarmBadge :level="a.level ?? 0" /></td>
         <td class="mono">{{ a.alarm_code }}</td>

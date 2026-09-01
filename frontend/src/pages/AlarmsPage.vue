@@ -5,6 +5,7 @@ import { useAlarmsStore } from '@/stores/alarms'
 import { useRole } from '@/composables/useRole'
 import { ackAlarm as apiAckAlarm } from '@/api/alarms'
 import AlarmTable from '@/components/alarms/AlarmTable.vue'
+import EmptyState from '@/components/shared/EmptyState.vue'
 
 const alarms = useAlarmsStore()
 const { sortedActive, alarmHistory, criticalCount, hasCritical } = storeToRefs(alarms)
@@ -73,10 +74,17 @@ onMounted(async () => {
         :can-ack="canOperate()"
         @ack="onAck"
       />
+      <EmptyState
+        v-if="!sortedActive.length"
+        tone="ok"
+        title="当前无活跃报警"
+        hint="设备未上报未消除的报警。报警由控制板判定并推送，此处仅作显示与确认。"
+      />
     </div>
 
     <div v-show="tab === 'history'" class="card">
       <AlarmTable :alarms="alarmHistory" show-ack show-clear :can-ack="false" />
+      <EmptyState v-if="!alarmHistory.length" title="暂无历史报警" hint="报警发生并消除后会归档到这里。" />
     </div>
   </div>
 </template>

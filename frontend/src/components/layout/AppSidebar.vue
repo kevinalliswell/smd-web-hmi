@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useAlarmsStore } from '@/stores/alarms'
 import { useRole } from '@/composables/useRole'
+import NavIcon from '@/components/shared/NavIcon.vue'
 
 const props = defineProps({ open: { type: Boolean, default: false } })
 defineEmits(['navigate'])
@@ -35,27 +36,27 @@ const groups = [
   {
     title: '监控',
     items: [
-      { name: 'overview', label: '实时总览', icon: '📊' },
-      { name: 'trend', label: '趋势曲线', icon: '📈' },
-      { name: 'test', label: '当前试验', icon: '🔬' },
-      { name: 'alarms', label: '报警事件', icon: '🚨', badge: true },
-      { name: 'history', label: '历史试验', icon: '🗂️' },
+      { name: 'overview', label: '实时总览' },
+      { name: 'trend', label: '趋势曲线' },
+      { name: 'test', label: '当前试验' },
+      { name: 'alarms', label: '报警事件', badge: true },
+      { name: 'history', label: '历史试验' },
     ],
   },
   {
     title: '配置与诊断',
     items: [
-      { name: 'parameters', label: '参数配置', icon: '⚙️' },
-      { name: 'diagnostics', label: '设备诊断', icon: '🩺', role: 'maintainer' },
-      { name: 'settings', label: '系统设置', icon: '🔧' },
+      { name: 'parameters', label: '参数配置' },
+      { name: 'diagnostics', label: '设备诊断', role: 'maintainer' },
+      { name: 'settings', label: '系统设置' },
     ],
   },
   {
     title: '分析与报告',
     items: [
-      { name: 'analytics', label: '数据分析', icon: '🧮' },
-      { name: 'reports', label: '报告生成', icon: '📄' },
-      { name: 'help', label: '帮助', icon: '❓' },
+      { name: 'analytics', label: '数据分析' },
+      { name: 'reports', label: '报告生成' },
+      { name: 'help', label: '帮助' },
     ],
   },
 ]
@@ -83,7 +84,7 @@ function visible(item) {
           active-class="active"
           @click="$emit('navigate')"
         >
-          <span class="nav-icon">{{ item.icon }}</span>{{ item.label }}
+          <NavIcon :name="item.name" />{{ item.label }}
           <span v-if="item.badge && unackedCount" class="nav-badge">{{ unackedCount }}</span>
         </RouterLink>
       </template>
@@ -106,7 +107,7 @@ function visible(item) {
 }
 .nav-item:hover { background: var(--bg-hover); color: var(--text-pri); }
 .nav-item.active { background: var(--accent-dim); color: var(--accent); border-left-color: var(--accent); }
-.nav-icon { width: 16px; text-align: center; }
+.nav-icon { flex: none; }
 .nav-badge {
   margin-left: auto; background: var(--red); color: #fff; font-size: 10px;
   font-weight: 700; border-radius: 8px; padding: 1px 5px;
