@@ -25,7 +25,7 @@ async function onSubmit() {
   loading.value = true
   try {
     await changePassword(oldPassword.value, newPassword.value)
-    auth.logout()
+    auth.logout({ revoke: false })
     await router.replace({ name: 'login', query: { passwordChanged: '1' } })
   } catch (e) {
     error.value = e.response?.data?.message || '密码修改失败'

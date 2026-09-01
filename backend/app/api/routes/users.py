@@ -87,14 +87,19 @@ async def update_user(user_id: int, body: UpdateUserRequest, user: UserDep, db: 
     ):
         raise HTTPException(status_code=400, detail=err("self_lockout", "不能停用或降级当前登录的管理员账户"))
     if body.role is not None:
+        if body.role != account.role:
+            account.token_version += 1
         account.role = body.role
     if body.is_active is not None:
+        if int(body.is_active) != account.is_active:
+            account.token_version += 1
         account.is_active = int(body.is_active)
     if body.display_name is not None:
         account.display_name = body.display_name
     if body.new_password:
         account.hashed_pw = hash_password(body.new_password)
         account.must_change_password = 1
+        account.token_version += 1
     await db.commit()
     return ok(
         {"id": account.id, "username": account.username, "role": account.role, "is_active": bool(account.is_active)}
@@ -116,6 +121,7 @@ async def change_password(body: ChangePasswordRequest, request: Request, user: U
         raise HTTPException(status_code=400, detail=err("weak_password", "新密码至少需要 8 个字符"))
     account.hashed_pw = hash_password(body.new_password)
     account.must_change_password = 0
+    account.token_version += 1
     account.failed_login_attempts = 0
     account.locked_until = None
     db.add(

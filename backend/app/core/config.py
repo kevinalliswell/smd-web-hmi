@@ -38,6 +38,7 @@ class Settings(BaseSettings):
     smd_jwt_secret: str = ""
     smd_jwt_expire_minutes: int = 480
     smd_jwt_algorithm: str = "HS256"
+    smd_bootstrap_admin_password: str = ""
     smd_device_status_retention_hours: int = Field(default=24, ge=1, le=24 * 365)
     smd_device_status_cleanup_interval_seconds: int = Field(default=300, ge=10, le=86400)
     smd_login_rate_limit: int = Field(default=10, ge=1, le=100)
@@ -45,6 +46,10 @@ class Settings(BaseSettings):
     smd_login_max_failures: int = Field(default=5, ge=1, le=20)
     smd_login_lock_minutes: int = Field(default=15, ge=1, le=1440)
     smd_ws_max_connections_per_user: int = Field(default=3, ge=1, le=20)
+    smd_ws_auth_timeout_seconds: float = Field(default=5.0, ge=1.0, le=30.0)
+    smd_ws_idle_timeout_seconds: float = Field(default=45.0, ge=10.0, le=3600.0)
+    smd_ws_max_message_bytes: int = Field(default=65_536, ge=1024, le=1_048_576)
+    smd_ws_rate_limit_per_minute: int = Field(default=120, ge=10, le=6000)
     smd_cors_origins: str = ""
 
     # ---- HostComm ----

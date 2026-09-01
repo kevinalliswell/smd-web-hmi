@@ -11,6 +11,8 @@ from app.api.routes.users import ChangePasswordRequest, CreateUserRequest
 from app.api.schemas import CommandRequest, LoginRequest
 from app.core.security import create_access_token
 from app.db.database import get_db
+from app.db.models import UserAccount
+from app.hostcomm.protocol import now_iso
 from app.main import create_app
 
 
@@ -62,6 +64,17 @@ async def test_test_routes_reject_unsafe_path_and_unbounded_max_points(db_sessio
         yield db_session
 
     app.dependency_overrides[get_db] = override_db
+    db_session.add(
+        UserAccount(
+            username="tester",
+            hashed_pw="unused",
+            role="observer",
+            display_name=None,
+            is_active=1,
+            created_at=now_iso(),
+        )
+    )
+    await db_session.commit()
     token, _ = create_access_token("tester", "observer")
     headers = {"Authorization": f"Bearer {token}"}
     transport = ASGITransport(app=app)
@@ -73,3 +86,18 @@ async def test_test_routes_reject_unsafe_path_and_unbounded_max_points(db_sessio
     assert invalid_id.status_code == 422
     assert too_many.status_code == 422
     assert negative.status_code == 422
+
+
+async def test_validation_response_never_echoes_password_input() -> None:
+    app = create_app()
+    transport = ASGITransport(app=app)
+    secret = "never-return-this-secret-value"
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            "/api/auth/login",
+            json={"username": "admin", "password": secret * 10},
+        )
+
+    assert response.status_code == 422
+    assert response.json()["error_code"] == "validation_error"
+    assert secret not in response.text

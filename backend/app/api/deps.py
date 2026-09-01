@@ -6,10 +6,12 @@ from typing import Annotated
 
 import jwt
 from fastapi import Depends, Header, HTTPException, Request
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.security import decode_access_token
 from app.db.database import get_db
+from app.db.models import UserAccount
 from app.services.cache import status_cache
 from app.services.command_service import CommandService
 
@@ -38,9 +40,10 @@ class CurrentUser:
 
 async def get_current_user(
     request: Request,
+    db: Annotated[AsyncSession, Depends(get_db)],
     authorization: Annotated[str | None, Header()] = None,
 ) -> CurrentUser:
-    """从 ``Authorization: Bearer <token>`` 解析当前用户。"""
+    """解析 token，并与数据库中的当前账户状态对账。"""
     if not authorization or not authorization.lower().startswith("bearer "):
         raise HTTPException(status_code=401, detail={"error_code": "no_token", "message": "缺少认证令牌"})
     token = authorization.split(" ", 1)[1].strip()
@@ -48,10 +51,22 @@ async def get_current_user(
         payload = decode_access_token(token)
     except jwt.PyJWTError:
         raise HTTPException(status_code=401, detail={"error_code": "invalid_token", "message": "令牌无效或已过期"})
+    username = payload.get("sub")
+    role = payload.get("role")
+    account = None
+    if isinstance(username, str) and username and role in ROLE_LEVEL:
+        account = await db.scalar(select(UserAccount).where(UserAccount.username == username))
+    if (
+        account is None
+        or not account.is_active
+        or account.role != role
+        or account.token_version != payload.get("ver", 0)
+    ):
+        raise HTTPException(status_code=401, detail={"error_code": "invalid_token", "message": "令牌已失效"})
     user = CurrentUser(
-        username=payload.get("sub", ""),
-        role=payload.get("role", "observer"),
-        must_change_password=bool(payload.get("must_change_password", False)),
+        username=account.username,
+        role=account.role,
+        must_change_password=bool(account.must_change_password),
     )
     if user.must_change_password and request.url.path not in _PASSWORD_CHANGE_ALLOWED_PATHS:
         raise HTTPException(

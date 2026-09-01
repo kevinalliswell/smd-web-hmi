@@ -8,7 +8,7 @@ const apiClient = axios.create({
 
 // 请求拦截：注入 Bearer token
 apiClient.interceptors.request.use((config) => {
-  const token = localStorage.getItem('smd_token')
+  const token = sessionStorage.getItem('smd_token')
   if (token) config.headers.Authorization = `Bearer ${token}`
   return config
 })
@@ -18,7 +18,9 @@ apiClient.interceptors.response.use(
   (resp) => resp,
   (error) => {
     if (error.response?.status === 401) {
-      localStorage.removeItem('smd_token')
+      ;['smd_token', 'smd_username', 'smd_role', 'smd_display', 'smd_must_change_password'].forEach((key) =>
+        sessionStorage.removeItem(key),
+      )
       if (window.location.pathname !== '/login') window.location.href = '/login'
     }
     return Promise.reject(error)

@@ -9,6 +9,7 @@ import time
 import pytest
 from httpx import ASGITransport, AsyncClient
 
+from app.api.deps import CurrentUser, get_current_user
 from app.api.ws_manager import ConnectionContext, ConnectionManager, ws_manager
 from app.core.security import create_access_token
 from app.hostcomm.client import HostCommNotConnectedError, HostCommTimeoutError
@@ -27,6 +28,7 @@ async def test_t13_status_structure():
     )
     token, _ = create_access_token("tester", "observer")
     app = create_app()
+    app.dependency_overrides[get_current_user] = lambda: CurrentUser("tester", "observer")
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
         resp = await ac.get("/api/status", headers={"Authorization": f"Bearer {token}"})

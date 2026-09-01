@@ -27,6 +27,11 @@ if not exist backups mkdir backups
 if exist app\backend\.env goto migrate
 copy .env.example app\backend\.env >nul
 venv\Scripts\python -c "import secrets;print('SMD_JWT_SECRET='+secrets.token_hex(32))" >> app\backend\.env
+for /f %%p in ('venv\Scripts\python -c "import secrets;print(secrets.token_hex(12))"') do set "ADMIN_PASSWORD=%%p"
+echo SMD_BOOTSTRAP_ADMIN_PASSWORD=%ADMIN_PASSWORD%>> app\backend\.env
+echo Username: admin> initial-admin-password.txt
+echo One-time password: %ADMIN_PASSWORD%>> initial-admin-password.txt
+icacls initial-admin-password.txt /inheritance:r /grant:r "%USERNAME%:F" >nul 2>nul
 echo SMD_DB_PATH=%~dp0data\smd.db>> app\backend\.env
 echo SMD_FRONTEND_DIST=%~dp0app\frontend_dist>> app\backend\.env
 
@@ -39,7 +44,8 @@ cd ..\..
 
 echo.
 echo Install OK. Start with run_server.bat then open http://THIS-MACHINE-IP:8000
-echo Default account admin/admin - CHANGE THE PASSWORD after first login.
+echo One-time admin credentials: %~dp0initial-admin-password.txt
+echo Change the password after first login, then securely delete that file.
 exit /b 0
 
 :fail

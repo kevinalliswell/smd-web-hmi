@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import re
+import uuid
 from contextlib import asynccontextmanager
 
+import structlog
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
@@ -63,15 +66,23 @@ async def _broadcast_sampling_alarm(*, active: bool, test_id: str | None = None)
 
 
 async def _seed_admin() -> None:
-    """首次启动插入默认 admin/admin 账户（首次登录强制修改）。"""
+    """首次启动创建管理员；生产环境必须由安装器提供一次性口令。"""
     sessionmaker = get_sessionmaker()
     async with sessionmaker() as session:
         result = await session.execute(select(UserAccount).where(UserAccount.username == "admin"))
         if result.scalar_one_or_none() is None:
+            settings = get_settings()
+            password = settings.smd_bootstrap_admin_password
+            if not password and settings.hostcomm_mock:
+                password = "admin"
+            if not password:
+                raise RuntimeError("首次生产启动必须配置 SMD_BOOTSTRAP_ADMIN_PASSWORD")
+            if not settings.hostcomm_mock and len(password) < 12:
+                raise RuntimeError("SMD_BOOTSTRAP_ADMIN_PASSWORD 至少需要 12 个字符")
             session.add(
                 UserAccount(
                     username="admin",
-                    hashed_pw=hash_password("admin"),
+                    hashed_pw=hash_password(password),
                     role="admin",
                     display_name="系统管理员",
                     is_active=1,
@@ -80,7 +91,7 @@ async def _seed_admin() -> None:
                 )
             )
             await session.commit()
-            logger.warning("seed.admin_created", note="默认密码 admin/admin，首次登录必须修改")
+            logger.warning("seed.admin_created", note="已创建一次性管理员账户，首次登录必须修改密码")
 
 
 async def _persist_snapshot(payload: dict) -> None:
@@ -179,7 +190,7 @@ def _build_hostcomm_client(settings) -> HostCommClient:
 async def lifespan(app: FastAPI):
     """应用生命周期：建表、播种、启动 HostComm。"""
     settings = get_settings()
-    configure_logging()
+    configure_logging(production=not settings.hostcomm_mock)
     settings.validate_startup(logger)
     logger.info("app.starting", version=__version__, mock=settings.hostcomm_mock)
 
@@ -207,8 +218,43 @@ async def lifespan(app: FastAPI):
 
 
 def create_app() -> FastAPI:
-    app = FastAPI(title="smd-web-hmi 后端", version=__version__, lifespan=lifespan)
     settings = get_settings()
+    docs_enabled = settings.hostcomm_mock
+    app = FastAPI(
+        title="smd-web-hmi 后端",
+        version=__version__,
+        lifespan=lifespan,
+        docs_url="/docs" if docs_enabled else None,
+        redoc_url="/redoc" if docs_enabled else None,
+        openapi_url="/openapi.json" if docs_enabled else None,
+    )
+
+    request_id_pattern = re.compile(r"^[A-Za-z0-9._:-]{1,64}$")
+
+    @app.middleware("http")
+    async def _security_boundary(request: Request, call_next):
+        supplied_request_id = request.headers.get("X-Request-ID", "")
+        request_id = supplied_request_id if request_id_pattern.fullmatch(supplied_request_id) else uuid.uuid4().hex
+        structlog.contextvars.bind_contextvars(request_id=request_id)
+        try:
+            response = await call_next(request)
+        finally:
+            structlog.contextvars.clear_contextvars()
+        response.headers["X-Request-ID"] = request_id
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["Referrer-Policy"] = "no-referrer"
+        response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'self'; base-uri 'self'; frame-ancestors 'none'; object-src 'none'; "
+            "img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; "
+            "connect-src 'self' ws: wss:"
+        )
+        if request.url.path.startswith("/api/"):
+            response.headers["Cache-Control"] = "no-store"
+        if request.url.scheme == "https":
+            response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+        return response
 
     # 生产同源部署默认不开放 CORS；跨域调试须显式列出来源。
     # Mock 开发模式允许通配，但 JWT 不使用 Cookie，始终禁用跨域凭证。
@@ -256,7 +302,15 @@ def create_app() -> FastAPI:
 
     @app.exception_handler(RequestValidationError)
     async def _validation_exc_handler(request: Request, exc: RequestValidationError):
-        return JSONResponse(status_code=422, content=err("validation_error", str(exc.errors())))
+        safe_errors = [
+            {
+                "location": ".".join(str(part) for part in item.get("loc", ())),
+                "message": item.get("msg", "输入无效"),
+                "type": item.get("type", "validation_error"),
+            }
+            for item in exc.errors()
+        ]
+        return JSONResponse(status_code=422, content=err("validation_error", str(safe_errors)))
 
     @app.exception_handler(HostCommTimeoutError)
     async def _hostcomm_timeout_handler(request: Request, exc: HostCommTimeoutError):

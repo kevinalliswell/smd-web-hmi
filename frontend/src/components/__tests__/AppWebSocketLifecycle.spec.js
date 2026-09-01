@@ -22,6 +22,7 @@ vi.mock('vue-router', () => ({
 describe('App WebSocket 生命周期', () => {
   beforeEach(() => {
     localStorage.clear()
+    sessionStorage.clear()
     vi.clearAllMocks()
   })
 

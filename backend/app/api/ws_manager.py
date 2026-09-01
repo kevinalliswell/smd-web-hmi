@@ -43,6 +43,7 @@ class ConnectionManager:
         context: ConnectionContext,
         *,
         max_connections_per_user: int,
+        accept: bool = True,
     ) -> None:
         """在原子连接数检查后接纳连接，并保存当前用户上下文。"""
         async with self._lock:
@@ -51,12 +52,13 @@ class ConnectionManager:
             if user_connections + pending_connections >= max_connections_per_user:
                 raise ConnectionLimitExceeded(context.username)
             self._pending_by_user[context.username] = pending_connections + 1
-        try:
-            await ws.accept()
-        except BaseException:
-            async with self._lock:
-                self._release_pending(context.username)
-            raise
+        if accept:
+            try:
+                await ws.accept()
+            except BaseException:
+                async with self._lock:
+                    self._release_pending(context.username)
+                raise
         async with self._lock:
             self._release_pending(context.username)
             self._connections[ws] = context

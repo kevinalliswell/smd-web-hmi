@@ -19,7 +19,8 @@ vi.mock('vue-router', () => ({
 describe('App 响应式外壳', () => {
   beforeEach(() => {
     localStorage.clear()
-    localStorage.setItem('smd_token', 'test-token')
+    sessionStorage.clear()
+    sessionStorage.setItem('smd_token', 'test-token')
     setActivePinia(createPinia())
   })
 
