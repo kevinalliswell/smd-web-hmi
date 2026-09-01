@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import sqlite3
+from contextlib import closing
 from pathlib import Path
 
 
@@ -15,11 +16,12 @@ def backup_database(source: Path, destination: Path) -> None:
     destination.parent.mkdir(parents=True, exist_ok=True)
     temporary = destination.with_suffix(".tmp")
     try:
-        with sqlite3.connect(source) as source_db, sqlite3.connect(temporary) as backup_db:
-            source_db.backup(backup_db)
-            result = backup_db.execute("PRAGMA integrity_check").fetchone()
-            if result is None or result[0] != "ok":
-                raise RuntimeError("backup integrity check failed")
+        with closing(sqlite3.connect(source)) as source_db, closing(sqlite3.connect(temporary)) as backup_db:
+            with source_db, backup_db:
+                source_db.backup(backup_db)
+                result = backup_db.execute("PRAGMA integrity_check").fetchone()
+                if result is None or result[0] != "ok":
+                    raise RuntimeError("backup integrity check failed")
         temporary.replace(destination)
     finally:
         temporary.unlink(missing_ok=True)

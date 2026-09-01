@@ -6,6 +6,7 @@ import asyncio
 import sqlite3
 import time
 import uuid
+from contextlib import closing
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -38,9 +39,13 @@ class MaintenanceManager:
                 if not source.is_file():
                     raise FileNotFoundError("数据库文件不存在")
                 try:
-                    with sqlite3.connect(source) as source_db, sqlite3.connect(temporary) as backup_db:
-                        source_db.backup(backup_db)
-                        self._verify_connection(backup_db)
+                    with (
+                        closing(sqlite3.connect(source)) as source_db,
+                        closing(sqlite3.connect(temporary)) as backup_db,
+                    ):
+                        with source_db, backup_db:
+                            source_db.backup(backup_db)
+                            self._verify_connection(backup_db)
                     temporary.replace(target)
                 finally:
                     temporary.unlink(missing_ok=True)
@@ -62,7 +67,7 @@ class MaintenanceManager:
 
     async def _restore_latest_backup_state(self, backup: Path) -> bool:
         def verify() -> None:
-            with sqlite3.connect(backup.resolve()) as connection:
+            with closing(sqlite3.connect(backup.resolve())) as connection:
                 self._verify_connection(connection)
 
         try:
@@ -100,7 +105,11 @@ class MaintenanceManager:
 
     async def run_once(self, settings, *, force_backup: bool = False) -> None:
         backup_dir = settings.backups_dir
-        latest = max(backup_dir.glob("smd-*.db"), key=lambda path: path.stat().st_mtime, default=None)
+        latest = max(
+            backup_dir.glob("smd-*.db"),
+            key=lambda path: path.stat().st_mtime,
+            default=None,
+        )
         due = latest is None or time.time() - latest.stat().st_mtime >= settings.smd_backup_interval_hours * 3600
         if latest is not None and self._last_backup_at is None and not await self._restore_latest_backup_state(latest):
             due = True

@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import sqlite3
 import time
+from contextlib import closing
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -41,7 +42,9 @@ async def test_schema_status_detects_missing_and_current_revision(tmp_path) -> N
         await engine.dispose()
 
 
-async def test_assert_schema_current_fails_closed_for_unmigrated_database(tmp_path) -> None:
+async def test_assert_schema_current_fails_closed_for_unmigrated_database(
+    tmp_path,
+) -> None:
     engine = database._create_engine(f"sqlite+aiosqlite:///{tmp_path}/unmigrated.db")
     try:
         with pytest.raises(RuntimeError, match="alembic upgrade head"):
@@ -52,10 +55,11 @@ async def test_assert_schema_current_fails_closed_for_unmigrated_database(tmp_pa
 
 async def test_online_backup_is_valid_and_cleanup_respects_retention(tmp_path) -> None:
     source = tmp_path / "smd.db"
-    with sqlite3.connect(source) as connection:
-        connection.execute("PRAGMA journal_mode=WAL")
-        connection.execute("CREATE TABLE samples (id INTEGER PRIMARY KEY, value TEXT)")
-        connection.execute("INSERT INTO samples(value) VALUES ('kept')")
+    with closing(sqlite3.connect(source)) as connection:
+        with connection:
+            connection.execute("PRAGMA journal_mode=WAL")
+            connection.execute("CREATE TABLE samples (id INTEGER PRIMARY KEY, value TEXT)")
+            connection.execute("INSERT INTO samples(value) VALUES ('kept')")
 
     backup_dir = tmp_path / "backups"
     export_dir = tmp_path / "exports"
@@ -72,13 +76,14 @@ async def test_online_backup_is_valid_and_cleanup_respects_retention(tmp_path) -
     removed = await manager.cleanup_files(export_dir, retention_days=7)
 
     assert backup.exists()
-    with sqlite3.connect(backup) as connection:
+    with closing(sqlite3.connect(backup)) as connection:
         assert connection.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
         assert connection.execute("SELECT value FROM samples").fetchone()[0] == "kept"
     assert removed == 1
     assert not old_export.exists()
     assert recent_export.exists()
     assert manager.snapshot()["last_backup_path"] == str(backup)
+    assert not list(backup_dir.glob("*.tmp"))
 
 
 async def test_readiness_explains_low_storage(monkeypatch, tmp_path) -> None:
@@ -113,8 +118,9 @@ async def test_readiness_explains_low_storage(monkeypatch, tmp_path) -> None:
 
 async def test_restart_recovers_recent_verified_backup_state(tmp_path) -> None:
     source = tmp_path / "smd.db"
-    with sqlite3.connect(source) as connection:
-        connection.execute("CREATE TABLE sample (id INTEGER PRIMARY KEY)")
+    with closing(sqlite3.connect(source)) as connection:
+        with connection:
+            connection.execute("CREATE TABLE sample (id INTEGER PRIMARY KEY)")
     backup_dir = tmp_path / "backups"
     exports_dir = tmp_path / "exports"
     first_manager = MaintenanceManager()
