@@ -3,12 +3,13 @@ import { createPinia, setActivePinia } from 'pinia'
 import { login as apiLogin } from '@/api/auth'
 import { useAuthStore } from '@/stores/auth'
 
-vi.mock('@/api/auth', () => ({ login: vi.fn() }))
+vi.mock('@/api/auth', () => ({ login: vi.fn(), logout: vi.fn().mockResolvedValue(undefined) }))
 
 describe('auth store 角色层级', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
     localStorage.clear()
+    sessionStorage.clear()
     vi.clearAllMocks()
   })
 
@@ -49,8 +50,9 @@ describe('auth store 角色层级', () => {
     await auth.login('admin', 'admin')
 
     expect(auth.mustChangePassword).toBe(true)
-    expect(localStorage.getItem('smd_must_change_password')).toBe('1')
+    expect(sessionStorage.getItem('smd_must_change_password')).toBe('1')
+    expect(localStorage.getItem('smd_token')).toBeNull()
     auth.logout()
-    expect(localStorage.getItem('smd_must_change_password')).toBeNull()
+    expect(sessionStorage.getItem('smd_must_change_password')).toBeNull()
   })
 })

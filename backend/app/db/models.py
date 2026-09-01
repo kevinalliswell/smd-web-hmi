@@ -27,6 +27,7 @@ class UserAccount(Base):
     display_name: Mapped[str | None] = mapped_column(Text, nullable=True)
     is_active: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     must_change_password: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    token_version: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     failed_login_attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     locked_until: Mapped[str | None] = mapped_column(UTCISOText(), nullable=True)
     created_at: Mapped[str] = mapped_column(UTCISOText(), nullable=False)
@@ -51,9 +52,12 @@ class TestSession(Base):
     end_time: Mapped[str | None] = mapped_column(UTCISOText(), nullable=True)
     end_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     state_at_end: Mapped[str | None] = mapped_column(Text, nullable=True)
+    original_height_mm: Mapped[float | None] = mapped_column(Float, nullable=True)
     sample_label: Mapped[str | None] = mapped_column(Text, nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     report_path: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    __table_args__ = (Index("idx_ts_end_time", "end_time"),)
 
 
 # ============================================================ 2.3 sample_point
@@ -132,7 +136,12 @@ class AlarmLog(Base):
     text: Mapped[str | None] = mapped_column(Text, nullable=True)
     latched: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
-    __table_args__ = (Index("idx_al_occur", "occur_time"),)
+    __table_args__ = (
+        Index("idx_al_occur", "occur_time"),
+        Index("idx_al_active_level", "clear_time", "level"),
+        Index("idx_al_code_active", "alarm_code", "clear_time"),
+        Index("idx_al_test_occur", "test_id", "occur_time"),
+    )
 
 
 # ====================================================== 2.6 parameter_snapshot
@@ -149,6 +158,8 @@ class ParameterSnapshot(Base):
     param_crc: Mapped[str | None] = mapped_column(Text, nullable=True)
     params_json: Mapped[str] = mapped_column(Text, nullable=False)
 
+    __table_args__ = (Index("idx_ps_test_source_id", "test_id", "source", "id"),)
+
 
 # ======================================================= 2.7 operator_action
 class OperatorAction(Base):
@@ -164,6 +175,11 @@ class OperatorAction(Base):
     result: Mapped[str | None] = mapped_column(Text, nullable=True)
     reason_code: Mapped[str | None] = mapped_column(Text, nullable=True)
     client_ip: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    __table_args__ = (
+        Index("idx_oa_ts", "ts"),
+        Index("idx_oa_test_ts", "test_id", "ts"),
+    )
 
 
 # ======================================================= 2.8 device_status
@@ -191,3 +207,5 @@ class ReportExport(Base):
     file_path: Mapped[str] = mapped_column(Text, nullable=False)
     file_size_bytes: Mapped[int | None] = mapped_column(Integer, nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    __table_args__ = (Index("idx_re_test_generated", "test_id", "generated_at"),)

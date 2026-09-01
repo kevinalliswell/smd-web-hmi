@@ -11,7 +11,7 @@ from sqlalchemy import select
 
 from app.api.routes import auth as auth_route
 from app.api.schemas import LoginRequest
-from app.core.security import hash_password
+from app.core.security import hash_password, password_hash_needs_upgrade, verify_password
 from app.db.models import OperatorAction, UserAccount
 from app.services.auth_service import IpRateLimiter, LoginProtector, LoginRejected
 
@@ -105,6 +105,34 @@ async def test_unknown_user_still_runs_password_verification(monkeypatch, db_ses
     assert len(calls) == 1
     assert calls[0][0] == "candidate"
     assert calls[0][1].startswith("pbkdf2_sha256$")
+
+
+async def test_successful_login_upgrades_legacy_password_hash(db_session) -> None:
+    legacy_hash = hash_password("correct-password", rounds=200_000)
+    assert password_hash_needs_upgrade(legacy_hash)
+    user = UserAccount(
+        username="legacy-user",
+        hashed_pw=legacy_hash,
+        role="operator",
+        display_name=None,
+        is_active=1,
+        created_at="2026-08-30T12:00:00+00:00",
+    )
+    db_session.add(user)
+    await db_session.commit()
+
+    authenticated = await LoginProtector().authenticate(
+        db_session,
+        username=user.username,
+        password="correct-password",
+        client_ip="10.0.0.8",
+        max_failures=5,
+        lock_minutes=15,
+    )
+
+    assert authenticated.username == user.username
+    assert verify_password("correct-password", authenticated.hashed_pw)
+    assert not password_hash_needs_upgrade(authenticated.hashed_pw)
 
 
 async def test_login_route_returns_429_without_querying_credentials(monkeypatch, db_session) -> None:

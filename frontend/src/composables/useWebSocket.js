@@ -12,11 +12,11 @@ const RECONNECT_MAX = 30000
 let manualClose = false
 let pingTimer = null
 
-function wsUrl(token) {
-  const base =
+function wsUrl() {
+  return (
     import.meta.env.VITE_WS_URL ||
     `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws/realtime`
-  return `${base}?token=${encodeURIComponent(token)}`
+  )
 }
 
 export function useWebSocket() {
@@ -58,11 +58,18 @@ export function useWebSocket() {
     manualClose = false
     device.setBackendConnected(false)
     device.setCommQuality('offline')
-    const activeSocket = new WebSocket(wsUrl(auth.token))
+    const activeSocket = new WebSocket(wsUrl())
     socket = activeSocket
+    let authenticated = false
 
     activeSocket.onopen = () => {
       if (socket !== activeSocket) return
+      activeSocket.send(JSON.stringify({ type: 'authenticate', token: auth.token }))
+    }
+
+    function onAuthenticated() {
+      if (authenticated || socket !== activeSocket) return
+      authenticated = true
       reconnectDelay = 1000
       device.setBackendConnected(true)
       // 浏览器↔后端 WS 与后端↔控制板 HostComm 是两条链路。
@@ -76,14 +83,18 @@ export function useWebSocket() {
         .catch(() => {})
       // 应用层心跳
       pingTimer = setInterval(() => {
-        if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ type: 'ping' }))
+        if (authenticated && socket?.readyState === WebSocket.OPEN) {
+          socket.send(JSON.stringify({ type: 'ping' }))
+        }
       }, 15000)
     }
 
     activeSocket.onmessage = (ev) => {
       if (socket !== activeSocket) return
       try {
-        dispatch(JSON.parse(ev.data))
+        const message = JSON.parse(ev.data)
+        if (message.type === 'auth_ok') onAuthenticated()
+        else if (authenticated) dispatch(message)
       } catch {
         /* 忽略非 JSON 帧 */
       }
@@ -92,6 +103,7 @@ export function useWebSocket() {
     activeSocket.onclose = () => {
       if (socket !== activeSocket) return
       clearInterval(pingTimer)
+      authenticated = false
       device.setBackendConnected(false)
       device.setCommQuality('offline')
       if (socket === activeSocket) socket = null

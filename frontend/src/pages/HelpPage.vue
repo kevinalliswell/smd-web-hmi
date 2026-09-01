@@ -29,7 +29,7 @@ const TIPS = [
   ['天平去皮', '承滴坩埚空载时，在 tare_allowed 状态下点击“天平去皮”'],
   ['确认报警', '报警事件页 → L3 置顶红色高亮 → Operator+ 点击“确认”（发 ack_alarm）'],
   ['参数下发', '参数配置页（Admin）→ 编辑 → 差异对比二次确认 → 下发（非运行态，CRC + 回读确认）'],
-  ['报告/导出', '报告页或历史页 → 生成 HTML 报告 / 导出日志 zip（含曲线/事件/报警/参数 CSV）'],
+  ['报告/导出', '报告页或历史页 → 生成 PDF / XLSX / HTML 报告，或导出日志 zip（含曲线/事件/报警/参数 CSV）'],
 ]
 </script>
 
@@ -96,7 +96,7 @@ const TIPS = [
     </div>
 
     <div class="card about muted">
-      smd-web-hmi 熔滴炉 Web 上位机 · 前端 v{{ appVersion }} · GB/T 34211 · D3 接口联调（v0.3-d3）。
+      smd-web-hmi 熔滴炉 Web 上位机 · v{{ appVersion }} · GB/T 34211 · 商用候选版。
       详细规格见 docs/；接口对齐待办见 docs/待确认事项与接口对齐清单。
     </div>
   </div>

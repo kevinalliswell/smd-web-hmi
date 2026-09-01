@@ -22,6 +22,7 @@ vi.mock('vue-router', () => ({
 describe('App WebSocket 生命周期', () => {
   beforeEach(() => {
     localStorage.clear()
+    sessionStorage.clear()
     vi.clearAllMocks()
   })
 
@@ -45,7 +46,7 @@ describe('App WebSocket 生命周期', () => {
     expect(wsSpies.connect).toHaveBeenCalledOnce()
     expect(alarms.loadActive).toHaveBeenCalledOnce()
 
-    auth.logout()
+    await auth.logout({ revoke: false })
     await nextTick()
     expect(wsSpies.disconnect).toHaveBeenCalledOnce()
 

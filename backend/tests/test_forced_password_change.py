@@ -16,14 +16,27 @@ from app.db.models import OperatorAction, UserAccount
 from app.main import create_app
 
 
-async def test_forced_password_token_can_only_access_password_change() -> None:
-    token, _ = create_access_token("admin", "admin", must_change_password=True)
+async def test_forced_password_token_can_only_access_password_change(db_session) -> None:
+    account = UserAccount(
+        username="admin",
+        hashed_pw=hash_password("admin"),
+        role="admin",
+        display_name="系统管理员",
+        is_active=1,
+        must_change_password=1,
+        token_version=4,
+        created_at="2026-08-30T12:00:00+00:00",
+    )
+    db_session.add(account)
+    await db_session.commit()
+    token, _ = create_access_token("admin", "admin", must_change_password=True, token_version=4)
     assert decode_access_token(token)["must_change_password"] is True
 
     with pytest.raises(HTTPException) as blocked:
         await get_current_user(
             request=SimpleNamespace(url=SimpleNamespace(path="/api/status")),
             authorization=f"Bearer {token}",
+            db=db_session,
         )
     assert blocked.value.status_code == 403
     assert blocked.value.detail["error_code"] == "password_change_required"
@@ -31,8 +44,44 @@ async def test_forced_password_token_can_only_access_password_change() -> None:
     allowed = await get_current_user(
         request=SimpleNamespace(url=SimpleNamespace(path="/api/users/change-password")),
         authorization=f"Bearer {token}",
+        db=db_session,
     )
     assert allowed.must_change_password is True
+
+
+async def test_rest_auth_rejects_revoked_or_inactive_account(db_session) -> None:
+    account = UserAccount(
+        username="operator1",
+        hashed_pw="unused",
+        role="operator",
+        display_name=None,
+        is_active=1,
+        token_version=2,
+        created_at="2026-08-30T12:00:00+00:00",
+    )
+    db_session.add(account)
+    await db_session.commit()
+    revoked, _ = create_access_token("operator1", "operator", token_version=1)
+
+    with pytest.raises(HTTPException) as rejected:
+        await get_current_user(
+            request=SimpleNamespace(url=SimpleNamespace(path="/api/status")),
+            authorization=f"Bearer {revoked}",
+            db=db_session,
+        )
+    assert rejected.value.status_code == 401
+    assert rejected.value.detail["error_code"] == "invalid_token"
+
+    current, _ = create_access_token("operator1", "operator", token_version=2)
+    account.is_active = 0
+    await db_session.commit()
+    with pytest.raises(HTTPException) as inactive:
+        await get_current_user(
+            request=SimpleNamespace(url=SimpleNamespace(path="/api/status")),
+            authorization=f"Bearer {current}",
+            db=db_session,
+        )
+    assert inactive.value.detail["error_code"] == "invalid_token"
 
 
 def test_forced_password_token_cannot_open_websocket() -> None:

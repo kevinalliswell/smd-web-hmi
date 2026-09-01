@@ -7,7 +7,7 @@ from sqlalchemy import select, update
 
 from app.api.deps import DbDep, UserDep, get_current_user, get_hostcomm_client
 from app.api.schemas import err, ok
-from app.api.validation import Page, PageSize
+from app.api.validation import EventLimit, Page, PageSize
 from app.api.ws_manager import ws_manager
 from app.db.models import AlarmLog
 from app.hostcomm.protocol import now_iso
@@ -17,9 +17,14 @@ router = APIRouter(prefix="/api/alarms", tags=["alarms"])
 
 
 @router.get("/active", dependencies=[Depends(get_current_user)])
-async def active_alarms(db: DbDep):
+async def active_alarms(db: DbDep, limit: EventLimit = 500):
     """当前活跃（未消除）报警。权限：Observer+。"""
-    result = await db.execute(select(AlarmLog).where(AlarmLog.clear_time.is_(None)).order_by(AlarmLog.level.desc()))
+    result = await db.execute(
+        select(AlarmLog)
+        .where(AlarmLog.clear_time.is_(None))
+        .order_by(AlarmLog.level.desc(), AlarmLog.id.desc())
+        .limit(limit)
+    )
     rows = result.scalars().all()
     return ok([_row(r) for r in rows])
 

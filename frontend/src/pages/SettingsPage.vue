@@ -101,7 +101,7 @@ async function onChangeOwnPassword() {
   if (!pwd.old_password || !pwd.new_password) return
   try {
     await changePassword(pwd.old_password, pwd.new_password)
-    auth.logout()
+    auth.logout({ revoke: false })
     await router.replace({ name: 'login', query: { passwordChanged: '1' } })
   } catch (e) {
     notify('err', '修改失败：' + (e.response?.data?.message || e.message))

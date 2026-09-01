@@ -12,7 +12,7 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.security import verify_password
+from app.core.security import hash_password, password_hash_needs_upgrade, verify_password
 from app.db.models import OperatorAction, UserAccount
 
 # 不存在的用户名也执行同成本 PBKDF2，降低用户名枚举的时序差异。
@@ -112,6 +112,8 @@ class LoginProtector:
 
         user.failed_login_attempts = 0
         user.locked_until = None
+        if password_hash_needs_upgrade(user.hashed_pw):
+            user.hashed_pw = hash_password(password)
         return user
 
     @staticmethod

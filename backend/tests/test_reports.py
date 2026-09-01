@@ -7,6 +7,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from openpyxl import load_workbook
 from sqlalchemy import func, select
 
 from app.db.models import AlarmLog, ParameterSnapshot, ReportExport, SamplePoint, TestSession
@@ -39,7 +40,15 @@ def test_compute_metrics_no_height():
 
 
 async def _seed(db, test_id="TEST-R-1"):
-    db.add(TestSession(test_id=test_id, operator_id="adm", start_time="2026-06-10T00:00:00"))
+    db.add(
+        TestSession(
+            test_id=test_id,
+            operator_id="adm",
+            start_time="2026-06-10T00:00:00",
+            original_height_mm=5.0,
+            sample_label="SAMPLE-01",
+        )
+    )
     for i in range(6):
         db.add(
             SamplePoint(
@@ -92,6 +101,61 @@ async def test_generate_report_uses_unique_files_for_same_test(db_session, monke
     assert first.file_path != second.file_path
     assert Path(first.file_path).exists()
     assert Path(second.file_path).exists()
+
+
+@pytest.mark.parametrize(
+    ("fmt", "suffix", "magic"),
+    [
+        ("pdf", ".pdf", b"%PDF"),
+        ("xlsx", ".xlsx", b"PK"),
+    ],
+)
+async def test_generate_commercial_report_formats(db_session, monkeypatch, tmp_path, fmt, suffix, magic):
+    from app.core import config
+
+    monkeypatch.setattr(type(config.get_settings()), "reports_dir", property(lambda self: tmp_path))
+    test_id = await _seed(db_session, f"TEST-{fmt.upper()}")
+
+    record = await report_service.generate_report(db_session, test_id, operator_id="adm", fmt=fmt)
+
+    path = Path(record.file_path)
+    assert record.format == fmt
+    assert path.suffix == suffix
+    assert path.read_bytes().startswith(magic)
+    assert record.file_size_bytes > 100
+
+
+async def test_report_prefers_stored_original_height(db_session, monkeypatch, tmp_path):
+    from app.core import config
+
+    monkeypatch.setattr(type(config.get_settings()), "reports_dir", property(lambda self: tmp_path))
+    test_id = await _seed(db_session, "TEST-STORED-H")
+
+    record = await report_service.generate_report(
+        db_session,
+        test_id,
+        operator_id="adm",
+        options={"original_height_mm": 999},
+    )
+
+    assert '"original_height_mm": 5.0' in record.notes
+
+
+async def test_xlsx_escapes_formula_like_external_text(db_session, monkeypatch, tmp_path):
+    from app.core import config
+
+    monkeypatch.setattr(type(config.get_settings()), "reports_dir", property(lambda self: tmp_path))
+    test_id = await _seed(db_session, "TEST-XLSX-SAFE")
+    test = await db_session.scalar(select(TestSession).where(TestSession.test_id == test_id))
+    test.sample_label = '=HYPERLINK("https://example.invalid")'
+    await db_session.commit()
+
+    record = await report_service.generate_report(db_session, test_id, operator_id="adm", fmt="xlsx")
+    workbook = load_workbook(record.file_path, data_only=False)
+    cell = workbook["试验摘要"]["B7"]
+
+    assert cell.data_type == "s"
+    assert cell.value.startswith("'=HYPERLINK")
 
 
 @pytest.mark.parametrize("test_id", ["../outside", r"..\outside", "bad:name", "bad*name", "x" * 65])

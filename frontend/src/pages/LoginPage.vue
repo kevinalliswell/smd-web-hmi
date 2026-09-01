@@ -47,7 +47,7 @@ async function onSubmit() {
       <button class="primary login-btn" type="submit" :disabled="loading">
         {{ loading ? '登录中…' : '登录' }}
       </button>
-      <div class="login-hint muted">首次部署默认账户 admin / admin，首次登录必须修改初始密码。</div>
+      <div class="login-hint muted">首次部署账户为 admin；一次性口令由安装器生成，首次登录必须修改。</div>
     </form>
   </div>
 </template>

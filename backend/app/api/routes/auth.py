@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException, Request
+from sqlalchemy import select
 
 from app.api.deps import DbDep, UserDep
 from app.api.schemas import LoginRequest, err, ok
 from app.core.config import get_settings
 from app.core.logging import get_logger
 from app.core.security import create_access_token
+from app.db.models import UserAccount
 from app.hostcomm.protocol import now_iso
 from app.services.auth_service import LoginRejected, login_protector, login_rate_limiter
 
@@ -61,6 +63,7 @@ async def login(body: LoginRequest, request: Request, db: DbDep):
         user.username,
         user.role,
         must_change_password=must_change_password,
+        token_version=user.token_version,
     )
     user.last_login = now_iso()
     await db.commit()
@@ -76,8 +79,12 @@ async def login(body: LoginRequest, request: Request, db: DbDep):
 
 
 @router.post("/logout")
-async def logout(user: UserDep):
-    """登出（本地短期 token，前端丢弃即可）。权限：登录用户。"""
+async def logout(user: UserDep, db: DbDep):
+    """登出并撤销该账户当前签发的全部 token。权限：登录用户。"""
+    account = await db.scalar(select(UserAccount).where(UserAccount.username == user.username))
+    if account is not None:
+        account.token_version += 1
+        await db.commit()
     return ok({"message": "已登出"})
 
 

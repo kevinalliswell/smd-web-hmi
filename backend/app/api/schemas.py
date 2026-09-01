@@ -43,8 +43,23 @@ class CommandRequest(BaseModel):
 
     @model_validator(mode="after")
     def validate_start_test_id(self):
-        if self.command == "start_test" and "test_id" in self.params:
-            self.params["test_id"] = validate_test_id(self.params["test_id"])
+        if self.command == "start_test":
+            if "test_id" in self.params:
+                self.params["test_id"] = validate_test_id(self.params["test_id"])
+            height = self.params.get("original_height_mm")
+            if height is None:
+                raise ValueError("启动试验必须提供原始料层高度 original_height_mm")
+            try:
+                parsed_height = float(height)
+            except (TypeError, ValueError) as exc:
+                raise ValueError("original_height_mm 必须为数值") from exc
+            if not 0 < parsed_height <= 10_000:
+                raise ValueError("original_height_mm 必须在 0 到 10000 mm 之间")
+            self.params["original_height_mm"] = parsed_height
+            for key, limit in (("sample_label", 128), ("notes", 1000)):
+                value = self.params.get(key)
+                if value is not None and (not isinstance(value, str) or len(value) > limit):
+                    raise ValueError(f"{key} 必须为不超过 {limit} 字符的文本")
         return self
 
 

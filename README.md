@@ -13,22 +13,24 @@ STM32 控制板通信（HostComm，TCP 端口 `34211`，UTF-8 JSON Lines 协议�
 | 后端 | Python 3.11+ · FastAPI · SQLAlchemy 2.x（async）· SQLite · Uvicorn |
 | 前端 | Vue 3 · Vite · Pinia · Vue Router · Chart.js · axios |
 | 实时推送 | 原生 WebSocket（`/ws/realtime`） |
-| 认证 | JWT（HS256，本地用户表，含角色字段） |
-| 测试 | pytest + pytest-asyncio（后端 61 例）· Vitest（前端 29 例） |
+| 认证 | JWT（HS256）+ 数据库会话版本撤销 + PBKDF2-SHA256（600k） |
+| 报告 | HTML · PDF · XLSX |
+| 测试 | pytest + pytest-asyncio（后端 189 例，覆盖率 80%+）· Vitest（前端 65 例） |
 
 ## 已实现功能（D3）
 
 | 模块 | 能力 |
 |---|---|
-| HostComm | TCP 长连接客户端（握手/心跳/指数退避重连/超时/容错帧解析）+ Mock Server（含 `--demo-alarms`） |
-| 实时通道 | 状态快照缓存 → WebSocket `status_update` 推送；事件 → `alarm_new/clear/ack` 推送 |
+| HostComm | TCP 长连接客户端（握手/心跳/指数退避重连/超时/容错帧解析）+ Mock（报警与定时断线注入） |
+| 实时通道 | WebSocket 首帧认证、Origin/大小/频率/空闲限制；状态、事件与通信质量推送 |
 | 命令 | 权限矩阵 + 状态校验 + CO 命令二次确认令牌 + 操作审计；start/stop/pause/resume/tare/ack |
-| 试验生命周期 | start_test 建会话、实时写 `sample_point`、stop_test 收尾 |
+| 试验生命周期 | start_test 建会话并归档 H/样品/备注、实时写 `sample_point`、stop_test 收尾 |
 | 参数 | `set_parameters` 全链路：非运行态校验→CRC→下发→回读确认→快照入库 |
 | 报警 | 分级（L1/L2/L3）落库、活跃/历史、确认（发 `ack_alarm`） |
-| 报告/导出 | 从 `sample_point` 算 ΔPmax/Td/T10/T40 等，生成 HTML 报告；日志导出 CSV zip |
+| 报告/导出 | SQL 计算 ΔPmax/Td/T10/T40 等；生成 PDF/XLSX/HTML；日志导出 CSV zip |
 | 前端页面 | 总览/趋势/当前试验/报警/历史/参数/诊断/设置/分析/报告（11 页全功能） |
-| 角色 | Observer / Operator / Admin / Maintainer，前后端一致门控 |
+| 角色 | Observer / Operator / Admin / Maintainer，前后端一致门控；改密/停用/改角色即时撤销会话 |
+| 运维 | Alembic head 启动门禁、SQLite 在线备份/校验/清理、就绪检查、Windows 自动重启 |
 
 ## 安全红线（绝对不得违反）
 
@@ -66,13 +68,15 @@ cd backend
 python -m venv .venv && source .venv/bin/activate
 pip install --require-hashes -r requirements-dev.lock
 cp ../.env.example .env          # 按需修改
+sed -i.bak 's/HOSTCOMM_MOCK=false/HOSTCOMM_MOCK=true/' .env  # 本地无控制板开发
 alembic upgrade head             # 建表
 uvicorn app.main:app --reload --port 8000
 ```
 
-> 生产模式（`HOSTCOMM_MOCK=false`）必须配置至少 32 字节的
-> `SMD_JWT_SECRET`，否则后端拒绝启动。仅 Mock 开发模式允许留空，此时会告警并
-> 生成重启即失效的临时密钥。设 `HOSTCOMM_MOCK=true` 后，后端启动时会自动连接本地 Mock。
+> 生产模式（`HOSTCOMM_MOCK=false`）必须配置至少 32 字节的 `SMD_JWT_SECRET`、至少
+> 12 字符的首次管理员一次性口令，并先执行 `alembic upgrade head`，否则拒绝启动。
+> Windows 安装器会自动生成密钥和受 ACL 保护的一次性口令文件。仅 Mock 开发模式允许空 JWT 密钥并回退到
+> `admin/admin`；该开发口令首次登录仍强制修改。
 
 ### HostComm Mock Server（无真实控制板时，另开终端）
 
@@ -81,6 +85,7 @@ cd backend
 python -m app.hostcomm.mock_server                  # 正常模式
 python -m app.hostcomm.mock_server --demo-alarms    # 周期注入演示报警
 python -m app.hostcomm.mock_server --mode reject_all
+python -m app.hostcomm.mock_server --fault disconnect_after=10s
 ```
 
 ### 前端
@@ -91,12 +96,13 @@ npm install
 npm run dev          # 开发服务器（/api、/ws 代理到 localhost:8000）
 ```
 
-默认账户 `admin / admin`。首次登录只能进入安全改密页，修改初始密码并重新登录后方可使用业务功能。
+Mock 开发默认账户为 `admin / admin`。生产安装的一次性口令见安装目录
+`initial-admin-password.txt`；首次登录改密后应安全删除该文件。
 
 ### 运行测试
 
 ```bash
-cd backend && pytest tests/ -v          # test_safety.py 验证安全红线
+cd backend && pytest -q --cov=app --cov-fail-under=80
 cd frontend && npm run test             # Vitest（store + 组件）
 ```
 
@@ -111,9 +117,10 @@ cd frontend && npm run test             # Vitest（store + 组件）
 如调试环境必须跨域访问，使用 `SMD_CORS_ORIGINS` 配置逗号分隔的明确来源；生产模式
 禁止 `*`，且后端不启用跨域凭证。仅 `HOSTCOMM_MOCK=true` 的开发环境默认允许通配来源。
 
-## 开发阶段
+## 当前阶段
 
-D2 原型已完成 → **D3 接口联调（当前，工程基线 `v0.2.x`，联调基线 `v0.3.0`）** → D4 冷态验收。
+`v0.3.0-rc.1` 已达到软件商用候选标准：自动化、迁移、安全、备份、报告和 Windows
+离线包流程均已收口。正式标签只等待供应商接口表核对与真实 Windows/STM32 D4 验收。
 
 D3 阶段交付标准见 `CLAUDE.md` 第 9 节，P0 测试矩阵（T01-T15）见
 `docs/上位机软件开发规格说明书.md` 第 9.2 节。

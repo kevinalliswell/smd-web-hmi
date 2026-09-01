@@ -8,6 +8,11 @@ REM Requires: Python 3.11 x64 already installed.
 REM ============================================================
 setlocal
 cd /d "%~dp0"
+fltmc >nul 2>nul
+if errorlevel 1 (
+  echo ERROR: Run install.bat as Administrator.
+  exit /b 1
+)
 
 echo [1/4] Creating venv ...
 if exist venv\Scripts\python.exe goto deps
@@ -23,23 +28,37 @@ if errorlevel 1 goto fail
 
 echo [3/4] Writing config ...
 if not exist data mkdir data
-if not exist backups mkdir backups
+if not exist data\backups mkdir data\backups
+icacls data /inheritance:r /grant:r "%USERNAME%:(OI)(CI)F" "SYSTEM:(OI)(CI)F" >nul 2>nul
+if errorlevel 1 goto fail
 if exist app\backend\.env goto migrate
 copy .env.example app\backend\.env >nul
 venv\Scripts\python -c "import secrets;print('SMD_JWT_SECRET='+secrets.token_hex(32))" >> app\backend\.env
+for /f %%p in ('venv\Scripts\python -c "import secrets;print(secrets.token_hex(12))"') do set "ADMIN_PASSWORD=%%p"
+echo SMD_BOOTSTRAP_ADMIN_PASSWORD_FILE=%~dp0initial-admin-password.txt>> app\backend\.env
+echo %ADMIN_PASSWORD%> initial-admin-password.txt
+icacls initial-admin-password.txt /inheritance:r /grant:r "%USERNAME%:F" "SYSTEM:F" >nul 2>nul
+if errorlevel 1 goto fail
 echo SMD_DB_PATH=%~dp0data\smd.db>> app\backend\.env
 echo SMD_FRONTEND_DIST=%~dp0app\frontend_dist>> app\backend\.env
 
 :migrate
+icacls app\backend\.env /inheritance:r /grant:r "%USERNAME%:F" "SYSTEM:F" >nul 2>nul
+if errorlevel 1 goto fail
 echo [4/4] Database migration (alembic upgrade head) ...
 cd app\backend
 ..\..\venv\Scripts\python -m alembic upgrade head
 if errorlevel 1 goto fail
 cd ..\..
 
+echo Registering production auto-start task ...
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0register_autostart.ps1" -InstallDir "%~dp0"
+if errorlevel 1 goto fail
+
 echo.
-echo Install OK. Start with run_server.bat then open http://THIS-MACHINE-IP:8000
-echo Default account admin/admin - CHANGE THE PASSWORD after first login.
+echo Install OK. The scheduled service is starting; open http://THIS-MACHINE-IP:8000
+echo One-time admin credentials: %~dp0initial-admin-password.txt
+echo Change the password after first login, then securely delete that file.
 exit /b 0
 
 :fail

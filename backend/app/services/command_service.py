@@ -285,8 +285,9 @@ class CommandService:
         try:
             if self._client is None or not getattr(self._client, "is_online", False):
                 raise CommandError(503, "device_comm_fault", "HostComm 未连接")
+            device_params = {"test_id": params["test_id"]} if command == "start_test" else params
             result_payload = await self._client.send_command(
-                command, params, operator_id=operator_id, role=role, confirm_token=confirm_token
+                command, device_params, operator_id=operator_id, role=role, confirm_token=confirm_token
             )
             result_label = result_payload.get("result", "error")
             reason_code = result_payload.get("reason_code")
@@ -336,6 +337,9 @@ class CommandService:
                     test_id=test_id,
                     operator_id=operator_id,
                     start_time=now_iso(),
+                    original_height_mm=params.get("original_height_mm"),
+                    sample_label=params.get("sample_label") or None,
+                    notes=params.get("notes") or None,
                 )
             )
             await db_session.commit()

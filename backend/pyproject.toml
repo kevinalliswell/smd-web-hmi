@@ -12,4 +12,4 @@ line_length = 120
 skip_glob = ["app/db/migrations/*"]
 
 [tool.coverage.run]
-omit = ["app/db/migrations/*"]
+omit = ["app/db/migrations/*", "*/app/db/migrations/*"]

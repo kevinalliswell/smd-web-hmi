@@ -31,6 +31,8 @@ async def list_tests(db: DbDep, page: Page = 1, size: PageSize = 20):
                 "start_time": r.start_time,
                 "end_time": r.end_time,
                 "end_reason": r.end_reason,
+                "original_height_mm": r.original_height_mm,
+                "sample_label": r.sample_label,
                 "report_path": r.report_path,
             }
             for r in rows
@@ -45,7 +47,15 @@ async def current_test(db: DbDep):
     r = result.scalars().first()
     if r is None:
         return ok(None)
-    return ok({"test_id": r.test_id, "operator_id": r.operator_id, "start_time": r.start_time})
+    return ok(
+        {
+            "test_id": r.test_id,
+            "operator_id": r.operator_id,
+            "start_time": r.start_time,
+            "original_height_mm": r.original_height_mm,
+            "sample_label": r.sample_label,
+        }
+    )
 
 
 @router.get("/next-id")
@@ -83,6 +93,7 @@ async def test_detail(test_id: TestIdPath, db: DbDep):
             "end_reason": r.end_reason,
             "state_at_end": r.state_at_end,
             "sample_label": r.sample_label,
+            "original_height_mm": r.original_height_mm,
             "notes": r.notes,
             "report_path": r.report_path,
             "sample_count": int(sample_count or 0),
@@ -111,10 +122,14 @@ async def test_events(test_id: TestIdPath, db: DbDep, limit: EventLimit = 500):
 
 
 @router.get("/{test_id}/alarms")
-async def test_alarms(test_id: TestIdPath, db: DbDep):
+async def test_alarms(test_id: TestIdPath, db: DbDep, limit: EventLimit = 500):
     """该试验报警记录。权限：Observer+。"""
     rows = (
-        (await db.execute(select(AlarmLog).where(AlarmLog.test_id == test_id).order_by(AlarmLog.occur_time)))
+        (
+            await db.execute(
+                select(AlarmLog).where(AlarmLog.test_id == test_id).order_by(AlarmLog.occur_time).limit(limit)
+            )
+        )
         .scalars()
         .all()
     )

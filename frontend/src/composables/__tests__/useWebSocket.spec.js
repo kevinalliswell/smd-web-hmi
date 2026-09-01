@@ -20,7 +20,11 @@ class FakeWebSocket {
     FakeWebSocket.instances.push(this)
   }
 
-  send() {}
+  sent = []
+
+  send(message) {
+    this.sent.push(JSON.parse(message))
+  }
 
   close() {
     this.readyState = FakeWebSocket.CLOSED
@@ -46,7 +50,7 @@ describe('useWebSocket 链路状态', () => {
     vi.unstubAllGlobals()
   })
 
-  it('浏览器 WS 建连只标记后端链路，并从 REST 获取 HostComm 真值', async () => {
+  it('通过首帧认证且收到 auth_ok 后才标记后端链路', async () => {
     const auth = useAuthStore()
     const device = useDeviceStore()
     auth.token = 'jwt-token'
@@ -54,10 +58,16 @@ describe('useWebSocket 链路状态', () => {
 
     connection.connect()
     const socket = FakeWebSocket.instances[0]
+    expect(socket.url).not.toContain('jwt-token')
     expect(device.commQuality).toBe('offline')
 
     socket.readyState = FakeWebSocket.OPEN
     socket.onopen()
+    expect(socket.sent).toEqual([{ type: 'authenticate', token: 'jwt-token' }])
+    expect(device.backendConnected).toBe(false)
+    expect(fetchStatus).not.toHaveBeenCalled()
+
+    socket.onmessage({ data: JSON.stringify({ type: 'auth_ok' }) })
     await flushPromises()
 
     expect(device.backendConnected).toBe(true)

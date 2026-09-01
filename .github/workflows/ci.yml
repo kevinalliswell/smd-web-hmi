@@ -74,9 +74,18 @@ jobs:
       - name: Alembic upgrade head（空库 → 最新 schema）
         run: alembic upgrade head
 
-      # 覆盖率门槛 70% 为防倒退基线；D3 目标为核心路径 ≥80%（见 docs/发布与维护指南.md）
+      # 商用候选分支按全后端 80% 门槛阻断回退。
       - name: Full backend suite + coverage gate
-        run: pytest -q --cov=app --cov-report=term --cov-fail-under=70
+        run: pytest -q --cov=app --cov-report=term --cov-fail-under=80
+
+      - name: Windows deployment script syntax
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Get-ChildItem ../deploy/windows/*.ps1 | ForEach-Object {
+            [void][scriptblock]::Create((Get-Content $_.FullName -Raw))
+          }
+          python -m py_compile ../deploy/windows/backup_database.py ../deploy/windows/verify_bundle.py
 
   frontend:
     name: 前端 (eslint + vitest + build)

@@ -13,6 +13,7 @@ const tests = ref([])
 const reports = ref([])
 const selectedTest = ref('')
 const heightMm = ref('')
+const reportFormat = ref('pdf')
 const banner = ref(null) // {type, text}
 const busy = ref(false)
 
@@ -39,7 +40,7 @@ async function onGenerate() {
     const options = {}
     const h = Number(heightMm.value)
     if (heightMm.value !== '' && !Number.isNaN(h)) options.original_height_mm = h
-    const r = await generateReport(selectedTest.value, options)
+    const r = await generateReport(selectedTest.value, reportFormat.value, options)
     banner.value = { type: 'ok', text: `报告已生成（#${r.id}，${r.file_size_bytes} 字节）` }
     await loadAll()
   } catch (e) {
@@ -67,7 +68,7 @@ async function onExportLogs() {
 
 async function onDownloadReport(rep) {
   try {
-    await downloadFile(reportDownloadUrl(rep.id), `${rep.test_id}-report.html`)
+    await downloadFile(reportDownloadUrl(rep.id), `${rep.test_id}-report.${rep.format}`)
   } catch (e) {
     banner.value = { type: 'err', text: '下载失败：' + (e.response?.data?.message || e.message) }
   }
@@ -97,7 +98,13 @@ onMounted(loadAll)
           <option v-if="!tests.length" value="">无可用试验</option>
         </select>
         <label for="report-height">原始料层高度 H (mm)</label>
-        <input id="report-height" v-model="heightMm" class="height-input" placeholder="可选，用于 T10/T40/ΔH" />
+        <input id="report-height" v-model="heightMm" class="height-input" placeholder="仅旧试验可选覆盖" />
+        <label for="report-format">报告格式</label>
+        <select id="report-format" v-model="reportFormat">
+          <option value="pdf">PDF（归档/打印）</option>
+          <option value="xlsx">XLSX（数据分析）</option>
+          <option value="html">HTML（浏览器查看）</option>
+        </select>
       </div>
       <div v-if="canOperate()" class="actions">
         <button class="primary" :disabled="busy || !selectedTest" @click="onGenerate">生成报告</button>
