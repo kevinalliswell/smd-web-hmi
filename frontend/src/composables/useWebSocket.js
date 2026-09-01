@@ -59,7 +59,9 @@ export function useWebSocket() {
 
     socket.onopen = () => {
       reconnectDelay = 1000
-      device.setCommQuality('online')
+      // 不在此处置 commQuality：本事件只说明"浏览器↔后端"已通，
+      // 而 commQuality 描述的是"后端↔控制板"链路。设备真实状态由后端
+      // 在接入时补推的 comm_status 快照给出（安全红线 6：断链须显示报警）。
       // 应用层心跳
       pingTimer = setInterval(() => {
         if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ type: 'ping' }))
@@ -76,6 +78,7 @@ export function useWebSocket() {
 
     socket.onclose = () => {
       clearInterval(pingTimer)
+      // WS 断开后设备链路状态无从得知，按最保守值显示
       device.setCommQuality('offline')
       if (!manualClose && auth.token) {
         setTimeout(connect, reconnectDelay)
