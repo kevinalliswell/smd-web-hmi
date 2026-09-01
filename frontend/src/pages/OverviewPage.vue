@@ -21,13 +21,19 @@ const kpis = computed(() => {
   const t = snapshot.value?.temperature || {}
   const g = snapshot.value?.gas || {}
   const m = snapshot.value?.measurement || {}
+  // primary：炉温与滴落重量是 GB/T 34211 熔滴试验的核心量（温度制度 + 滴落过程），
+  // 其余为辅助量。等权平铺会让操作员在 6 个同样大的数字里自己找重点。
+  // sub 的 tone 用于把"失效/波动"这类异常从灰字提升为警示色。
   return [
-    { label: '炉温 PV', value: fmt(t.furnace_pv_deg_c), unit: '℃', sub: `SV ${fmt(t.furnace_sv_deg_c)}` },
+    { label: '炉温 PV', value: fmt(t.furnace_pv_deg_c), unit: '℃', sub: `SV ${fmt(t.furnace_sv_deg_c)}`, primary: true },
+    { label: '滴落重量', value: fmt(m.drip_weight_g, 2), unit: 'g', primary: true,
+      sub: m.balance_stable ? '稳定' : '波动', tone: m.balance_stable ? '' : 'warn' },
     { label: 'N₂ 流量', value: fmt(g.n2_pv_l_min, 2), unit: 'L/min', sub: `SP ${fmt(g.n2_sp_l_min, 2)}` },
-    { label: 'CO 流量', value: fmt(g.co_pv_l_min, 2), unit: 'L/min', sub: `SP ${fmt(g.co_sp_l_min, 2)}` },
-    { label: '滴落重量', value: fmt(m.drip_weight_g, 2), unit: 'g', sub: m.balance_stable ? '稳定' : '波动' },
-    { label: '压差', value: fmt(m.delta_p_pa, 1), unit: 'Pa', sub: m.delta_p_valid ? '有效' : '失效' },
-    { label: '位移', value: fmt(m.displacement_mm, 2), unit: 'mm', sub: m.displacement_valid ? '有效' : '失效' },
+    { label: 'CO 流量', value: fmt(g.co_pv_l_min, 2), unit: 'L/min', sub: `SP ${fmt(g.co_sp_l_min, 2)}`, co: true },
+    { label: '压差', value: fmt(m.delta_p_pa, 1), unit: 'Pa',
+      sub: m.delta_p_valid ? '有效' : '失效', tone: m.delta_p_valid ? '' : 'warn' },
+    { label: '位移', value: fmt(m.displacement_mm, 2), unit: 'mm',
+      sub: m.displacement_valid ? '有效' : '失效', tone: m.displacement_valid ? '' : 'warn' },
   ]
 })
 
@@ -56,10 +62,13 @@ onMounted(async () => {
 
     <!-- KPI 卡片 -->
     <div class="kpi-grid">
-      <div v-for="kpi in kpis" :key="kpi.label" class="card kpi">
-        <div class="kpi-label">{{ kpi.label }}</div>
+      <div v-for="kpi in kpis" :key="kpi.label" class="card kpi" :class="{ 'kpi-primary': kpi.primary }">
+        <div class="kpi-label">
+          {{ kpi.label }}
+          <span v-if="kpi.co" class="co-tag">CO</span>
+        </div>
         <div class="kpi-val">{{ kpi.value }}<span class="kpi-unit">{{ kpi.unit }}</span></div>
-        <div class="kpi-sub muted">{{ kpi.sub }}</div>
+        <div class="kpi-sub" :class="kpi.tone === 'warn' ? 'warn' : 'muted'">{{ kpi.sub }}</div>
       </div>
     </div>
 
@@ -104,19 +113,36 @@ onMounted(async () => {
 .page-title { font-size: 18px; font-weight: 700; }
 .state-badge { padding: 4px 12px; border-radius: 6px; background: var(--bg-card2); border: 1px solid var(--border); font-weight: 600; }
 .state-badge.running { color: var(--green); border-color: var(--green); animation: pulse 2s infinite; }
-.kpi-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 12px; }
+/* 主指标占更宽的列并用更大字号，一眼分出主次 */
+.kpi-grid { display: grid; grid-template-columns: 1.35fr 1.35fr repeat(4, 1fr); gap: 12px; }
 .kpi { display: flex; flex-direction: column; gap: 6px; }
-.kpi-label { color: var(--text-sec); font-size: 12px; }
-.kpi-val { font-size: 28px; font-weight: 700; font-family: 'Courier New', monospace; line-height: 1; }
+.kpi-label { display: flex; align-items: center; gap: 6px; color: var(--text-sec); font-size: 12px; }
+.kpi-val { font-size: 24px; font-weight: 700; font-family: 'Courier New', monospace; line-height: 1; }
+.kpi-primary { border-color: var(--border-hi); }
+.kpi-primary .kpi-val { font-size: 34px; }
 .kpi-unit { font-size: 13px; color: var(--text-sec); margin-left: 4px; }
 .kpi-sub { font-size: 11px; }
+.kpi-sub.warn { color: var(--warning-text); }
+.co-tag {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .04em;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: var(--orange);
+  color: var(--on-orange);
+}
 .row { display: grid; grid-template-columns: 2fr 1fr; gap: 16px; }
 .card-title { font-weight: 700; margin-bottom: 10px; }
 .safety { display: flex; flex-direction: column; gap: 6px; }
 .ops { display: flex; flex-direction: column; gap: 10px; }
 .ops button { width: 100%; }
 .ops-hint { font-size: 11px; line-height: 1.5; }
-@media (max-width: 1200px) { .kpi-grid { grid-template-columns: repeat(3, 1fr); } .row { grid-template-columns: 1fr; } }
+@media (max-width: 1200px) {
+  .kpi-grid { grid-template-columns: repeat(3, 1fr); }
+  .kpi-primary .kpi-val { font-size: 28px; }
+  .row { grid-template-columns: 1fr; }
+}
 @media (max-width: 700px) { .kpi-grid { grid-template-columns: repeat(2, 1fr); } }
 @media (max-width: 420px) { .kpi-grid { grid-template-columns: 1fr; } .kpi-val { font-size: 24px; } }
 </style>

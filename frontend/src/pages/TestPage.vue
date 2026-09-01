@@ -123,7 +123,9 @@ onBeforeUnmount(() => clearInterval(timer))
             <button class="primary" :disabled="!canStartTest" @click="showStart = true">▶ 启动试验</button>
             <button :disabled="!isRunning || isHeld" @click="runCommand('pause_hold')">⏸ 暂停/保持</button>
             <button :disabled="!isHeld" @click="runCommand('resume_test')">⏵ 继续试验</button>
-            <button :disabled="!tareAllowed" :class="{ primary: tareAllowed }" @click="showTare = true">⚖ 天平去皮</button>
+            <!-- 去皮是日常校准，不与"启动试验"（CO 工艺、需二次确认）共用高亮样式：
+                 按钮的视觉权重应当对应操作后果的严重性 -->
+            <button :disabled="!tareAllowed" @click="showTare = true">⚖ 天平去皮</button>
             <button class="danger" :disabled="!canStopTest" @click="showStop = true">■ 停止试验</button>
             <p class="ops-hint muted">CO 相关操作（启动/停止）需二次确认；命令仅为请求，最终由控制板与硬接线联锁裁决。</p>
           </template>
