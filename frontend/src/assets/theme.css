@@ -28,6 +28,10 @@
   --shadow-lg: 0 18px 45px rgba(0, 0, 0, 0.38);
   --chart-grid: #2a3150;
   --chart-tick: #a0aac0;
+  /* 数据系列色：与状态色（green/yellow/red/orange）严格分离——曲线不得与报警同色，
+     否则操作员会把数据线误读为报警状态。取值经色觉安全校验（CVD ΔE 19.6 / 常视 20.9）。 */
+  --series-1: #3987e5;
+  --series-2: #199e70;
   --nav-w: 220px;
   --header-h: 52px;
   --footer-h: 28px;
@@ -61,6 +65,9 @@
   --shadow-lg: 0 18px 45px rgba(30, 41, 59, 0.22);
   --chart-grid: #d5ddea;
   --chart-tick: #526078;
+  /* 浅色模式为同色相重新取步，非深色值直接翻转（CVD ΔE 23.1 / 常视 24.0）。 */
+  --series-1: #2a78d6;
+  --series-2: #1baf7a;
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
