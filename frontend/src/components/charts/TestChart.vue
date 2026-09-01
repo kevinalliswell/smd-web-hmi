@@ -1,23 +1,14 @@
 <script setup>
-// 当前试验多通道实时图：炉温/料层温度（左轴 ℃）+ 压差(Pa)/位移(mm)/重量(g)（右轴，归一各自量纲）。
-// 滚动显示最近约 10 分钟。
-import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
+// 当前试验多通道实时图：按物理量纲拆成小多图，滚动显示最近约 10 分钟。
+//
+// 原实现把炉温/料层温度放左轴、压差(Pa)+位移(mm)+重量(g) 共用右轴。三种量纲共用一个
+// 刻度时，位移（~1 mm）与滴落重量（~0.5 g）被压差（~40 Pa）的量级压成贴底直线——
+// 试验中最需要盯的两个指标反而读不出来。改为同量纲同图，各自独立刻度。
+import { ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
-import {
-  Chart,
-  LineController,
-  LineElement,
-  PointElement,
-  LinearScale,
-  CategoryScale,
-  Tooltip,
-  Legend,
-} from 'chart.js'
+import MiniTrendChart from '@/components/charts/MiniTrendChart.vue'
 import { useDeviceStore } from '@/stores/device'
-import { getChartTheme, subscribeChartTheme } from '@/utils/chartTheme'
 import { formatTime } from '@/utils/dateTime'
-
-Chart.register(LineController, LineElement, PointElement, LinearScale, CategoryScale, Tooltip, Legend)
 
 const props = defineProps({
   maxPoints: { type: Number, default: 300 }, // 约 10 min
@@ -25,76 +16,74 @@ const props = defineProps({
 
 const device = useDeviceStore()
 const { lastUpdate, snapshot } = storeToRefs(device)
-const canvas = ref(null)
-let chart = null
-let unsubscribeTheme = null
 
-onMounted(() => {
-  const colors = getChartTheme()
-  chart = new Chart(canvas.value, {
-    type: 'line',
-    data: {
-      labels: [],
-      datasets: [
-        { label: '炉温 (℃)', yAxisID: 'yTemp', data: [], borderColor: '#38bdf8', borderWidth: 2, pointRadius: 0, tension: 0.25 },
-        { label: '料层温度 (℃)', yAxisID: 'yTemp', data: [], borderColor: '#a78bfa', borderWidth: 1.5, pointRadius: 0, tension: 0.25 },
-        { label: '压差 (Pa)', yAxisID: 'yAux', data: [], borderColor: '#f59e0b', borderWidth: 1.5, pointRadius: 0, tension: 0.2 },
-        { label: '位移 (mm)', yAxisID: 'yAux', data: [], borderColor: '#22c55e', borderWidth: 1.5, pointRadius: 0, tension: 0.2 },
-        { label: '滴落重量 (g)', yAxisID: 'yAux', data: [], borderColor: '#ef4444', borderWidth: 1.5, pointRadius: 0, tension: 0.2 },
-      ],
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      animation: false,
-      interaction: { intersect: false, mode: 'index' },
-      scales: {
-        x: { grid: { color: colors.grid }, ticks: { color: colors.tick, maxTicksLimit: 8 } },
-        yTemp: { position: 'left', grid: { color: colors.grid }, ticks: { color: colors.accent }, title: { display: true, text: '温度 ℃', color: colors.accent } },
-        yAux: { position: 'right', grid: { drawOnChartArea: false }, ticks: { color: colors.tick }, title: { display: true, text: 'Pa / mm / g', color: colors.tick } },
-      },
-      plugins: { legend: { labels: { color: colors.tick, boxWidth: 12 } } },
-    },
-  })
-  unsubscribeTheme = subscribeChartTheme(() => chart)
-})
+// 采样缓冲刻意不做成响应式：1 Hz × 300 点的深度遍历既昂贵，又会与 Chart.js
+// 内部状态互相触发更新。改用 revision 计数器作为唯一的刷新信号。
+const labels = []
+const series = {
+  furnace_pv: [],
+  burden_temp: [],
+  delta_p: [],
+  displacement: [],
+  drip_weight: [],
+}
+const revision = ref(0)
+
+const CHARTS = [
+  {
+    title: '温度',
+    unit: '℃',
+    series: [
+      { key: 'furnace_pv', label: '炉温' },
+      { key: 'burden_temp', label: '料层温度' },
+    ],
+  },
+  { title: '压差', unit: 'Pa', series: [{ key: 'delta_p', label: '压差' }] },
+  { title: '位移', unit: 'mm', series: [{ key: 'displacement', label: '位移' }] },
+  { title: '滴落重量', unit: 'g', series: [{ key: 'drip_weight', label: '滴落重量' }] },
+]
 
 watch(lastUpdate, () => {
-  if (!chart) return
   const s = snapshot.value || {}
   const t = s.temperature || {}
   const m = s.measurement || {}
-  const label = formatTime(lastUpdate.value)
-  const values = [
-    t.furnace_pv_deg_c ?? null,
-    m.burden_temp_deg_c ?? null,
-    m.delta_p_pa ?? null,
-    m.displacement_mm ?? null,
-    m.drip_weight_g ?? null,
-  ]
-  chart.data.labels.push(label)
-  values.forEach((v, i) => chart.data.datasets[i].data.push(v))
-  if (chart.data.labels.length > props.maxPoints) {
-    chart.data.labels.shift()
-    chart.data.datasets.forEach((d) => d.data.shift())
-  }
-  chart.update('none')
-})
+  labels.push(formatTime(lastUpdate.value))
+  series.furnace_pv.push(t.furnace_pv_deg_c ?? null)
+  series.burden_temp.push(m.burden_temp_deg_c ?? null)
+  series.delta_p.push(m.delta_p_pa ?? null)
+  series.displacement.push(m.displacement_mm ?? null)
+  series.drip_weight.push(m.drip_weight_g ?? null)
 
-onBeforeUnmount(() => {
-  unsubscribeTheme?.()
-  chart?.destroy()
-  chart = null
+  if (labels.length > props.maxPoints) {
+    labels.shift()
+    Object.values(series).forEach((arr) => arr.shift())
+  }
+  revision.value += 1
 })
 </script>
 
 <template>
-  <div class="chart-wrap">
-    <canvas ref="canvas" />
+  <div class="chart-grid">
+    <MiniTrendChart
+      v-for="c in CHARTS"
+      :key="c.title"
+      :title="c.title"
+      :unit="c.unit"
+      :series="c.series"
+      :labels="labels"
+      :values="series"
+      :revision="revision"
+    />
   </div>
 </template>
 
 <style scoped>
-.chart-wrap { position: relative; height: 320px; width: 100%; }
-@media (max-width: 560px) { .chart-wrap { height: 250px; } }
+.chart-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px 20px;
+}
+@media (max-width: 900px) {
+  .chart-grid { grid-template-columns: minmax(0, 1fr); }
+}
 </style>
