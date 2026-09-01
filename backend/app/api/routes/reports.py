@@ -23,7 +23,7 @@ router = APIRouter(prefix="/api/reports", tags=["reports"])
 
 class GenerateReportRequest(BaseModel):
     test_id: TestId
-    format: str = Field(default="html", pattern=r"^html$")
+    format: str = Field(default="html", pattern=r"^(html|pdf|xlsx)$")
     options: dict = Field(default_factory=dict, max_length=20)
 
 
@@ -103,6 +103,10 @@ async def download_report(report_id: int, db: DbDep):
         raise HTTPException(status_code=404, detail=err("not_found", "报告文件不存在"))
     return FileResponse(
         record.file_path,
-        media_type="text/html",
+        media_type={
+            "html": "text/html; charset=utf-8",
+            "pdf": "application/pdf",
+            "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        }.get(record.format, "application/octet-stream"),
         filename=Path(record.file_path).name,
     )

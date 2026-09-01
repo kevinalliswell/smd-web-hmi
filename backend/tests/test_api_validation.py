@@ -57,6 +57,19 @@ def test_start_command_rejects_unsafe_nested_test_id() -> None:
         CommandRequest(command="start_test", params={"test_id": "../unsafe"})
 
 
+def test_start_command_requires_valid_original_height() -> None:
+    with pytest.raises(ValidationError):
+        CommandRequest(command="start_test", params={"test_id": "TEST-1"})
+    with pytest.raises(ValidationError):
+        CommandRequest(command="start_test", params={"test_id": "TEST-1", "original_height_mm": 0})
+
+    request = CommandRequest(
+        command="start_test",
+        params={"test_id": "TEST-1", "original_height_mm": "25.5", "sample_label": "SAMPLE-A"},
+    )
+    assert request.params["original_height_mm"] == 25.5
+
+
 async def test_test_routes_reject_unsafe_path_and_unbounded_max_points(db_session) -> None:
     app = create_app()
 

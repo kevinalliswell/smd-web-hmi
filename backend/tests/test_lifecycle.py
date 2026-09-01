@@ -22,10 +22,12 @@ class _FakeClient:
 
     def __init__(self, parameter_error=None):
         self.commands = []
+        self.command_params = []
         self.parameter_error = parameter_error
 
     async def send_command(self, command, params, *, operator_id, role, confirm_token=None):
         self.commands.append(command)
+        self.command_params.append(params)
         # start/stop 受控停止均推进到一个具体状态
         state = "Precheck" if command == "start_test" else "Cooling"
         return {
@@ -76,7 +78,12 @@ async def test_start_test_creates_session(db_session):
     token = confirm_tokens.issue()
     await service.execute(
         "start_test",
-        {"test_id": "TEST-20260610-001"},
+        {
+            "test_id": "TEST-20260610-001",
+            "original_height_mm": 25.5,
+            "sample_label": "SAMPLE-A",
+            "notes": "commercial closure",
+        },
         operator_id="op001",
         role="operator",
         confirm_token=token,
@@ -86,7 +93,11 @@ async def test_start_test_creates_session(db_session):
     row = await db_session.scalar(select(TestSession).where(TestSession.test_id == "TEST-20260610-001"))
     assert row is not None
     assert row.operator_id == "op001"
+    assert row.original_height_mm == 25.5
+    assert row.sample_label == "SAMPLE-A"
+    assert row.notes == "commercial closure"
     assert row.end_time is None
+    assert service._client.command_params[0] == {"test_id": "TEST-20260610-001"}
     snapshot = (await db_session.execute(select(ParameterSnapshot))).scalar_one()
     assert snapshot.test_id == "TEST-20260610-001"
     assert snapshot.source == "test_start"

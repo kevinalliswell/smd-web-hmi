@@ -1,13 +1,13 @@
 # Commercial Readiness Todo
 
-- [ ] Security and session-integrity tests
-- [ ] Password hashing upgrade and transparent legacy rehash
-- [ ] Token-version migration and revocation semantics
-- [ ] WebSocket message authentication and connection hardening
-- [ ] Frontend session-token and authenticated-connect changes
-- [ ] Stored specimen metadata and protocol-safe start flow
-- [ ] SQL analytics and database indexes
-- [ ] HTML/PDF/XLSX report exports
+- [x] Security and session-integrity tests
+- [x] Password hashing upgrade and transparent legacy rehash
+- [x] Token-version migration and revocation semantics
+- [x] WebSocket message authentication and connection hardening
+- [x] Frontend session-token and authenticated-connect changes
+- [x] Stored specimen metadata and protocol-safe start flow
+- [x] SQL analytics and database indexes
+- [x] HTML/PDF/XLSX report exports
 - [ ] Production schema/readiness checks
 - [ ] Online backup, retention, and export cleanup
 - [ ] Mock disconnection fault injection

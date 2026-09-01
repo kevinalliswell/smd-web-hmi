@@ -26,12 +26,33 @@ describe('command confirmation modals', () => {
     const wrapper = mount(StartTestModal)
     expect(wrapper.findComponent(ConfirmDialog).find('.dialog').exists()).toBe(false)
 
+    await wrapper.find('#start-test-height').setValue('25.5')
     await wrapper.find('button.primary').trigger('click')
 
     const confirm = wrapper.findComponent(ConfirmDialog)
     expect(confirm.exists()).toBe(true)
     expect(confirm.props('danger')).toBe(true)
     expect(confirm.text()).toContain('CO 工艺阶段')
+  })
+
+  it('启动命令携带本地试样元数据', async () => {
+    const wrapper = mount(StartTestModal)
+    await wrapper.find('#start-test-height').setValue('25.5')
+    await wrapper.find('#start-test-label').setValue('SAMPLE-A')
+    await wrapper.find('#start-test-notes').setValue('batch 7')
+    await wrapper.find('button.primary').trigger('click')
+    await wrapper.findComponent(ConfirmDialog).find('button.danger').trigger('click')
+    await flushPromises()
+
+    expect(sendCommand).toHaveBeenCalledWith(
+      'start_test',
+      expect.objectContaining({
+        original_height_mm: 25.5,
+        sample_label: 'SAMPLE-A',
+        notes: 'batch 7',
+      }),
+      'token-1',
+    )
   })
 
   it.each([
