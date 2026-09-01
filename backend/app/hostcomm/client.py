@@ -2,7 +2,7 @@
 
 规格见开发规格说明书第 5.3 节。要点：
 - 连接后先 hello/hello_ack 协商能力。
-- 周期心跳（默认 2s），连续 N 次超时标记 degraded。
+- 周期心跳（默认 2s），漏应答累计 N 次先标记 degraded、达阈值判定断链并重连。
 - 断线自动重连（指数退避 1→2→4→8→30s 上限）。
 - 请求/响应匹配：command 按 request_msg_id；status/parameters 按下一帧类型。
 - 收帧分发：status_snapshot 更新缓存并广播，event 写日志并广播。
@@ -419,12 +419,12 @@ class HostCommClient:
                 # 检查心跳新鲜度
                 if self._last_heartbeat_ack is not None:
                     elapsed = time.monotonic() - self._last_heartbeat_ack
-                    if elapsed > self.heartbeat_interval * self.timeout_count:
+                    if elapsed > self.heartbeat_interval:
+                        # 本轮心跳未在一个周期内得到 ack，计为一次超时。从第一次漏
+                        # 应答就计数，连续 timeout_count 次即判定断链——默认 2s×3
+                        # 正好是规格的"3 次超时"约 6s，中间两次停留在 degraded 告警。
                         self._missed_heartbeats += 1
-                        await self._set_comm_quality("degraded")
                         if self._missed_heartbeats >= self.timeout_count:
-                            # 连续超时达阈值：对端已无响应，判定断链并转入重连，
-                            # 不能停留在 degraded 等一个永远不会来的心跳。
                             logger.warning(
                                 "hostcomm.heartbeat_timeout",
                                 missed=self._missed_heartbeats,
@@ -432,6 +432,7 @@ class HostCommClient:
                             )
                             await self._on_connection_lost()
                             return
+                        await self._set_comm_quality("degraded")
         except asyncio.CancelledError:
             raise
         except Exception as exc:  # noqa: BLE001

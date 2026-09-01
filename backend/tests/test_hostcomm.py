@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import time
 
 import pytest
 
@@ -170,17 +171,23 @@ async def test_heartbeat_timeout_triggers_reconnect():
 
     复现半开连接：TCP 未断（收帧协程仍阻塞在 read），但对端不再响应心跳。
     """
+    interval, count = 0.3, 3
     srv = MockHostCommServer(port=free_port(), status_interval=None, heartbeat_mode="ignore")
     await srv.start()
-    client = await make_client(srv, heartbeat_interval=0.1, timeout_count=2, command_timeout=0.5)
+    client = await make_client(srv, heartbeat_interval=interval, timeout_count=count, command_timeout=0.5)
     await client.connect()
     assert client.is_online
     try:
+        t0 = time.monotonic()
         for _ in range(60):
             if client.comm_quality == "offline":
                 break
             await asyncio.sleep(0.1)
         assert client.comm_quality == "offline", "心跳超时后仍未判定断链"
+        # 判定须发生在"漏应答 timeout_count 次"的时间量级内。此前的实现要等
+        # elapsed 越过阈值后再数 timeout_count 轮，耗时约 2 倍（默认 10s 而非 6s）。
+        elapsed = time.monotonic() - t0
+        assert elapsed < interval * count * 1.6, f"断链判定耗时 {elapsed:.2f}s，超过阈值量级"
         assert client._reconnect_task is not None, "断链后未启动重连任务"
         assert not client._reconnect_task.done(), "重连任务未在运行"
     finally:
