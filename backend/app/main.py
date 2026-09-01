@@ -21,7 +21,7 @@ from app.core.logging import configure_logging, get_logger
 from app.core.security import hash_password
 from app.db.database import create_all, dispose_engine, get_sessionmaker
 from app.db.models import UserAccount
-from app.hostcomm.client import HostCommClient
+from app.hostcomm.client import HostCommClient, HostCommNotConnectedError, HostCommTimeoutError
 from app.hostcomm.protocol import now_iso
 from app.services.cache import status_cache
 
@@ -176,6 +176,19 @@ def create_app() -> FastAPI:
     @app.exception_handler(RequestValidationError)
     async def _validation_exc_handler(request: Request, exc: RequestValidationError):
         return JSONResponse(status_code=422, content=err("validation_error", str(exc.errors())))
+
+    # HostComm 链路异常统一映射为规范错误结构（CLAUDE.md §5：detail 含 error_code/message）。
+    # 否则控制板不响应时路由抛裸异常 → 500 "Internal Server Error"，操作员无从判断
+    # 命令是否已下发、参数是否已生效。
+    @app.exception_handler(HostCommTimeoutError)
+    async def _hostcomm_timeout_handler(request: Request, exc: HostCommTimeoutError):
+        logger.warning("api.hostcomm_timeout", path=str(request.url.path), error=str(exc))
+        return JSONResponse(status_code=504, content=err("device_timeout", str(exc)))
+
+    @app.exception_handler(HostCommNotConnectedError)
+    async def _hostcomm_offline_handler(request: Request, exc: HostCommNotConnectedError):
+        logger.warning("api.hostcomm_offline", path=str(request.url.path), error=str(exc))
+        return JSONResponse(status_code=503, content=err("device_comm_fault", str(exc)))
 
     @app.get("/health", tags=["system"])
     async def health():  # noqa: D401

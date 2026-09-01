@@ -104,7 +104,23 @@ class ParameterService:
             )
 
         # 5. 回读确认
-        readback = await self._client.get_parameters()
+        try:
+            readback = await self._client.get_parameters()
+        except Exception as exc:  # noqa: BLE001
+            # 红线 8 要求整个流程记录入 operator_action：回读失败时参数可能已生效，
+            # 缺了这条审计，事后无从判断控制板处于哪个参数版本。
+            await audit_action(
+                db_session,
+                operator_id=operator_id,
+                role=role,
+                action_type="set_parameters",
+                params={"values": values},
+                result="error",
+                reason_code="parameter_readback_failed",
+                client_ip=client_ip,
+            )
+            logger.warning("parameter.readback_failed", error=str(exc))
+            raise
         rb_values = readback.get("params") or readback.get("values") or {}
         if not _values_equal(values, rb_values):
             await audit_action(
