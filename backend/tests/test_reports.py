@@ -7,6 +7,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from openpyxl import load_workbook
 from sqlalchemy import func, select
 
 from app.db.models import AlarmLog, ParameterSnapshot, ReportExport, SamplePoint, TestSession
@@ -138,6 +139,23 @@ async def test_report_prefers_stored_original_height(db_session, monkeypatch, tm
     )
 
     assert '"original_height_mm": 5.0' in record.notes
+
+
+async def test_xlsx_escapes_formula_like_external_text(db_session, monkeypatch, tmp_path):
+    from app.core import config
+
+    monkeypatch.setattr(type(config.get_settings()), "reports_dir", property(lambda self: tmp_path))
+    test_id = await _seed(db_session, "TEST-XLSX-SAFE")
+    test = await db_session.scalar(select(TestSession).where(TestSession.test_id == test_id))
+    test.sample_label = '=HYPERLINK("https://example.invalid")'
+    await db_session.commit()
+
+    record = await report_service.generate_report(db_session, test_id, operator_id="adm", fmt="xlsx")
+    workbook = load_workbook(record.file_path, data_only=False)
+    cell = workbook["试验摘要"]["B7"]
+
+    assert cell.data_type == "s"
+    assert cell.value.startswith("'=HYPERLINK")
 
 
 @pytest.mark.parametrize("test_id", ["../outside", r"..\outside", "bad:name", "bad*name", "x" * 65])

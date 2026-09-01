@@ -87,6 +87,28 @@ async def test_t03_reconnect():
         await srv2.stop()
 
 
+async def test_mock_disconnect_after_fault_closes_connection() -> None:
+    """disconnect_after 故障必须真实断开连接，供重连/报警演练使用。"""
+    srv = MockHostCommServer(port=free_port(), status_interval=None, disconnect_after=0.05)
+    await srv.start()
+    client = HostCommClient(
+        "127.0.0.1",
+        srv.port,
+        heartbeat_interval=0.02,
+        command_timeout=0.2,
+        auto_reconnect=False,
+    )
+    await client.connect()
+    try:
+        deadline = time.monotonic() + 1.0
+        while client.is_online and time.monotonic() < deadline:
+            await asyncio.sleep(0.01)
+        assert client.is_online is False
+    finally:
+        await client.close()
+        await srv.stop()
+
+
 # ---------------------------------------------------------- T04 状态快照解析
 async def test_t04_status_snapshot(mock_server):
     """T04：get_status 返回完整字段，on_status 回调被触发。"""

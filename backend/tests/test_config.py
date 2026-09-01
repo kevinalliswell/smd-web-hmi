@@ -49,3 +49,14 @@ def test_mock_mode_warns_and_uses_process_stable_ephemeral_secret() -> None:
             {"note": "仅允许 HOSTCOMM_MOCK=true 的开发环境；重启后现有令牌失效"},
         )
     ]
+
+
+def test_bootstrap_password_can_be_read_from_restricted_installer_file(tmp_path) -> None:
+    password_file = tmp_path / "initial-admin-password.txt"
+    password_file.write_text("generated-one-time-password\n", encoding="utf-8")
+    settings = Settings(
+        smd_bootstrap_admin_password="",
+        smd_bootstrap_admin_password_file=str(password_file),
+    )
+
+    assert settings.bootstrap_admin_password == "generated-one-time-password"

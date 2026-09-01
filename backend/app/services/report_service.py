@@ -86,6 +86,13 @@ def _fmt(v: Any, digits: int = 1, unit: str = "") -> str:
     return "N/A" if n is None else f"{n:.{digits}f}{unit}"
 
 
+def _xlsx_value(value: Any) -> Any:
+    """阻止外部文本在电子表格中被解释为公式。"""
+    if isinstance(value, str) and value.startswith(("=", "+", "-", "@")):
+        return "'" + value
+    return value
+
+
 def compute_metrics(samples: list[SamplePoint], original_height_mm: float | None) -> dict[str, Any]:
     """从采样点计算结果指标。缺数据的项返回 None。"""
     temps = [_num(s.burden_temp) for s in samples]
@@ -266,7 +273,7 @@ def _render_html(
  {row("结束时间", test.end_time or "进行中")}
  {row("结束原因", test.end_reason or "—")}
  {row("样品标识", test.sample_label or "—")}
- {row("原始料层高度 H", _fmt(test.original_height_mm, 2, " mm"))}
+ {row("原始料层高度 H", _fmt(metrics.get("original_height_mm"), 2, " mm"))}
  {row("备注", test.notes or "—")}
  {row("采样点数", str(sample_count))}
  {row("固件版本", (params.fw_version if params else None) or "—")}
@@ -318,7 +325,7 @@ def _render_pdf(
         ["结束时间", test.end_time or "进行中"],
         ["结束原因", test.end_reason or "—"],
         ["样品标识", test.sample_label or "—"],
-        ["原始料层高度 H", _fmt(test.original_height_mm, 2, " mm")],
+        ["原始料层高度 H", _fmt(metrics.get("original_height_mm"), 2, " mm")],
         ["备注", test.notes or "—"],
         ["采样点数", str(sample_count)],
         ["固件版本", (params.fw_version if params else None) or "—"],
@@ -393,14 +400,14 @@ def _render_xlsx(
         ("结束时间", test.end_time or "进行中"),
         ("结束原因", test.end_reason or "—"),
         ("样品标识", test.sample_label or "—"),
-        ("原始料层高度 H (mm)", test.original_height_mm),
+        ("原始料层高度 H (mm)", metrics.get("original_height_mm")),
         ("备注", test.notes or "—"),
         ("采样点数", sample_count),
         ("固件版本", (params.fw_version if params else None) or "—"),
         ("参数 CRC", (params.param_crc if params else None) or "—"),
         ("生成时间", now_iso()),
     ):
-        summary.append(item)
+        summary.append([_xlsx_value(value) for value in item])
     summary.column_dimensions["A"].width = 28
     summary.column_dimensions["B"].width = 52
 
@@ -419,14 +426,19 @@ def _render_xlsx(
     for cell in alarm_sheet[1]:
         cell.font = Font(bold=True)
     for alarm in alarms[:50]:
-        alarm_sheet.append([alarm.level, alarm.alarm_code, alarm.text or "", alarm.occur_time, alarm.clear_time])
+        alarm_sheet.append(
+            [
+                _xlsx_value(value)
+                for value in (alarm.level, alarm.alarm_code, alarm.text or "", alarm.occur_time, alarm.clear_time)
+            ]
+        )
     for column, width in zip("ABCDE", (10, 24, 48, 28, 28), strict=True):
         alarm_sheet.column_dimensions[column].width = width
 
     param_sheet = workbook.create_sheet("试验开始参数")
     param_sheet.append(["参数快照 JSON"])
     param_sheet["A1"].font = Font(bold=True)
-    param_sheet.append([params.params_json if params is not None else "无本试验参数快照"])
+    param_sheet.append([_xlsx_value(params.params_json if params is not None else "无本试验参数快照")])
     param_sheet.column_dimensions["A"].width = 100
 
     buffer = BytesIO()

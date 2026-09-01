@@ -40,7 +40,7 @@ jobs:
 
       - name: 后端全量测试
         working-directory: backend
-        run: pytest -q
+        run: pytest -q --cov=app --cov-report=term --cov-fail-under=80
 
       - uses: actions/setup-node@v4
         with:
@@ -124,7 +124,8 @@ jobs:
           cp -r frontend/dist "${STAGE}/app/frontend_dist"
           mv stage/wheels "${STAGE}/wheels"
           cp -r deploy/windows/. "${STAGE}/"
-          cp .env.example CHANGELOG.md "${STAGE}/"
+          cp .env.example CHANGELOG.md README.md "${STAGE}/"
+          python deploy/windows/verify_bundle.py "${STAGE}"
           (cd stage && zip -qr "${NAME}.zip" "${NAME}" && sha256sum "${NAME}.zip" > SHA256SUMS.txt)
           echo "zip=stage/${NAME}.zip" >> "$GITHUB_OUTPUT"
 

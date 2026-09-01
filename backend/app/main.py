@@ -22,12 +22,13 @@ from app.api.ws_manager import ws_manager
 from app.core.config import get_settings
 from app.core.logging import configure_logging, get_logger
 from app.core.security import hash_password
-from app.db.database import create_all, dispose_engine, get_sessionmaker
+from app.db.database import assert_schema_current, create_all, dispose_engine, get_sessionmaker
 from app.db.models import UserAccount
 from app.hostcomm.client import HostCommClient, HostCommNotConnectedError, HostCommTimeoutError
 from app.hostcomm.protocol import now_iso
 from app.services.background_jobs import background_jobs
 from app.services.cache import status_cache
+from app.services.maintenance_service import maintenance_manager
 from app.services.sampling_health import sampling_health
 from app.services.state_policy import enrich_status_snapshot
 from app.services.test_runtime import active_test
@@ -72,13 +73,17 @@ async def _seed_admin() -> None:
         result = await session.execute(select(UserAccount).where(UserAccount.username == "admin"))
         if result.scalar_one_or_none() is None:
             settings = get_settings()
-            password = settings.smd_bootstrap_admin_password
+            password = getattr(settings, "bootstrap_admin_password", "") or getattr(
+                settings, "smd_bootstrap_admin_password", ""
+            )
             if not password and settings.hostcomm_mock:
                 password = "admin"
             if not password:
-                raise RuntimeError("首次生产启动必须配置 SMD_BOOTSTRAP_ADMIN_PASSWORD")
+                raise RuntimeError(
+                    "首次生产启动必须配置 SMD_BOOTSTRAP_ADMIN_PASSWORD 或 SMD_BOOTSTRAP_ADMIN_PASSWORD_FILE"
+                )
             if not settings.hostcomm_mock and len(password) < 12:
-                raise RuntimeError("SMD_BOOTSTRAP_ADMIN_PASSWORD 至少需要 12 个字符")
+                raise RuntimeError("首次管理员口令至少需要 12 个字符")
             session.add(
                 UserAccount(
                     username="admin",
@@ -180,6 +185,7 @@ def _build_hostcomm_client(settings) -> HostCommClient:
         timeout_count=settings.hostcomm_timeout_count,
         command_timeout=settings.hostcomm_command_timeout,
         client_id=settings.client_id,
+        client_version=__version__,
         on_status=on_status,
         on_event=on_event,
         on_comm_status=on_comm_status,
@@ -194,10 +200,15 @@ async def lifespan(app: FastAPI):
     settings.validate_startup(logger)
     logger.info("app.starting", version=__version__, mock=settings.hostcomm_mock)
 
-    # 开发/联调：按 ORM 元数据建表（生产用 alembic upgrade head）
-    await create_all()
+    # 开发/联调允许按 ORM 元数据建表；生产必须由安装/升级流程执行受控迁移。
+    if settings.hostcomm_mock:
+        await create_all()
+    else:
+        await assert_schema_current()
     await _seed_admin()
     await _reconcile_test_runtime()
+    if not settings.hostcomm_mock:
+        await maintenance_manager.start(settings)
 
     client = _build_hostcomm_client(settings)
     app.state.hostcomm_client = client
@@ -212,6 +223,7 @@ async def lifespan(app: FastAPI):
         yield
     finally:
         await client.close()
+        await maintenance_manager.stop()
         await background_jobs.shutdown()
         await dispose_engine()
         logger.info("app.stopped")

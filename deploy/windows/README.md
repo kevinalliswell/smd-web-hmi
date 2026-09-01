@@ -20,70 +20,78 @@ smd-web-hmi-vX.Y.Z-win64\
 ├─ wheels\                ← 全部 Python 依赖（cp311 / win_amd64），离线安装用
 ├─ install.bat            ← 首次安装
 ├─ upgrade.bat            ← 升级已有安装（在新包目录里运行）
-├─ run_server.bat         ← 前台启动（调试/试运行）
+├─ run_server.bat         ← 前台启动（调试/试运行，读取 .env 的 host/port）
+├─ start_server.ps1       ← 计划任务后台入口（日志写入 logs\server.log）
+├─ register_autostart.ps1 / unregister_autostart.ps1
+├─ health_check.ps1       ← liveness/readiness 验证
+├─ backup_database.py     ← 升级前 SQLite online backup + integrity_check
 ├─ .env.example
 ├─ CHANGELOG.md
 └─ README.md              ← 本文件
 ```
 
-安装后目录中另有（均不会被升级覆盖）：`venv\`（Python 环境）、`data\`
-（**smd.db 数据库 + reports/exports，全部试验资产所在**）、`backups\`（升级前数据库备份）。
+安装后目录中另有：`venv\`、`data\`（**smd.db + reports/exports/backups**）、
+`rollback\`（升级时保留的上一版程序）、`logs\` 和 `initial-admin-password.txt`。
 
 ## 前置条件
 
 1. Windows 10/11 或 Server x64；
 2. 已安装 **Python 3.11 x64**（官方安装器，勾选 *Add python.exe to PATH*；机器离线时提前用 U 盘拷入安装器）；
-3. 解压路径**不要包含空格与中文**（如 `C:\smd-web-hmi`）；
-4. 防火墙放行 TCP 8000（局域网浏览器访问）；与控制板通信走 TCP 34211（出站）。
+3. 使用“以管理员身份运行”的命令提示符执行安装与升级；
+4. 解压路径**不要包含空格与中文**（如 `C:\smd-web-hmi`）；
+5. 防火墙放行 TCP 8000（局域网浏览器访问）；与控制板通信走 TCP 34211（出站）。
 
 ## 首次安装
 
 ```bat
 cd C:\smd-web-hmi
 install.bat
-run_server.bat
 ```
 
-浏览器访问 `http://<工控机IP>:8000`。默认账户 `admin/admin`，**首次登录后立即修改密码**。
+浏览器访问 `http://<工控机IP>:8000`。账户为 `admin`，一次性随机口令见
+`initial-admin-password.txt`。首次登录只能改密；成功后安全删除该文件。
 如需连接 Mock（无控制板调试），编辑 `app\backend\.env` 设 `HOSTCOMM_MOCK=true`。
+安装器会把 `.env`、一次性口令文件和 `data\` 的 ACL 限制为安装管理员与 SYSTEM。
+
+安装器会注册并立即启动 `smd-web-hmi` SYSTEM 计划任务；需要重建任务时，以管理员身份执行：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\register_autostart.ps1
+.\health_check.ps1
+```
 
 ## 升级
 
 1. 把新版 zip 解压到**另一个**目录（如 `C:\smd-upgrade\smd-web-hmi-v0.3.0-win64`）；
-2. 停止正在运行的服务（关闭 run_server 窗口或停止服务/计划任务）；
+2. 关闭手工启动的 `run_server.bat` 窗口（计划任务由升级器主动停止）；
 3. 在新包目录运行：
 
 ```bat
 upgrade.bat C:\smd-web-hmi
 ```
 
-脚本顺序：备份 `data\smd.db` 到 `backups\` → 保留 `.env` → 替换 `app\` →
-离线更新依赖 → `alembic upgrade head`。数据目录 `data\` 不会被触碰。
+脚本顺序：撤销自动重启任务 → SQLite online backup 到 `data\backups\` 并执行完整性检查 →
+保留 `.env` 和上一版程序 → 安装新版 → 离线更新依赖 → `alembic upgrade head` → 重建并启动任务。
+任一步失败时自动恢复升级前数据库和旧程序；数据目录不会被删除。
 
 ## 回滚
 
 1. 停止服务；
-2. 用上一版 zip 的 `app\` 覆盖当前 `app\`（或直接对旧版包再跑一次 `upgrade.bat`）；
-3. **如新版本执行过数据库迁移**：将 `backups\smd-<时间戳>.db` 复制回 `data\smd.db`。
+2. 使用 `rollback\app-<时间戳>` 中保留的上一版程序，或用上一版 zip 的 `app\` 覆盖当前 `app\`；
+3. **如新版本执行过数据库迁移**：将 `data\backups\smd-upgrade-<时间戳>.db` 复制回 `data\smd.db`。
    不要使用 `alembic downgrade`——日志类表只追加（安全红线 7），降级迁移不可靠，
    整库还原备份才是安全路径（代价：丢失升级后新写入的数据，回滚前先确认）。
 
-## 开机自启（可选）
+## 开机自启
 
-试运行阶段用计划任务（以 SYSTEM 无窗口运行，日志见结构化输出重定向）：
-
-```bat
-schtasks /Create /TN "smd-web-hmi" /SC ONSTART /RU SYSTEM ^
-  /TR "C:\smd-web-hmi\run_server.bat"
-```
-
-正式运行建议用 [WinSW](https://github.com/winsw/winsw) 或 NSSM 把
-`venv\Scripts\python -m uvicorn app.main:app --host 0.0.0.0 --port 8000`
-包装成 Windows 服务（可配日志文件、自动重启）。D4 验收前确定其一并演练。
+安装器默认注册 SYSTEM 计划任务：开机启动，进程异常退出后 1 分钟重启，最多 999 次，
+日志写入 `logs\server.log`，达到 20 MB 时轮转并保留最近 5 份。停用或卸载时以管理员身份运行
+`unregister_autostart.ps1`。
 
 ## 日常运维要点
 
-- `data\smd.db` 是全部试验归档（sample_point / event_log / alarm_log 只追加），
-  **定期拷贝备份**；升级脚本只在升级时自动备份一次。
+- `data\smd.db` 是全部试验归档；服务默认每天 online backup 到 `data\backups` 并校验，
+  保留 30 天；升级前备份也写入该目录并带 `smd-upgrade-` 前缀。
 - 版本查询：登录后系统设置页，或 `http://<IP>:8000/health`。
+- 就绪巡检：`powershell -File health_check.ps1`；管理员可调用 `POST /api/system/backup` 手工备份。
 - 完整发布/维护流程见仓库 `docs/发布与维护指南.md`。
