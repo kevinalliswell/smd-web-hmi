@@ -141,3 +141,48 @@ def test_frame_parser_partial_and_bad():
     types = [f["type"] for f in frames]
     assert types == ["b", "c"]
     assert parser.json_errors >= 1
+
+
+# ---------------------------------------------------- 连接生命周期回归（审查 #13）
+async def test_failed_handshake_leaves_no_orphan_connection():
+    """握手失败必须就地清理，不遗留收帧任务与半开套接字（审查 #13 之 1）。
+
+    修复前 connect() 失败会留下 _connected=True、存活的收帧任务与未关闭的套接字：
+    状态失真（自称已连接），且清理只能等 CPython 引用计数回收 writer 时才发生。
+    """
+    srv = MockHostCommServer(port=free_port(), status_interval=None, hello_mode="ignore")
+    await srv.start()
+    client = await make_client(srv, command_timeout=0.3, auto_reconnect=False)
+    try:
+        with pytest.raises(Exception):  # noqa: PT011  握手超时
+            await client.connect()
+        assert client._reader_task is None, "遗留了孤儿收帧任务"
+        assert client._writer is None, "遗留了半开套接字"
+        assert client._connected is False
+        assert client.comm_quality == "offline"
+    finally:
+        await client.close()
+        await srv.stop()
+
+
+async def test_heartbeat_timeout_triggers_reconnect():
+    """心跳持续超时须判定断链并重连，不能停在 degraded（审查 #13 之 2，红线 6）。
+
+    复现半开连接：TCP 未断（收帧协程仍阻塞在 read），但对端不再响应心跳。
+    """
+    srv = MockHostCommServer(port=free_port(), status_interval=None, heartbeat_mode="ignore")
+    await srv.start()
+    client = await make_client(srv, heartbeat_interval=0.1, timeout_count=2, command_timeout=0.5)
+    await client.connect()
+    assert client.is_online
+    try:
+        for _ in range(60):
+            if client.comm_quality == "offline":
+                break
+            await asyncio.sleep(0.1)
+        assert client.comm_quality == "offline", "心跳超时后仍未判定断链"
+        assert client._reconnect_task is not None, "断链后未启动重连任务"
+        assert not client._reconnect_task.done(), "重连任务未在运行"
+    finally:
+        await client.close()
+        await srv.stop()

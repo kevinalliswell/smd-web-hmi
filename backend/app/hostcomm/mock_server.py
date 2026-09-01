@@ -81,6 +81,8 @@ class MockHostCommServer:
         port: int = 34211,
         *,
         command_mode: str = "accept",
+        hello_mode: str = "ack",
+        heartbeat_mode: str = "ack",
         inject_bad_json: bool = False,
         status_interval: float | None = 1.0,
         demo_alarms: bool = False,
@@ -89,6 +91,10 @@ class MockHostCommServer:
         self.host = host
         self._requested_port = port
         self.command_mode = command_mode
+        # 故障注入（仅测试/联调用）："ignore" = 收到帧但不响应，
+        # 用于复现控制板启动慢（hello 无 ack）与半开连接（心跳无 ack）
+        self.hello_mode = hello_mode
+        self.heartbeat_mode = heartbeat_mode
         self.inject_bad_json = inject_bad_json
         self.status_interval = status_interval
         self.demo_alarms = demo_alarms
@@ -177,6 +183,9 @@ class MockHostCommServer:
         payload = frame.get("payload", {}) or {}
 
         if msg_type == "hello":
+            if self.hello_mode == "ignore":
+                # 模拟控制板已接受 TCP 连接但尚未就绪（握手超时）
+                return
             await self._send(writer, self._hello_ack())
             if self.inject_bad_json:
                 # 直接写入一行非法 JSON，验证客户端容错（不走 encode）
@@ -184,6 +193,9 @@ class MockHostCommServer:
                 await writer.drain()
 
         elif msg_type == "heartbeat":
+            if self.heartbeat_mode == "ignore":
+                # 模拟半开连接：TCP 未断但对端不再响应心跳
+                return
             await self._send(writer, self._heartbeat_ack())
 
         elif msg_type == "get_status":

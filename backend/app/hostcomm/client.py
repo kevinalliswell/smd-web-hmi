@@ -157,13 +157,20 @@ class HostCommClient:
                 self._reconnect_task = asyncio.create_task(self._reconnect_loop(), name="hostcomm-reconnect")
 
     async def _open(self) -> None:
-        self._reader, self._writer = await asyncio.open_connection(self.host, self.port)
-        self._parser = FrameParser()
-        self._connected = True
-        # 启动收帧任务
-        self._reader_task = asyncio.create_task(self._reader_loop(), name="hostcomm-reader")
-        # 握手
-        self.hello_ack = await self._handshake()
+        try:
+            self._reader, self._writer = await asyncio.open_connection(self.host, self.port)
+            self._parser = FrameParser()
+            self._connected = True
+            # 启动收帧任务
+            self._reader_task = asyncio.create_task(self._reader_loop(), name="hostcomm-reader")
+            # 握手
+            self.hello_ack = await self._handshake()
+        except BaseException:
+            # 握手失败（控制板启动慢等）必须就地清理：否则遗留的收帧任务会在下一轮
+            # 重连覆盖 self._reader 后继续读**新**连接，两个协程并发 read 同一
+            # StreamReader，孤儿协程随即把刚握手成功的健康连接拆掉（重连风暴）。
+            await self._teardown_connection()
+            raise
         logger.info("hostcomm.connected", host=self.host, port=self.port, caps=self.capabilities)
         await self._set_comm_quality("online")
         # 启动心跳
@@ -191,11 +198,16 @@ class HostCommClient:
 
     async def _teardown_connection(self) -> None:
         self._connected = False
-        for task in (self._heartbeat_task, self._reader_task):
-            if task is not None and task is not asyncio.current_task():
-                task.cancel()
+        current = asyncio.current_task()
+        doomed = [t for t in (self._heartbeat_task, self._reader_task) if t is not None and t is not current]
         self._heartbeat_task = None
         self._reader_task = None
+        for task in doomed:
+            task.cancel()
+        # 等任务真正退出再释放套接字：取消是异步的，不等待的话旧收帧协程可能在
+        # 下一次 _open() 之后才醒来，读到新连接的 reader。
+        if doomed:
+            await asyncio.gather(*doomed, return_exceptions=True)
         if self._writer is not None:
             try:
                 self._writer.close()
@@ -397,16 +409,34 @@ class HostCommClient:
                     await self._send(frame)
                 except HostCommNotConnectedError:
                     return
+                except Exception as exc:  # noqa: BLE001
+                    # 发送失败通常意味着链路已断（半开连接）。收帧协程此时仍阻塞在
+                    # read() 上不会报错，若心跳只记日志后退出，上位机将永久失联且
+                    # 不再重连——违背红线 6"持续重连"。
+                    logger.warning("hostcomm.heartbeat_send_failed", error=str(exc))
+                    await self._on_connection_lost()
+                    return
                 # 检查心跳新鲜度
                 if self._last_heartbeat_ack is not None:
                     elapsed = time.monotonic() - self._last_heartbeat_ack
                     if elapsed > self.heartbeat_interval * self.timeout_count:
                         self._missed_heartbeats += 1
                         await self._set_comm_quality("degraded")
+                        if self._missed_heartbeats >= self.timeout_count:
+                            # 连续超时达阈值：对端已无响应，判定断链并转入重连，
+                            # 不能停留在 degraded 等一个永远不会来的心跳。
+                            logger.warning(
+                                "hostcomm.heartbeat_timeout",
+                                missed=self._missed_heartbeats,
+                                elapsed=round(elapsed, 2),
+                            )
+                            await self._on_connection_lost()
+                            return
         except asyncio.CancelledError:
             raise
         except Exception as exc:  # noqa: BLE001
             logger.warning("hostcomm.heartbeat_error", error=str(exc))
+            await self._on_connection_lost()
 
     # ----------------------------------------------------------- comm_quality
     async def _set_comm_quality(self, quality: str) -> None:
