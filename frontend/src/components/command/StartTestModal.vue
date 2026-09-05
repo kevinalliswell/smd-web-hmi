@@ -3,6 +3,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { requestConfirmToken, sendCommand } from '@/api/commands'
 import { fetchNextTestId } from '@/api/tests'
+import RecipePicker from '@/components/recipes/RecipePicker.vue'
 import ConfirmDialog from '@/components/shared/ConfirmDialog.vue'
 import OperationResult from '@/components/command/OperationResult.vue'
 
@@ -12,6 +13,7 @@ const testId = ref(initialSuggestion)
 const originalHeightMm = ref('')
 const sampleLabel = ref('')
 const notes = ref('')
+const recipe = ref(null)
 const error = ref('')
 const unknownOperationId = ref(null)
 function onOperationResolved(result) {
@@ -69,6 +71,7 @@ async function onConfirm() {
         original_height_mm: Number(originalHeightMm.value),
         sample_label: sampleLabel.value.trim() || undefined,
         notes: notes.value.trim() || undefined,
+        ...(recipe.value ? { recipe_id: recipe.value.recipe_id, recipe_version: recipe.value.version } : {}),
       },
       confirm_token,
     )
@@ -102,6 +105,8 @@ async function onConfirm() {
       />
       <label for="start-test-label">样品标识</label>
       <input id="start-test-label" v-model="sampleLabel" maxlength="128" />
+      <details><summary>选择已下发配方</summary><RecipePicker @select="recipe = $event" /><p class="muted">支持配方的设备必须选择已回读一致的版本；旧设备留空使用固定流程。</p></details>
+      <p v-if="recipe">{{ recipe.definition.name }} · v{{ recipe.version }} · {{ recipe.definition.mode === 'standard' ? '标准候选模板' : '非标' }}</p>
       <label for="start-test-notes">备注</label>
       <textarea id="start-test-notes" v-model="notes" maxlength="1000" rows="3" />
       <div v-if="error && !confirming" class="err">{{ error }}</div>
@@ -123,6 +128,7 @@ async function onConfirm() {
       :close-on-confirm="false"
       @confirm="onConfirm"
     >
+      <p v-if="recipe">{{ recipe.definition.name }} · v{{ recipe.version }}。后台将核对设备执行版本。</p>
       <div class="co-warn">
         本试验涉及 CO 工艺阶段。请确认现场排风、CO 监测与安全继电器均正常。
         启动请求将发送至控制板，最终由 STM32 状态机与硬接线联锁裁决。
@@ -135,7 +141,7 @@ async function onConfirm() {
 
 <style scoped>
 .overlay { position: fixed; inset: 0; background: rgba(0,0,0,.6); display: flex; align-items: center; justify-content: center; z-index: 100; }
-.dialog { background: var(--bg-card); border: 1px solid var(--border-hi); border-radius: 10px; width: 420px; padding: 20px; display: flex; flex-direction: column; gap: 10px; }
+.dialog { background: var(--bg-card); border: 1px solid var(--border-hi); border-radius: 10px; width: min(520px, calc(100vw - 24px)); max-height: calc(100dvh - 24px); overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 10px; }
 .dlg-title { font-size: 16px; font-weight: 700; }
 label { font-size: 12px; color: var(--text-sec); }
 .co-warn { background: var(--yellow-dim); border: 1px solid var(--yellow); color: var(--warning-text); border-radius: 6px; padding: 10px; font-size: 12px; line-height: 1.6; }

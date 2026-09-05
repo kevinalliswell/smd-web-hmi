@@ -42,3 +42,22 @@ export interface MaintenanceState {
   current_version?: string
   upgrade_id?: string
 }
+
+export interface RecipeStage {
+  name: string
+  kind: 'ramp' | 'hold' | 'gas' | 'cool'
+  furnace_target_c?: number | null
+  ramp_c_min?: number | null
+  n2_l_min: number
+  co_l_min: number
+  exit: { signal: 'furnace_c' | 'burden_c' | 'elapsed_s'; comparison: 'gte' | 'lt'; value: number }
+  timeout_s: number
+}
+export interface RecipeDefinition {
+  schema_version: 1
+  name: string
+  mode: 'standard' | 'custom'
+  description: string
+  stages: RecipeStage[]
+}
+export interface RecipeVersion { recipe_id: string; version: number; digest: string; definition: RecipeDefinition; created_at?: string }

@@ -46,6 +46,7 @@ const groups = [
   {
     title: '配置与诊断',
     items: [
+      { name: 'recipes', label: '实验配方' },
       { name: 'parameters', label: '参数配置' },
       { name: 'diagnostics', label: '设备诊断', role: 'maintainer' },
       { name: 'settings', label: '系统设置' },

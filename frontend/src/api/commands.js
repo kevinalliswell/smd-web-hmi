@@ -36,7 +36,7 @@ function unknownOperation(operationId) {
 /** @param {OperationResult} result */
 function finishOperation(result, key, operationId, command) {
   const status = result.operation_status || result.result
-  if (command === 'set_parameters' && status === 'accepted') throw unknownOperation(operationId)
+  if (['set_parameters', 'activate_recipe'].includes(command) && status === 'accepted') throw unknownOperation(operationId)
   if (!['accepted', 'verified', 'rejected'].includes(status)) throw unknownOperation(operationId)
   const entries = pendingOperations()
   delete entries[key]
@@ -61,7 +61,7 @@ export async function fetchOperation(operationId) {
   if (['accepted', 'verified', 'rejected'].includes(result.operation_status)) {
     const entries = pendingOperations()
     for (const [key, entry] of Object.entries(entries)) {
-      if (entry.operation_id === operationId && !(entry.command === 'set_parameters' && result.operation_status === 'accepted')) delete entries[key]
+      if (entry.operation_id === operationId && !(['set_parameters', 'activate_recipe'].includes(entry.command) && result.operation_status === 'accepted')) delete entries[key]
     }
     savePending(entries)
   }
@@ -73,32 +73,30 @@ export async function fetchOperation(operationId) {
 /**
  * @param {string} command
  * @param {Record<string, unknown>} params
- * @param {string | null} confirmToken
+ * @param {(operationId: string) => Promise<any>} transmit
  * @returns {Promise<OperationResult>}
  */
-export async function sendCommand(command, params = {}, confirmToken = null) {
+export async function sendOperation(command, params, transmit) {
   const key = operationKey(command, params)
   const entries = pendingOperations()
   const existing = entries[key]
   const operationId = existing?.operation_id || crypto.randomUUID()
   if (existing) {
-    try {
-      return finishOperation(await fetchOperation(operationId), key, operationId, command)
-    } catch (error) {
-      if (error.response?.status !== 404) throw error.outcomeUnknown ? error : unknownOperation(operationId)
+    let known
+    try { known = await fetchOperation(operationId) } catch (error) {
+      if (error.response?.status !== 404) throw unknownOperation(operationId)
     }
+    if (known) return finishOperation(known, key, operationId, command)
   }
   entries[key] = { operation_id: operationId, command, created_at: new Date().toISOString() }
   savePending(entries)
   let response
   try {
-    /** @type {CommandRequest} */
-    const body = { command, params, confirm_token: confirmToken, operation_id: operationId }
-    response = await apiClient.post('/api/commands', body, { headers: { 'Idempotency-Key': operationId } })
+    response = await transmit(operationId)
   } catch (error) {
     const status = error.response?.status
     const detail = error.response?.data?.detail
-    if (status >= 400 && status < 500 && !detail?.operation_id) {
+    if (error.code === 'CLIENT_VERSION_MISMATCH' || (status >= 400 && status < 500 && !detail?.operation_id)) {
       const current = pendingOperations()
       delete current[key]
       savePending(current)
@@ -113,4 +111,13 @@ export async function sendCommand(command, params = {}, confirmToken = null) {
 
 export function ackAlarm(alarmId) {
   return apiClient.post(`/api/alarms/${alarmId}/ack`).then((r) => r.data.data)
+}
+
+/** @param {string} command @param {Record<string, unknown>} params @param {string | null} confirmToken */
+export function sendCommand(command, params = {}, confirmToken = null) {
+  return sendOperation(command, params, (operationId) => {
+    /** @type {CommandRequest} */
+    const body = { command, params, confirm_token: confirmToken, operation_id: operationId }
+    return apiClient.post('/api/commands', body, { headers: { 'Idempotency-Key': operationId } })
+  })
 }

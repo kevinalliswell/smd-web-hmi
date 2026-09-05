@@ -52,6 +52,7 @@ defineProps({
       <path d="M5 9v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V9" />
       <path d="M10 13h4" />
     </template>
+    <template v-else-if="name === 'recipes'"><path d="M8 5h12M8 12h12M8 19h12" /><circle cx="3" cy="5" r="1" /><circle cx="3" cy="12" r="1" /><circle cx="3" cy="19" r="1" /></template>
     <!-- 参数配置 -->
     <template v-else-if="name === 'parameters'">
       <path d="M4 7h10" /><path d="M18 7h2" /><circle cx="16" cy="7" r="2" />

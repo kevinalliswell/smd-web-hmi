@@ -1,3 +1,4 @@
+import { appCompatibility } from '@/utils/appVersion'
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 
@@ -16,8 +17,8 @@ export const useDeviceStore = defineStore('device', () => {
   const furnaceSV = computed(() => snapshot.value?.temperature?.furnace_sv_deg_c ?? null)
   const operationState = computed(() => snapshot.value?.system?.operation_state || 'unknown')
   const isRunning = computed(() => snapshot.value?.system?.is_running === true)
-  const canStartTest = computed(() => isFresh.value && snapshot.value?.system?.can_start_test === true)
-  const canSetParameters = computed(() => isFresh.value && snapshot.value?.system?.can_set_parameters === true)
+  const canStartTest = computed(() => !appCompatibility.mismatch && isFresh.value && snapshot.value?.system?.can_start_test === true)
+  const canSetParameters = computed(() => !appCompatibility.mismatch && isFresh.value && snapshot.value?.system?.can_set_parameters === true)
   const canStopTest = computed(() => snapshot.value?.system?.can_stop_test === true)
   const safetyOk = computed(() => !!snapshot.value?.safety?.safety_relay_allowed)
 

@@ -45,4 +45,13 @@ describe('command operation identity', () => {
     expect(sessionStorage.getItem('smd_pending_operations')).toContain('set_parameters')
   })
 
+  it('reports a recovered device rejection as rejected instead of unknown', async () => {
+    apiClient.post.mockRejectedValue({ code: 'ECONNABORTED' })
+    apiClient.get.mockResolvedValue({ data: { data: { operation_status: 'unknown' } } })
+    await expect(sendCommand('tare_balance')).rejects.toThrow('结果未知')
+    apiClient.get.mockResolvedValue({ data: { data: { operation_status: 'rejected', reason_code: 'interlock_denied' } } })
+    await expect(sendCommand('tare_balance')).rejects.toThrow('interlock_denied')
+    expect(apiClient.post).toHaveBeenCalledOnce()
+  })
+
 })

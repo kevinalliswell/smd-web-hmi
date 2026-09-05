@@ -1,3 +1,4 @@
+vi.mock('@/api/recipes', () => ({ fetchRecipes: vi.fn().mockResolvedValue({ items: [], total: 0 }), fetchRecipeVersions: vi.fn() }))
 import { describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import StartTestModal from '@/components/command/StartTestModal.vue'
