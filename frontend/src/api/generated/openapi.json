@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "smd-web-hmi 后端",
-    "version": "0.3.0-rc.1"
+    "version": "0.3.0-rc.2"
   },
   "paths": {
     "/api/auth/login": {

@@ -17,7 +17,7 @@ def main() -> None:
         access_log=settings.hostcomm_mock,
         workers=1,
         proxy_headers=False,
-        **tls_options(settings.smd_host),
+        **tls_options(settings.smd_host, cert=settings.smd_tls_certfile, key=settings.smd_tls_keyfile),
     )
 
 

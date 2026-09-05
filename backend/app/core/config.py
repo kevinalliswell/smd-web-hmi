@@ -33,7 +33,9 @@ class Settings(BaseSettings):
 
     # ---- 后端服务 ----
     smd_maintenance_file: str = ""
-    smd_host: str = "0.0.0.0"
+    smd_host: str = "127.0.0.1"
+    smd_tls_certfile: str = ""
+    smd_tls_keyfile: str = ""
     smd_port: int = 8000
     smd_db_path: str = "./data/smd.db"
     smd_jwt_secret: str = ""
