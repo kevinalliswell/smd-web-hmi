@@ -8,4 +8,6 @@
 | [004](ADR-004-authentication-lifecycle.md) | 已接受；描述基线已实现行为 | 一次性口令、数据库会话撤销和 WS 认证 |
 | [005](ADR-005-shared-runtime-and-evidence.md) | 已接受；交付能力待任务验收 | 共用后台、桌面安装、设备操作和实验追溯 |
 
+| [006](ADR-006-candidate-experiment-contracts.md) | 软件约定已接受；固件待冻结 | 配方/生命周期/首滴/序号与测定完整性 |
+
 已接受表示选型成立，不代表实现或真机验收完成。旧 ADR 保留历史，在新 ADR 中说明变化。
