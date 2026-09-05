@@ -293,7 +293,7 @@ class CommandService:
             )
 
             # 命令被控制板受理后，处理试验会话生命周期（建/收会话）
-            if result_payload.get("result") == "accepted":
+            if command == "start_test" or result_payload.get("result") == "accepted":
                 await self._handle_lifecycle(
                     db_session,
                     command,
@@ -304,6 +304,24 @@ class CommandService:
                     result_payload,
                 )
             return result_payload
+        except BaseException:
+            if command == "start_test":
+                # 发送/响应/归档途中失败不能推断设备未启动；保留身份供人工和板端对账。
+                try:
+                    from sqlalchemy import update
+
+                    from app.db.models import TestSession
+
+                    await db_session.rollback()
+                    await db_session.execute(
+                        update(TestSession)
+                        .where(TestSession.test_id == params.get("test_id"), TestSession.end_time.is_(None))
+                        .values(phase="needs_review")
+                    )
+                    await db_session.commit()
+                except Exception as error:
+                    logger.warning("start_review.mark_failed", error=str(error))
+            raise
         finally:
             if reserved_test_id is not None:
                 await self._release_start(reserved_test_id)
@@ -412,7 +430,7 @@ class CommandService:
         client_ip: str | None,
         result_payload: dict,
     ) -> None:
-        """start_test → 建 test_session 并标记进行中；stop_test → 收尾。"""
+        """启动ACK确认采集身份/拒绝归档；停止ACK只标记待板端安全收尾。"""
         if db_session is None:
             return
         from sqlalchemy import select
@@ -424,8 +442,21 @@ class CommandService:
             test_id = params.get("test_id")
             if not test_id:
                 return
-            # 会话及参数在发送前已持久化，ACK仅恢复当前采集身份，不宣布实验结束。
-            active_test.restore(test_id, needs_device_reconcile=True)
+            result = result_payload.get("result")
+            if result == "accepted":
+                # ACK仅恢复当前采集身份，不宣布实验结束。
+                active_test.restore(test_id, needs_device_reconcile=True)
+                return
+            row = await db_session.scalar(select(TestSession).where(TestSession.test_id == test_id))
+            if row is not None and row.end_time is None:
+                if result in {"rejected", "busy", "invalid_param", "permission_denied", "unsupported"}:
+                    row.phase = "start_rejected"
+                    row.end_time = now_iso()
+                    row.end_reason = "start_rejected:" + result
+                    row.state_at_end = result_payload.get("current_state")
+                else:
+                    row.phase = "needs_review"
+                await db_session.commit()
 
         elif command == "stop_test":
             test_id = active_test.active_test_id

@@ -220,3 +220,35 @@ def test_recipe_cannot_co_hold_below_device_temperature_or_unsafe_end():
     assert "stage_5:co_target_below_required_temperature" in verdict["errors"]
     profile = {**PROFILE, "safe_end_burden_c": 600}
     assert not validate_for_device(standard_template(), profile, ["recipe_v1"])["executable"]
+
+
+@pytest.mark.parametrize("result", ["rejected", "busy", "invalid_param", "permission_denied", "unsupported", "timeout"])
+async def test_start_result_closes_only_explicit_rejection(db_session, result):
+    class RefusingBoard(Board):
+        capabilities = ["command", "status_snapshot"]
+
+        async def send_command(self, command, params, **kwargs):
+            self.sent.append((command, params))
+            return {"result": result, "command": command, "reason_code": "device_decision"}
+
+    board = RefusingBoard()
+    try:
+        await CommandService(board, await ready()).execute(
+            "start_test",
+            {"test_id": "REFUSED", "original_height_mm": 40},
+            operator_id="a",
+            role="operator",
+            confirm_token=confirm_tokens.issue(),
+            db_session=db_session,
+        )
+        row = await db_session.scalar(select(TestSession).where(TestSession.test_id == "REFUSED"))
+        if result == "timeout":
+            assert row.end_time is None
+            assert row.phase == "needs_review"
+        else:
+            assert row.end_time is not None
+            assert row.phase == "start_rejected"
+            assert row.end_reason == "start_rejected:" + result
+        assert active_test.active_test_id is None
+    finally:
+        active_test.stop()
