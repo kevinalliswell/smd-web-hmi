@@ -17,6 +17,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from app.core.logging import get_logger
+from app.services.sqlite_backup import backup_sqlite
 
 logger = get_logger("service.maintenance")
 
@@ -132,25 +133,8 @@ class MaintenanceManager:
             backup_dir.mkdir(parents=True, exist_ok=True)
             stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
             target = backup_dir / f"smd-{stamp}-{uuid.uuid4().hex[:8]}.db"
-            temporary = target.with_suffix(".tmp")
-
-            def copy_and_verify() -> None:
-                if not source.is_file():
-                    raise FileNotFoundError("数据库文件不存在")
-                try:
-                    with (
-                        closing(sqlite3.connect(source)) as source_db,
-                        closing(sqlite3.connect(temporary)) as backup_db,
-                    ):
-                        with source_db, backup_db:
-                            source_db.backup(backup_db)
-                            self._verify_connection(backup_db)
-                    temporary.replace(target)
-                finally:
-                    temporary.unlink(missing_ok=True)
-
             try:
-                await asyncio.to_thread(copy_and_verify)
+                await asyncio.to_thread(backup_sqlite, source, target)
             except Exception as exc:
                 self._last_error = type(exc).__name__
                 raise
