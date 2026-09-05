@@ -180,3 +180,14 @@ def test_appendix_b_binary_float_error_does_not_force_an_extra_run():
     result = evaluate_repeatability("t10", [1014.13, 1024.13])
     assert result["result"] == 1019
     assert result["additional_runs"] == 0
+
+
+def test_cooling_boundary_remains_closed_when_legacy_device_returns_to_standby():
+    cooling = point(1100, 1000, 20, 2000)
+    cooling.current_state = "Cooling"
+    standby = point(1000, 900, 0, 20000, first_drip=True)
+    standby.current_state = "Standby"
+    result = metrics([point(600, 590, 30, 100), cooling, standby])
+    assert result["delta_p_max"] == 100
+    assert result["ts"] is None
+    assert result["excluded_sample_count"] == 2

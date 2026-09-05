@@ -104,7 +104,9 @@ class MetricAccumulator:
             "complete",
             "completed",
         }
-        if self.measurement_finished or after_boundary or disposal:
+        if disposal:
+            self.measurement_finished = True
+        if self.measurement_finished or after_boundary:
             r["excluded_sample_count"] += 1
             return
         if not metadata_ok:
@@ -148,6 +150,7 @@ class MetricAccumulator:
         self.previous = (furnace, disp) if furnace is not None and disp is not None else None
         # 气密试验和升温至600℃之前的数据保留原曲线，不进入测定指标。
         if furnace is None or furnace < 600:
+            r["excluded_sample_count"] += 1
             return
         r["measurement_sample_count"] += 1
         if None in (temp, disp, dp):

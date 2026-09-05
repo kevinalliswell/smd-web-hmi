@@ -296,4 +296,4 @@ async def test_report_uses_persisted_end_sample_id_to_exclude_cooling(db_session
     await db_session.commit()
     result = await report_service.compute_metrics_from_database(db_session, test_id, 5)
     assert result["delta_p_max"] == 1000
-    assert result["excluded_sample_count"] == 1
+    assert result["excluded_sample_count"] == 2  # 升温前点 + 冷却点均保留在原始曲线。
