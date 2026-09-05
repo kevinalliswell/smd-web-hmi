@@ -16,7 +16,22 @@ from sqlalchemy import select
 
 from app import __version__
 from app.api import websocket
-from app.api.routes import alarms, analytics, auth, commands, logs, parameters, reports, status, system, tests, users
+from app.api.operation_api import operation_http_error
+from app.api.routes import (
+    alarms,
+    analytics,
+    auth,
+    commands,
+    control,
+    logs,
+    maintenance,
+    parameters,
+    reports,
+    status,
+    system,
+    tests,
+    users,
+)
 from app.api.schemas import err
 from app.api.ws_manager import ws_manager
 from app.core.config import get_settings
@@ -24,11 +39,12 @@ from app.core.logging import configure_logging, get_logger
 from app.core.security import hash_password
 from app.db.database import assert_schema_current, create_all, dispose_engine, get_sessionmaker
 from app.db.models import UserAccount
-from app.hostcomm.client import HostCommClient, HostCommNotConnectedError, HostCommTimeoutError
+from app.hostcomm.client import HostCommClient, HostCommNotConnectedError, HostCommProtocolError, HostCommTimeoutError
 from app.hostcomm.protocol import now_iso
 from app.services.background_jobs import background_jobs
 from app.services.cache import status_cache
-from app.services.maintenance_service import maintenance_manager
+from app.services.maintenance_service import MaintenanceBlockedError, maintenance_manager
+from app.services.operations import OperationError, recover_interrupted_operations
 from app.services.sampling_health import sampling_health
 from app.services.state_policy import enrich_status_snapshot
 from app.services.test_runtime import active_test
@@ -155,10 +171,17 @@ def _build_hostcomm_client(settings) -> HostCommClient:
     host = "127.0.0.1" if settings.hostcomm_mock else settings.hostcomm_host
 
     async def on_status(payload: dict) -> None:
-        payload = enrich_status_snapshot(payload)
-        if active_test.needs_device_reconcile:
-            await _reconcile_test_runtime(payload)
+        payload = enrich_status_snapshot(payload, control_ready=False)
         await status_cache.update(payload, ts_iso=(payload.get("_hostcomm") or {}).get("received_at") or now_iso())
+        try:
+            maintenance_idle = maintenance_manager.upgrade_state()["state"] == "idle"
+        except MaintenanceBlockedError:
+            maintenance_idle = False
+        payload = enrich_status_snapshot(
+            payload, control_ready=client.is_online and status_cache.is_fresh and maintenance_idle
+        )
+        if status_cache.is_fresh and active_test.needs_device_reconcile:
+            await _reconcile_test_runtime(payload)
         await ws_manager.broadcast("status_update", payload)
         await _persist_snapshot(payload)
 
@@ -175,6 +198,10 @@ def _build_hostcomm_client(settings) -> HostCommClient:
                     ws_type, ws_data = result
         except Exception as exc:  # noqa: BLE001
             logger.warning("persist.event_failed", error=str(exc))
+            # 数据库故障时仍保持报警类型，让操作员看到未持久化的现场报警。
+            if payload.get("kind") in {"alarm_new", "alarm_clear"}:
+                ws_type = payload["kind"]
+                ws_data = {**payload, "alarm_code": payload.get("event_code"), "persisted": False}
         await ws_manager.broadcast(ws_type, ws_data)
 
     async def on_comm_status(payload: dict) -> None:
@@ -185,7 +212,7 @@ def _build_hostcomm_client(settings) -> HostCommClient:
                 active_test.restore(active_test.active_test_id, needs_device_reconcile=True)
         await ws_manager.broadcast("comm_status", payload)
 
-    return HostCommClient(
+    client = HostCommClient(
         host=host,
         port=settings.hostcomm_port,
         heartbeat_interval=settings.hostcomm_heartbeat_interval,
@@ -197,6 +224,7 @@ def _build_hostcomm_client(settings) -> HostCommClient:
         on_event=on_event,
         on_comm_status=on_comm_status,
     )
+    return client
 
 
 @asynccontextmanager
@@ -212,7 +240,10 @@ async def lifespan(app: FastAPI):
         await create_all()
     else:
         await assert_schema_current()
+    maintenance_manager.configure_upgrade(settings.maintenance_file)
     await _seed_admin()
+    async with get_sessionmaker()() as session:
+        await recover_interrupted_operations(session)
     await _reconcile_test_runtime()
     if not settings.hostcomm_mock:
         await maintenance_manager.start(settings)
@@ -293,6 +324,7 @@ def create_app() -> FastAPI:
         auth,
         status,
         commands,
+        control,
         tests,
         alarms,
         parameters,
@@ -301,6 +333,7 @@ def create_app() -> FastAPI:
         analytics,
         users,
         system,
+        maintenance,
     ):
         app.include_router(module.router)
 
@@ -338,6 +371,13 @@ def create_app() -> FastAPI:
     @app.exception_handler(HostCommNotConnectedError)
     async def _hostcomm_offline_handler(request: Request, exc: HostCommNotConnectedError):
         return JSONResponse(status_code=503, content=err("device_comm_fault", str(exc)))
+
+    async def _operation_error_handler(request: Request, exc: Exception):
+        error = operation_http_error(exc)
+        return JSONResponse(status_code=error.status_code, content=error.detail)
+
+    for error_class in (OperationError, MaintenanceBlockedError, HostCommProtocolError):
+        app.add_exception_handler(error_class, _operation_error_handler)
 
     @app.get("/health", tags=["system"])
     async def health():  # noqa: D401
