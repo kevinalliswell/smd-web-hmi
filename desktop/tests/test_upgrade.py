@@ -2,6 +2,7 @@
 
 import json
 import sqlite3
+from contextlib import closing
 from pathlib import Path
 
 import pytest
@@ -9,8 +10,34 @@ from smd_desktop.bundle import build_manifest
 from smd_desktop.upgrade import UpgradeError, UpgradeTransaction
 
 
+@pytest.fixture(autouse=True)
+def sqlite_handles_closed(monkeypatch):
+    """Retain real connections so GC cannot hide handles that block Windows recovery."""
+    connect = sqlite3.connect
+    connections = []
+
+    def tracked_connect(*args, **kwargs):
+        connection = connect(*args, **kwargs)
+        connections.append(connection)
+        return connection
+
+    monkeypatch.setattr(sqlite3, "connect", tracked_connect)
+    yield
+    open_handles = 0
+    for connection in connections:
+        try:
+            connection.execute("SELECT 1")
+        except sqlite3.ProgrammingError as exc:
+            assert "closed" in str(exc)
+        else:
+            open_handles += 1
+        finally:
+            connection.close()
+    assert open_handles == 0, f"{open_handles} SQLite handles leaked across upgrade/recovery"
+
+
 def read_value(path):
-    with sqlite3.connect(path) as db:
+    with closing(sqlite3.connect(path)) as db:
         return db.execute("SELECT value FROM sample").fetchone()[0]
 
 
@@ -28,7 +55,9 @@ class Platform:
         self.version = version_dir.name
 
     def migrate(self, version_dir):
-        with sqlite3.connect(self.db_path) as db:
+        # The real migration runs in a subprocess and releases its handles on exit.
+        # Connection.__exit__ commits/rolls back, but does not close the connection.
+        with closing(sqlite3.connect(self.db_path)) as db, db:
             db.execute("UPDATE sample SET value='migrated'")
         if self.fail == "power":
             raise SystemExit("power cut")
@@ -53,7 +82,7 @@ def installation(tmp_path):
     (data / "config").mkdir()
     (data / "config/service.env").write_text("old-config")
     db_path = tmp_path / "actual-custom-location.db"
-    with sqlite3.connect(db_path) as db:
+    with closing(sqlite3.connect(db_path)) as db, db:
         db.execute("CREATE TABLE sample(value TEXT)")
         db.execute("INSERT INTO sample VALUES ('original')")
     (data / "installation.json").write_text(json.dumps({"version": "0.3.0"}))
@@ -94,6 +123,10 @@ def test_health_failure_rolls_back_actual_database_config_and_runtime(installati
     assert json.loads((data / "installation.json").read_text())["version"] == "0.3.0"
     assert platform.version == "0.3.0" and platform.running
     assert not (data / "maintenance.json").exists()
+    journal = json.loads((data / "updates/active.json").read_text())
+    assert journal["phase"] == "rolled_back"
+    assert "healthy" in journal["last_error"]
+    assert "rollback_error" not in journal
 
 
 def test_power_cut_during_migration_is_recovered_idempotently(installation):
@@ -104,6 +137,7 @@ def test_power_cut_during_migration_is_recovered_idempotently(installation):
         transaction.apply(package, permit)
     assert read_value(db_path) == "migrated"
     assert (data / "maintenance.json").exists()
+    assert json.loads(transaction.journal_path.read_text())["phase"] == "migrating"
     restarted = UpgradeTransaction(root, data, platform)
     restarted.recover()
     restarted.recover()
@@ -183,9 +217,13 @@ def test_claimed_before_journal_can_recover_without_bypassing_transaction(instal
     assert journal["upgrade_id"] == permit["upgrade_id"]
     assert journal["phase"] == "rolled_back"
     assert journal["recovered_unstarted_claim"] is True
+    assert journal["backup_ready"] is False
+    assert not Path(journal["backup_dir"]).exists()
     assert platform.version == "0.3.0" and platform.running
     assert not transaction.gate_path.exists()
     assert read_value(source) == "original"
+    transaction.recover()
+    assert json.loads(transaction.journal_path.read_text()) == journal
 
 
 def test_orphan_claim_recovery_keeps_gate_if_old_service_cannot_be_verified(installation):
