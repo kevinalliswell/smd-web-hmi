@@ -353,7 +353,7 @@ class CommandService:
             )
 
         elif command == "stop_test":
-            test_id = active_test.stop()
+            test_id = active_test.active_test_id
             row = None
             if test_id:
                 row = await db_session.scalar(select(TestSession).where(TestSession.test_id == test_id))
@@ -362,10 +362,10 @@ class CommandService:
                     select(TestSession).where(TestSession.end_time.is_(None)).order_by(TestSession.id.desc())
                 )
             if row is not None and row.end_time is None:
-                row.end_time = now_iso()
-                row.end_reason = "operator_stop"
-                row.state_at_end = result_payload.get("current_state")
+                row.stop_requested_at = now_iso()
+                row.phase = "stopping"
                 await db_session.commit()
+                active_test.restore(row.test_id, needs_device_reconcile=True)
 
     async def _capture_start_parameters(
         self,

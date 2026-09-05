@@ -56,6 +56,16 @@ class TestSession(Base):
     sample_label: Mapped[str | None] = mapped_column(Text, nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     report_path: Mapped[str | None] = mapped_column(Text, nullable=True)
+    phase: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="awaiting_device", server_default="needs_review"
+    )
+    mode: Mapped[str] = mapped_column(String(16), nullable=False, default="custom", server_default="custom")
+    stop_requested_at: Mapped[str | None] = mapped_column(UTCISOText(), nullable=True)
+    measurement_completed_at: Mapped[str | None] = mapped_column(UTCISOText(), nullable=True)
+    safety_completed_at: Mapped[str | None] = mapped_column(UTCISOText(), nullable=True)
+    data_integrity: Mapped[str] = mapped_column(String(16), nullable=False, default="unknown", server_default="unknown")
+    recipe_snapshot_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    measurement_basis_json: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     __table_args__ = (Index("idx_ts_end_time", "end_time"),)
 

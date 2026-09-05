@@ -102,12 +102,14 @@ async def append_sample_point(
     session.add(
         SamplePoint(
             test_id=test_id,
-            ts=snapshot.get("timestamp") or now_iso(),
+            ts=(snapshot.get("_hostcomm") or {}).get("received_at") or now_iso(),
             source=source,
             furnace_pv=temp.get("furnace_pv_deg_c"),
             furnace_sv=temp.get("furnace_sv_deg_c"),
             burden_temp=meas.get("burden_temp_deg_c"),
-            burden_temp_v=int(bool(meas.get("burden_temp_valid", True))),
+            burden_temp_v=(
+                1 if meas.get("burden_temp_valid") is True else 0 if meas.get("burden_temp_valid") is False else -1
+            ),
             temp_output_pct=temp.get("temp_output_percent"),
             program_step=temp.get("program_step"),
             n2_sp=gas.get("n2_sp_l_min"),
@@ -116,12 +118,14 @@ async def append_sample_point(
             co_pv=gas.get("co_pv_l_min"),
             drip_weight=meas.get("drip_weight_g"),
             delta_p=meas.get("delta_p_pa"),
-            delta_p_v=int(bool(meas.get("delta_p_valid", True))),
+            delta_p_v=(1 if meas.get("delta_p_valid") is True else 0 if meas.get("delta_p_valid") is False else -1),
             displacement=meas.get("displacement_mm"),
-            displacement_v=int(bool(meas.get("displacement_valid", True))),
+            displacement_v=(
+                1 if meas.get("displacement_valid") is True else 0 if meas.get("displacement_valid") is False else -1
+            ),
             current_state=sm.get("current_state"),
             safety_relay=int(bool(safety.get("safety_relay_allowed", False))),
-            ext_json=None,
+            ext_json=json.dumps(snapshot, ensure_ascii=False),
         )
     )
     await session.commit()

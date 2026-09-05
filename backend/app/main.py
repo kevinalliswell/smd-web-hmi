@@ -32,7 +32,7 @@ from app.services.maintenance_service import maintenance_manager
 from app.services.sampling_health import sampling_health
 from app.services.state_policy import enrich_status_snapshot
 from app.services.test_runtime import active_test
-from app.services.test_session_service import reconcile_test_sessions
+from app.services.test_session_service import advance_test_session, reconcile_test_sessions
 
 logger = get_logger("main")
 
@@ -107,6 +107,7 @@ async def _persist_snapshot(payload: dict) -> None:
     from app.services import logging_service
 
     test_id = active_test.active_test_id
+    payload = dict(payload, _hmi={"persistence_failures": sampling_health.consecutive_write_failures})
     try:
         settings = get_settings()
         sessionmaker = get_sessionmaker()
@@ -122,6 +123,7 @@ async def _persist_snapshot(payload: dict) -> None:
             test_id = active_test.active_test_id
             if test_id:
                 await logging_service.append_sample_point(session, test_id, payload)
+                await advance_test_session(session, test_id, payload)
     except Exception as exc:  # noqa: BLE001
         should_alarm = sampling_health.record_failure()
         logger.warning(
@@ -156,7 +158,7 @@ def _build_hostcomm_client(settings) -> HostCommClient:
         payload = enrich_status_snapshot(payload)
         if active_test.needs_device_reconcile:
             await _reconcile_test_runtime(payload)
-        await status_cache.update(payload, ts_iso=now_iso())
+        await status_cache.update(payload, ts_iso=(payload.get("_hostcomm") or {}).get("received_at") or now_iso())
         await ws_manager.broadcast("status_update", payload)
         await _persist_snapshot(payload)
 
@@ -176,6 +178,11 @@ def _build_hostcomm_client(settings) -> HostCommClient:
         await ws_manager.broadcast(ws_type, ws_data)
 
     async def on_comm_status(payload: dict) -> None:
+        if payload.get("status") in {"offline", "degraded"}:
+            if hasattr(status_cache, "invalidate"):
+                status_cache.invalidate()
+            if active_test.active_test_id:
+                active_test.restore(active_test.active_test_id, needs_device_reconcile=True)
         await ws_manager.broadcast("comm_status", payload)
 
     return HostCommClient(

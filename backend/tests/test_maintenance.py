@@ -25,7 +25,7 @@ async def test_schema_status_detects_missing_and_current_revision(tmp_path) -> N
 
         missing = await database.get_schema_status(engine)
         assert missing["ok"] is False
-        assert missing["expected"] == "d74293c580aa"
+        assert missing["expected"] == database.get_expected_schema_head()
 
         async with engine.begin() as connection:
             await connection.execute(
@@ -35,8 +35,8 @@ async def test_schema_status_detects_missing_and_current_revision(tmp_path) -> N
         current = await database.get_schema_status(engine)
         assert current == {
             "ok": True,
-            "current": "d74293c580aa",
-            "expected": "d74293c580aa",
+            "current": missing["expected"],
+            "expected": missing["expected"],
         }
     finally:
         await engine.dispose()
@@ -94,7 +94,7 @@ async def test_readiness_explains_low_storage(monkeypatch, tmp_path) -> None:
     )
 
     async def schema_status():
-        return {"ok": True, "current": "d74293c580aa", "expected": "d74293c580aa"}
+        return {"ok": True, "current": "test-head", "expected": "test-head"}
 
     monkeypatch.setattr(system_route, "get_settings", lambda: settings)
     monkeypatch.setattr(system_route, "get_schema_status", schema_status)
