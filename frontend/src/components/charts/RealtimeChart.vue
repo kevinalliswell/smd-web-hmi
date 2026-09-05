@@ -11,7 +11,7 @@ const props = defineProps({
 })
 
 const device = useDeviceStore()
-const { lastUpdate, furnacePV, furnaceSV } = storeToRefs(device)
+const { lastUpdate, furnacePV, furnaceSV, dataStale, snapshotRevision } = storeToRefs(device)
 const canvas = ref(null)
 const chart = useChart()
 
@@ -40,10 +40,18 @@ onMounted(() => {
 })
 
 // 每次快照更新（lastUpdate 变化）追加一个时间点
-watch(lastUpdate, () => {
-  if (furnacePV.value === null && furnaceSV.value === null) return
+let previousTime = null
+watch(snapshotRevision, () => {
+  const time = Date.parse(lastUpdate.value)
+  if (time === previousTime) return
+  if (previousTime !== null && time - previousTime > 5000) chart.push(formatTime(previousTime + 1), [null, null], props.maxPoints)
+  previousTime = time
   const t = formatTime(lastUpdate.value)
-  chart.push(t, [furnacePV.value, furnaceSV.value], props.maxPoints)
+  chart.push(t, dataStale.value ? [null, null] : [furnacePV.value, furnaceSV.value], props.maxPoints)
+})
+
+watch(dataStale, (stale) => {
+  if (stale) chart.push(formatTime(Date.now()), [null, null], props.maxPoints)
 })
 
 onBeforeUnmount(() => chart.destroy())

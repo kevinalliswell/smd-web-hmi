@@ -1,9 +1,12 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 import { useRole } from '@/composables/useRole'
+import { useDeviceStore } from '@/stores/device'
 import { fetchParameters, putParameters } from '@/api/parameters'
 import ConfirmDialog from '@/components/shared/ConfirmDialog.vue'
+import OperationResult from '@/components/command/OperationResult.vue'
 
+const device = useDeviceStore()
 const { canConfigure } = useRole()
 const editable = computed(() => canConfigure())
 
@@ -15,6 +18,16 @@ const offline = ref(false)
 const banner = ref(null) // {type:'ok'|'err', text}
 const showConfirm = ref(false)
 const submitting = ref(false)
+const unknownOperationId = ref(null)
+function onOperationResolved(result) {
+  unknownOperationId.value = null
+  if (result.operation_status === 'verified') {
+    banner.value = { type: 'ok', text: '参数已回读确认一致' }
+    load()
+  } else {
+    banner.value = { type: 'err', text: result.reason_code || '参数请求已被拒绝' }
+  }
+}
 
 // 分组与字段中文标签（未知键回退原名）
 const GROUP_LABELS = {
@@ -97,6 +110,11 @@ function reset() {
 }
 
 async function submit() {
+  if (unknownOperationId.value || !device.canSetParameters) {
+    banner.value = { type: 'err', text: '设备状态不允许改参或数据已过期，请刷新状态后重试' }
+    showConfirm.value = false
+    return
+  }
   submitting.value = true
   banner.value = null
   try {
@@ -110,8 +128,9 @@ async function submit() {
       banner.value = { type: 'err', text: '回读未确认一致' }
     }
   } catch (e) {
-    const d = e.response?.data
-    banner.value = { type: 'err', text: `下发失败 [${d?.error_code || ''}]：${d?.message || e.message}` }
+    unknownOperationId.value = e.outcomeUnknown ? e.operationId : null
+    const d = e.response?.data?.detail || e.response?.data
+    banner.value = { type: 'err', text: `下发${e.outcomeUnknown ? '结果未知' : '失败'} [${d?.error_code || ''}]：${d?.message || e.message}` }
   } finally {
     submitting.value = false
     showConfirm.value = false
@@ -131,6 +150,7 @@ onMounted(load)
     </div>
 
     <div v-if="banner" class="banner" :class="banner.type">{{ banner.text }}</div>
+    <OperationResult v-if="unknownOperationId" :operation-id="unknownOperationId" require-verified @resolved="onOperationResolved" />
 
     <div v-if="loading" class="card muted">读取参数中…</div>
     <div v-else-if="offline" class="card muted">HostComm 离线，暂无法读取参数。</div>
@@ -156,11 +176,12 @@ onMounted(load)
         </div>
       </div>
 
+      <p v-if="editable && !device.canSetParameters" role="status" class="muted">设备尚未确认允许改参，或实时数据已过期；暂不能下发。</p>
       <div v-if="editable" class="actions">
         <span class="muted">{{ dirty ? `${diffs.length} 项待下发` : '无改动' }}</span>
         <div class="spacer" />
         <button :disabled="!dirty" @click="reset">还原</button>
-        <button class="primary" :disabled="!dirty || submitting" @click="showConfirm = true">
+        <button class="primary" :disabled="!dirty || submitting || !device.canSetParameters || Boolean(unknownOperationId)" @click="showConfirm = true">
           下发参数
         </button>
       </div>
@@ -171,6 +192,8 @@ onMounted(load)
       v-model="showConfirm"
       title="确认下发参数"
       confirm-text="确认下发"
+      :busy="submitting"
+      :close-on-confirm="false"
       @confirm="submit"
     >
       <p class="muted" style="margin-bottom: 10px">

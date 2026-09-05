@@ -8,13 +8,14 @@ const props = defineProps({
   cancelText: { type: String, default: '取消' },
   danger: { type: Boolean, default: false },
   busy: { type: Boolean, default: false },
+  confirmDisabled: { type: Boolean, default: false },
   busyText: { type: String, default: '处理中…' },
   closeOnConfirm: { type: Boolean, default: true },
 })
 const emit = defineEmits(['update:modelValue', 'confirm', 'cancel'])
 
 function onConfirm() {
-  if (props.busy) return
+  if (props.busy || props.confirmDisabled) return
   emit('confirm')
   if (props.closeOnConfirm) emit('update:modelValue', false)
 }
@@ -36,7 +37,7 @@ function onCancel() {
       </div>
       <div class="dlg-actions">
         <button :disabled="busy" @click="onCancel">{{ cancelText }}</button>
-        <button :class="danger ? 'danger' : 'primary'" :disabled="busy" @click="onConfirm">
+        <button :class="danger ? 'danger' : 'primary'" :disabled="busy || confirmDisabled" @click="onConfirm">
           {{ busy ? busyText : confirmText }}
         </button>
       </div>

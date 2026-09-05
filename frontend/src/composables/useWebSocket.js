@@ -11,6 +11,8 @@ let reconnectDelay = 1000
 const RECONNECT_MAX = 30000
 let manualClose = false
 let pingTimer = null
+let freshnessTimer = null
+let reconnectTimer = null
 
 function wsUrl() {
   return (
@@ -74,13 +76,16 @@ export function useWebSocket() {
       device.setBackendConnected(true)
       // 浏览器↔后端 WS 与后端↔控制板 HostComm 是两条链路。
       // 建连后通过 REST 读取 HostComm 当前真值，不能把 WS onopen 当作设备在线。
+      const revision = device.snapshotRevision
+      alarms.loadActive(() => socket === activeSocket && authenticated).catch(() => {})
       fetchStatus()
         .then((snapshot) => {
-          if (socket === activeSocket && activeSocket.readyState === WebSocket.OPEN) {
+          if (socket === activeSocket && activeSocket.readyState === WebSocket.OPEN && device.snapshotRevision === revision) {
             device.updateSnapshot(snapshot)
           }
         })
         .catch(() => {})
+      freshnessTimer = setInterval(() => device.checkFreshness(), 1000)
       // 应用层心跳
       pingTimer = setInterval(() => {
         if (authenticated && socket?.readyState === WebSocket.OPEN) {
@@ -103,12 +108,13 @@ export function useWebSocket() {
     activeSocket.onclose = () => {
       if (socket !== activeSocket) return
       clearInterval(pingTimer)
+      clearInterval(freshnessTimer)
       authenticated = false
       device.setBackendConnected(false)
       device.setCommQuality('offline')
       if (socket === activeSocket) socket = null
       if (!manualClose && auth.token) {
-        setTimeout(connect, reconnectDelay)
+        reconnectTimer = setTimeout(connect, reconnectDelay)
         reconnectDelay = Math.min(reconnectDelay * 2, RECONNECT_MAX)
       }
     }
@@ -119,6 +125,8 @@ export function useWebSocket() {
   function disconnect() {
     manualClose = true
     clearInterval(pingTimer)
+    clearInterval(freshnessTimer)
+    clearTimeout(reconnectTimer)
     if (socket) {
       const activeSocket = socket
       activeSocket.close()

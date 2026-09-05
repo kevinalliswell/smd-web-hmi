@@ -9,13 +9,14 @@ import { storeToRefs } from 'pinia'
 import MiniTrendChart from '@/components/charts/MiniTrendChart.vue'
 import { useDeviceStore } from '@/stores/device'
 import { formatTime } from '@/utils/dateTime'
+import { liveSample } from '@/utils/measurementQuality'
 
 const props = defineProps({
   maxPoints: { type: Number, default: 300 }, // 约 10 min
 })
 
 const device = useDeviceStore()
-const { lastUpdate, snapshot } = storeToRefs(device)
+const { lastUpdate, snapshot, snapshotRevision, dataStale } = storeToRefs(device)
 
 // 采样缓冲刻意不做成响应式：1 Hz × 300 点的深度遍历既昂贵，又会与 Chart.js
 // 内部状态互相触发更新。改用 revision 计数器作为唯一的刷新信号。
@@ -43,23 +44,30 @@ const CHARTS = [
   { title: '滴落重量', unit: 'g', series: [{ key: 'drip_weight', label: '滴落重量' }] },
 ]
 
-watch(lastUpdate, () => {
-  const s = snapshot.value || {}
-  const t = s.temperature || {}
-  const m = s.measurement || {}
-  labels.push(formatTime(lastUpdate.value))
-  series.furnace_pv.push(t.furnace_pv_deg_c ?? null)
-  series.burden_temp.push(m.burden_temp_deg_c ?? null)
-  series.delta_p.push(m.delta_p_pa ?? null)
-  series.displacement.push(m.displacement_mm ?? null)
-  series.drip_weight.push(m.drip_weight_g ?? null)
-
+let previousTime = null
+function append(time, sample) {
+  labels.push(formatTime(time))
+  Object.keys(series).forEach((key) => series[key].push(sample[key]))
   if (labels.length > props.maxPoints) {
     labels.shift()
-    Object.values(series).forEach((arr) => arr.shift())
+    Object.values(series).forEach((values) => values.shift())
   }
   revision.value += 1
+}
+
+watch(snapshotRevision, () => {
+  const currentTime = Date.parse(lastUpdate.value)
+  if (currentTime === previousTime) return
+  if (previousTime !== null && currentTime - previousTime > 5000) {
+    append(previousTime + 1, liveSample({}, true))
+  }
+  append(lastUpdate.value, liveSample(snapshot.value, dataStale.value))
+  previousTime = currentTime
 })
+watch(dataStale, (stale) => {
+  if (stale && labels.length) append(Date.now(), liveSample({}, true))
+})
+
 </script>
 
 <template>

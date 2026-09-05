@@ -28,7 +28,7 @@ export function applyChartTheme(chart) {
     if (scale.title) scale.title.color = name === 'yTemp' ? colors.accent : colors.tick
   })
   const seriesColors = [colors.series1, colors.series2]
-  ;(chart.data?.datasets || []).forEach((ds, i) => {
+  ;(chart.data?.datasets || []).forEach((ds) => {
     // 仅刷新按系列槽着色的数据集；显式指定颜色的（如 CO 橙）保持不变
     if (ds.seriesSlot === undefined) return
     ds.borderColor = seriesColors[ds.seriesSlot % seriesColors.length]

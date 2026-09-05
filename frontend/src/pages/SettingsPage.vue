@@ -6,6 +6,7 @@ import { useAuthStore } from '@/stores/auth'
 import { fetchHealth, fetchSystemInfo, syncTime } from '@/api/system'
 import { fetchUsers, createUser, updateUser, changePassword } from '@/api/users'
 import PasswordResetDialog from '@/components/users/PasswordResetDialog.vue'
+import MaintenancePanel from '@/components/system/MaintenancePanel.vue'
 
 const { canConfigure } = useRole()
 const auth = useAuthStore()
@@ -124,6 +125,8 @@ onMounted(loadAll)
   <div class="page">
     <h1 class="page-title">系统设置</h1>
     <div v-if="banner" class="banner" :class="banner.type">{{ banner.text }}</div>
+
+    <MaintenancePanel v-if="canConfigure()" />
 
     <!-- 系统信息 -->
     <div class="card">

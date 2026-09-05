@@ -37,9 +37,10 @@ describe('device store 快照派生', () => {
     expect(d.safetyOk).toBe(true)
   })
 
-  it('Standby 非运行态', () => {
+  it('Standby 非运行态且数据在线时允许启动', () => {
     const d = useDeviceStore()
     d.updateSnapshot({
+      comm_quality: 'online',
       system: {
         operation_state: 'idle',
         is_running: false,

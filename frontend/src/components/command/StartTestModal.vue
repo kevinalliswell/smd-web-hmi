@@ -4,6 +4,7 @@ import { computed, onMounted, ref } from 'vue'
 import { requestConfirmToken, sendCommand } from '@/api/commands'
 import { fetchNextTestId } from '@/api/tests'
 import ConfirmDialog from '@/components/shared/ConfirmDialog.vue'
+import OperationResult from '@/components/command/OperationResult.vue'
 
 const emit = defineEmits(['close', 'done'])
 const initialSuggestion = suggestTestId()
@@ -12,6 +13,16 @@ const originalHeightMm = ref('')
 const sampleLabel = ref('')
 const notes = ref('')
 const error = ref('')
+const unknownOperationId = ref(null)
+function onOperationResolved(result) {
+  if (result.operation_status === 'rejected') {
+    error.value = result.reason_code || '设备已拒绝，请核查后重新确认'
+    unknownOperationId.value = null
+    return
+  }
+  emit('done', result)
+  emit('close')
+}
 const submitting = ref(false)
 const confirming = ref(false)
 const canContinue = computed(() => {
@@ -45,6 +56,7 @@ function onStart() {
 }
 
 async function onConfirm() {
+  if (unknownOperationId.value || submitting.value) return
   error.value = ''
   submitting.value = true
   try {
@@ -64,7 +76,8 @@ async function onConfirm() {
     confirming.value = false
     emit('close')
   } catch (e) {
-    error.value = e.response?.data?.message || '启动失败'
+    unknownOperationId.value = e.outcomeUnknown ? e.operationId : null
+    error.value = e.response?.data?.detail?.message || e.response?.data?.message || e.message || '启动失败'
   } finally {
     submitting.value = false
   }
@@ -106,6 +119,7 @@ async function onConfirm() {
       busy-text="下发中…"
       danger
       :busy="submitting"
+      :confirm-disabled="Boolean(unknownOperationId)"
       :close-on-confirm="false"
       @confirm="onConfirm"
     >
@@ -114,6 +128,7 @@ async function onConfirm() {
         启动请求将发送至控制板，最终由 STM32 状态机与硬接线联锁裁决。
       </div>
       <div v-if="error" class="err">{{ error }}</div>
+      <OperationResult v-if="unknownOperationId" :operation-id="unknownOperationId" @resolved="onOperationResolved" />
     </ConfirmDialog>
   </div>
 </template>

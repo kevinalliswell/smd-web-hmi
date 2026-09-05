@@ -1,10 +1,12 @@
 <script setup>
 import { storeToRefs } from 'pinia'
 import { useDeviceStore } from '@/stores/device'
+import { useAlarmsStore } from '@/stores/alarms'
 import { formatDateTime } from '@/utils/dateTime'
 
 const device = useDeviceStore()
-const { backendConnected, commQuality, lastUpdate } = storeToRefs(device)
+const alarms = useAlarmsStore()
+const { backendConnected, commQuality, lastUpdate, dataStale } = storeToRefs(device)
 </script>
 
 <template>
@@ -12,10 +14,12 @@ const { backendConnected, commQuality, lastUpdate } = storeToRefs(device)
     <span>后端：{{ backendConnected ? 'connected' : 'disconnected' }}</span>
     <span class="sep">·</span>
     <span>HostComm：{{ commQuality }}</span>
+    <span v-if="dataStale" role="status" class="freshness-warning">数据已过期 · 启动/改参已禁用</span>
+    <span v-if="alarms.syncError" role="alert" class="freshness-warning">{{ alarms.syncError }}</span>
     <span class="sep">·</span>
     <span class="muted footer-detail">最近更新：{{ formatDateTime(lastUpdate) }}</span>
     <span class="spacer" />
-    <span class="muted footer-detail">smd-web-hmi · D3</span>
+    <span class="muted footer-detail">smd-web-hmi</span>
   </footer>
 </template>
 
@@ -25,6 +29,7 @@ const { backendConnected, commQuality, lastUpdate } = storeToRefs(device)
   background: var(--bg-card); border-top: 1px solid var(--border);
   font-size: 11px; color: var(--text-sec); flex-shrink: 0;
 }
+.freshness-warning { color: var(--warning-text); }
 .spacer { flex: 1; }
 .sep { color: var(--text-muted); }
 

@@ -53,7 +53,7 @@ function buildDatasets(colors) {
     borderDash: s.dashed ? [5, 4] : undefined,
     pointRadius: 0,
     tension: 0.25,
-    spanGaps: true,
+    spanGaps: false,
   }))
 }
 
@@ -111,7 +111,7 @@ onBeforeUnmount(() => {
       <span v-if="unit" class="mini-unit">{{ unit }}</span>
     </figcaption>
     <div class="mini-canvas" :style="{ height: `${height}px` }">
-      <canvas ref="canvas" />
+      <canvas ref="canvas" role="img" :aria-label="`${title}趋势，单位${unit}；缺失数据以断点显示`" />
     </div>
   </figure>
 </template>

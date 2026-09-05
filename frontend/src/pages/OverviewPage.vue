@@ -4,6 +4,7 @@ import { storeToRefs } from 'pinia'
 import { useDeviceStore } from '@/stores/device'
 import { useRole } from '@/composables/useRole'
 import { fetchStatus } from '@/api/status'
+import { finiteValue, measurementQuality } from '@/utils/measurementQuality'
 import StatusBadge from '@/components/shared/StatusBadge.vue'
 import RealtimeChart from '@/components/charts/RealtimeChart.vue'
 import StartTestModal from '@/components/command/StartTestModal.vue'
@@ -21,26 +22,40 @@ const kpis = computed(() => {
   const t = snapshot.value?.temperature || {}
   const g = snapshot.value?.gas || {}
   const m = snapshot.value?.measurement || {}
+  const quality = (value, valid) => {
+    const { text, tone } = measurementQuality(value, valid, device.dataStale)
+    return { sub: text, tone }
+  }
+  const balance = quality(m.drip_weight_g, m.drip_weight_valid)
+  if (finiteValue(m.drip_weight_g) !== null && !device.dataStale && typeof m.balance_stable === 'boolean') {
+    balance.sub = m.balance_stable ? '稳定' : '波动'
+    balance.tone = m.balance_stable ? '' : 'warn'
+  }
   // primary：炉温与滴落重量是 GB/T 34211 熔滴试验的核心量（温度制度 + 滴落过程），
   // 其余为辅助量。等权平铺会让操作员在 6 个同样大的数字里自己找重点。
   // sub 的 tone 用于把"失效/波动"这类异常从灰字提升为警示色。
   return [
     { label: '炉温 PV', value: fmt(t.furnace_pv_deg_c), unit: '℃', sub: `SV ${fmt(t.furnace_sv_deg_c)}`, primary: true },
     { label: '滴落重量', value: fmt(m.drip_weight_g, 2), unit: 'g', primary: true,
-      sub: m.balance_stable ? '稳定' : '波动', tone: m.balance_stable ? '' : 'warn' },
+      ...balance },
     { label: 'N₂ 流量', value: fmt(g.n2_pv_l_min, 2), unit: 'L/min', sub: `SP ${fmt(g.n2_sp_l_min, 2)}` },
     { label: 'CO 流量', value: fmt(g.co_pv_l_min, 2), unit: 'L/min', sub: `SP ${fmt(g.co_sp_l_min, 2)}`, co: true },
     { label: '压差', value: fmt(m.delta_p_pa, 1), unit: 'Pa',
-      sub: m.delta_p_valid ? '有效' : '失效', tone: m.delta_p_valid ? '' : 'warn' },
+      ...quality(m.delta_p_pa, m.delta_p_valid) },
     { label: '位移', value: fmt(m.displacement_mm, 2), unit: 'mm',
-      sub: m.displacement_valid ? '有效' : '失效', tone: m.displacement_valid ? '' : 'warn' },
+      ...quality(m.displacement_mm, m.displacement_valid) },
   ]
 })
 
 const safety = computed(() => snapshot.value?.safety || {})
+function safetyValue(key, inverted = false) {
+  const value = safety.value[key]
+  if (device.dataStale || ![true, false, 0, 1].includes(value)) return null
+  return inverted ? !value : Boolean(value)
+}
 
 function fmt(v, digits = 1) {
-  return v === null || v === undefined ? '—' : Number(v).toFixed(digits)
+  return finiteValue(v) === null ? '—' : v.toFixed(digits)
 }
 
 onMounted(async () => {
@@ -82,12 +97,12 @@ onMounted(async () => {
       <!-- 安全状态 -->
       <div class="card safety">
         <div class="card-title">安全状态</div>
-        <StatusBadge :ok="!!safety.safety_relay_allowed" label="安全继电器许可" />
-        <StatusBadge :ok="!safety.co_alarm_l1" label="CO 一级报警" ok-text="正常" fail-text="触发" />
-        <StatusBadge :ok="!safety.co_alarm_l2" label="CO 二级报警" ok-text="正常" fail-text="触发" />
-        <StatusBadge :ok="!!safety.exhaust_ok" label="排风状态" />
-        <StatusBadge :ok="!safety.emergency_stop" label="急停" ok-text="未触发" fail-text="已触发" />
-        <StatusBadge :ok="!safety.overtemp_alarm" label="超温报警" ok-text="正常" fail-text="触发" />
+        <StatusBadge :ok="safetyValue('safety_relay_allowed')" label="安全继电器许可" />
+        <StatusBadge :ok="safetyValue('co_alarm_l1', true)" label="CO 一级报警" ok-text="正常" fail-text="触发" />
+        <StatusBadge :ok="safetyValue('co_alarm_l2', true)" label="CO 二级报警" ok-text="正常" fail-text="触发" />
+        <StatusBadge :ok="safetyValue('exhaust_ok')" label="排风状态" />
+        <StatusBadge :ok="safetyValue('emergency_stop', true)" label="急停" ok-text="未触发" fail-text="已触发" />
+        <StatusBadge :ok="safetyValue('overtemp_alarm', true)" label="超温报警" ok-text="正常" fail-text="触发" />
       </div>
 
       <!-- 操作区（仅 Operator+ 可见）-->
