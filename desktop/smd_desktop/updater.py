@@ -186,7 +186,6 @@ def run():
                 raise RuntimeError("先以 Admin 在系统维护中准备这个目标版本")
             permit = platform.request("/api/system/maintenance/claim", token=gate["token"])
             transaction.apply(args.package, permit)
-            register_recovery(args.install / "versions" / manifest["version"], args.install)
 
 
 def main():

@@ -89,6 +89,22 @@ class WindowsPlatform:
             check=True,
         )
 
+        subprocess.run(
+            [
+                "powershell.exe",
+                "-NoProfile",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-File",
+                str(version_dir / "configure-recovery.ps1"),
+                "-VersionDir",
+                str(version_dir),
+                "-InstallDir",
+                str(version_dir.parent.parent),
+            ],
+            check=True,
+        )
+
     def migrate(self, version_dir: Path):
         subprocess.run([str(version_dir / "SmdService/SmdService.exe"), "--migrate"], check=True, timeout=300)
 
