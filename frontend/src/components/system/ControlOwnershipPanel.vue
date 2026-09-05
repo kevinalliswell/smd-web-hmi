@@ -1,4 +1,5 @@
 <script setup>
+import { apiErrorMessage } from '@/api/errors'
 import { computed, onMounted, onBeforeUnmount, ref } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { fetchControlOwner, claimControl, releaseControl } from '@/api/control'
@@ -18,7 +19,7 @@ let disposed = false
 
 async function load() {
   try { const data = await fetchControlOwner(); if (!disposed) owner.value = data.username }
-  catch (e) { if (!disposed) error.value = e.response?.data?.detail?.message || '无法读取控制权，请刷新重试' }
+  catch (e) { if (!disposed) error.value = apiErrorMessage(e, '无法读取控制权，请刷新重试') }
 }
 function open(action) { intent.value = action; reason.value = ''; confirming.value = true; error.value = '' }
 async function confirm() {
@@ -28,7 +29,7 @@ async function confirm() {
     const data = intent.value === 'release' ? await releaseControl() : await claimControl({ takeover: takingOver.value, reason: reason.value.trim() })
     owner.value = data.username
     confirming.value = false
-  } catch (e) { error.value = e.response?.data?.detail?.message || e.message || '控制权操作失败' }
+  } catch (e) { error.value = apiErrorMessage(e, '控制权操作失败') }
   finally { busy.value = false }
 }
 onMounted(() => { load(); timer = setInterval(() => { if (!confirming.value && !busy.value) load() }, 5000) })

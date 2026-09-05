@@ -1,4 +1,5 @@
 <script setup>
+import { apiErrorMessage } from '@/api/errors'
 import { ref, watch } from 'vue'
 import { evaluateRepeatability } from '@/api/analytics'
 const props = defineProps({ testIds: { type: Array, required: true } })
@@ -12,7 +13,7 @@ async function evaluate() {
   const current = ++generation
   busy.value = true; result.value = null; message.value = ''
   try { const data = await evaluateRepeatability(props.testIds); if (current === generation) result.value = data }
-  catch (error) { if (current === generation) message.value = error.response?.data?.detail?.message || error.message || '重复性判定失败' }
+  catch (error) { if (current === generation) message.value = apiErrorMessage(error, '重复性判定失败') }
   finally { busy.value = false }
 }
 const labels = { t10: 'T10', t40: 'T40', ts: 'Ts', td_drip_temp: 'Td' }

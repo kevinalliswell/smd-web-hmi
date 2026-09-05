@@ -9,7 +9,7 @@ import { reviseTestMetadata, reviewCloseTest } from '@/api/tests'
 vi.mock('@/api/tests', () => ({ reviseTestMetadata: vi.fn(), reviewCloseTest: vi.fn() }))
 beforeEach(() => { vi.clearAllMocks(); setActivePinia(createPinia()) })
 it('preserves unknown conditions and shows conflicting height rejection without claiming success', async () => {
-  reviseTestMetadata.mockRejectedValue({ response: { data: { detail: { message: 'H1-H2与已记录原始高度不一致' } } } })
+  reviseTestMetadata.mockRejectedValue({ response: { data: { error_code: 'height_conflict', message: 'H1-H2与已记录原始高度不一致' } } })
   const wrapper = mount(ExperimentMetadataEditor, { props: { test: { test_id: 't1', original_height_mm: 20, measurement_basis: {} } } })
   const labelInput = (text) => wrapper.findAll('label').find((label) => label.text() === text).find('input')
   await labelInput('H1 (mm)').setValue('50'); await labelInput('H2 (mm)').setValue('25')

@@ -61,7 +61,7 @@ async function onGenerateReport() {
   try {
     banner.value = { type: 'info', text: '报告任务已提交，正在后台生成…' }
     const r = await generateReport(selected.value.test_id)
-    await downloadFile(reportDownloadUrl(r.id), `${selected.value.test_id}-report.html`)
+    await downloadFile(reportDownloadUrl(r.id), `${selected.value.test_id}-report.${r.format || 'pdf'}`)
     banner.value = { type: 'ok', text: `报告已生成并下载（#${r.id}）` }
   } catch (e) {
     banner.value = { type: 'err', text: '生成失败：' + (e.response?.data?.message || e.message) }

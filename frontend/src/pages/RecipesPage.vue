@@ -1,4 +1,5 @@
 <script setup>
+import { apiErrorMessage } from '@/api/errors'
 import { appCompatibility } from '@/utils/appVersion'
 import { computed, ref } from 'vue'
 import { fetchStandardTemplate, saveRecipe, validateRecipe, activateRecipe } from '@/api/recipes'
@@ -17,8 +18,7 @@ const dirty = computed(() => draft.value && JSON.stringify(draft.value) !== orig
 const locked = computed(() => appCompatibility.mismatch || busy.value || Boolean(operationId.value))
 const canActivate = computed(() => admin.value && saved.value && !dirty.value && verdict.value?.executable && device.canSetParameters && !locked.value)
 function describe(error) {
-  const detail = error.response?.data?.detail
-  return Array.isArray(detail) ? detail.map((item) => `${item.loc?.slice(1).join('.')}：${item.msg}`).join('；') : detail?.message || error.message || '请求失败'
+  return apiErrorMessage(error)
 }
 function select(row) {
   saved.value = row; draft.value = row ? JSON.parse(JSON.stringify(row.definition)) : null

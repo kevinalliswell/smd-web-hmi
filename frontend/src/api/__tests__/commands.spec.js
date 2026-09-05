@@ -54,4 +54,13 @@ describe('command operation identity', () => {
     expect(apiClient.post).toHaveBeenCalledOnce()
   })
 
+  it('retains identity and queries when a flat HTTP error carries an operation ID', async () => {
+    apiClient.post.mockImplementation(async (_url, body) => { throw { response: { status: 409, data: { error_code: 'operation_conflict', message: '结果需查证', operation_id: body.operation_id } } } })
+    apiClient.get.mockResolvedValue({ data: { data: { operation_status: 'unknown' } } })
+    await expect(sendCommand('tare_balance')).rejects.toThrow('结果未知')
+    await expect(sendCommand('tare_balance')).rejects.toThrow('结果未知')
+    expect(apiClient.post).toHaveBeenCalledOnce()
+    expect(apiClient.get).toHaveBeenCalledTimes(2)
+  })
+
 })

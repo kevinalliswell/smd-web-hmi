@@ -26,7 +26,7 @@ it('requires confirmation to prepare and supports cancelling without exposing a 
 })
 describe('rejected preparation', () => {
   it('shows the backend reason and keeps the service out of a claimed-success state', async () => {
-    prepareMaintenance.mockRejectedValue({ response: { data: { detail: { message: '存在待核查实验，禁止升级' } } } })
+    prepareMaintenance.mockRejectedValue({ response: { data: { error_code: 'maintenance_active', message: '存在待核查实验，禁止升级' } } })
     const wrapper = mount(MaintenancePanel)
     await flushPromises()
     await wrapper.find('input').setValue('0.3.0-rc.2')

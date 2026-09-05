@@ -1,4 +1,5 @@
 <script setup>
+import { apiErrorMessage } from '@/api/errors'
 import { computed, ref } from 'vue'
 import { useDeviceStore } from '@/stores/device'
 import { reviewCloseTest } from '@/api/tests'
@@ -12,7 +13,7 @@ async function close() {
   if (!safe.value || !physicalConfirmed.value || reason.value.trim().length < 5 || busy.value) return
   busy.value = true; message.value = ''
   try { await reviewCloseTest(props.test.test_id, reason.value.trim()); open.value = false; emit('updated') }
-  catch (error) { message.value = error.response?.data?.detail?.message || error.message || '审核关闭失败' }
+  catch (error) { message.value = apiErrorMessage(error, '审核关闭失败') }
   finally { busy.value = false }
 }
 </script>

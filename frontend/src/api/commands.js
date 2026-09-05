@@ -1,5 +1,6 @@
 // @ts-check
 import apiClient from './client'
+import { apiErrorDetails } from './errors'
 /** @typedef {import('./contracts').OperationResult} OperationResult */
 /** @typedef {import('./contracts').CommandRequest} CommandRequest */
 /** @typedef {import('./contracts').CommandFailure} CommandFailure */
@@ -95,7 +96,7 @@ export async function sendOperation(command, params, transmit) {
     response = await transmit(operationId)
   } catch (error) {
     const status = error.response?.status
-    const detail = error.response?.data?.detail
+    const detail = apiErrorDetails(error)
     if (error.code === 'CLIENT_VERSION_MISMATCH' || (status >= 400 && status < 500 && !detail?.operation_id)) {
       const current = pendingOperations()
       delete current[key]

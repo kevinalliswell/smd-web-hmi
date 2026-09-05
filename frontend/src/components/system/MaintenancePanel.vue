@@ -1,4 +1,5 @@
 <script setup>
+import { apiErrorMessage } from '@/api/errors'
 import { computed, onMounted, ref } from 'vue'
 import { fetchMaintenance, prepareMaintenance, cancelMaintenance } from '@/api/maintenance'
 import ConfirmDialog from '@/components/shared/ConfirmDialog.vue'
@@ -18,8 +19,7 @@ async function run(action) {
   error.value = ''
   try { state.value = await action() }
   catch (e) {
-    const detail = e.response?.data?.detail
-    error.value = (typeof detail === 'string' ? detail : detail?.message) || e.message || '维护操作失败'
+    error.value = apiErrorMessage(e, '维护操作失败')
   } finally { busy.value = false; confirming.value = false }
 }
 

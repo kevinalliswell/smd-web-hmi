@@ -1,4 +1,5 @@
 <script setup>
+import { apiErrorMessage } from '@/api/errors'
 import { computed, ref, watch } from 'vue'
 import { reviseTestMetadata } from '@/api/tests'
 const props = defineProps({ test: { type: Object, required: true }, readOnly: Boolean })
@@ -34,8 +35,7 @@ async function save() {
     await reviseTestMetadata(props.test.test_id, { sample_metadata: sample, report_context: fieldsPayload(report.value, reportFields), reason: reason.value.trim() })
     emit('updated'); message.value = '补录已保存，原值与修订原因已归档。'
   } catch (error) {
-    const detail = error.response?.data?.detail
-    message.value = Array.isArray(detail) ? detail.map((item) => item.msg).join('；') : detail?.message || error.message || '保存失败'
+    message.value = apiErrorMessage(error, '保存失败')
   } finally { busy.value = false }
 }
 </script>
