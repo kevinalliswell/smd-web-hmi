@@ -1,6 +1,7 @@
 import apiClient from './client'
 
 // 历史趋势查询（时间窗 + 可选 test_id + 降采样）
+/** @param {{ fromTs?: string, toTs?: string, testId?: string, maxPoints?: number }} options */
 export function fetchTrends({ fromTs, toTs, testId, maxPoints = 2000 } = {}) {
   const params = {}
   if (fromTs) params.from_ts = fromTs

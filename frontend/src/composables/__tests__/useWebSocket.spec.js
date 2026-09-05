@@ -7,6 +7,7 @@ import { useDeviceStore } from '@/stores/device'
 import { fetchStatus } from '@/api/status'
 
 vi.mock('@/api/status', () => ({ fetchStatus: vi.fn() }))
+vi.mock('@/api/alarms', () => ({ fetchActiveAlarms: vi.fn().mockResolvedValue([]), fetchAlarmHistory: vi.fn() }))
 
 class FakeWebSocket {
   static CONNECTING = 0

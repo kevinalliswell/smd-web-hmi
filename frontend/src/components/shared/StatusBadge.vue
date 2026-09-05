@@ -1,6 +1,6 @@
 <script setup>
 defineProps({
-  ok: { type: Boolean, default: false },
+  ok: { type: Boolean, default: null },
   label: { type: String, default: '' },
   okText: { type: String, default: '正常' },
   failText: { type: String, default: '异常' },
@@ -9,10 +9,10 @@ defineProps({
 
 <template>
   <div class="status-row">
-    <span class="dot" :class="ok ? 'dot-green' : 'dot-red'" />
+    <span class="dot" :class="ok === null ? 'dot-gray' : ok ? 'dot-green' : 'dot-red'" />
     <span class="status-label">{{ label }}</span>
-    <span class="status-val" :style="{ color: ok ? 'var(--green)' : 'var(--red)' }">
-      {{ ok ? okText : failText }}
+    <span class="status-val" :style="{ color: ok === null ? 'var(--text-muted)' : ok ? 'var(--green)' : 'var(--red)' }">
+      {{ ok === null ? '未知 / 数据过期' : ok ? okText : failText }}
     </span>
   </div>
 </template>

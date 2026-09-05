@@ -1,0 +1,5 @@
+# Windows x64 / CPython 3.13 packaging environment. No machine-installed Python needed at runtime.
+pywebview==6.2.1
+pyinstaller==6.22.2
+pywin32==312
+pythonnet==3.1.0

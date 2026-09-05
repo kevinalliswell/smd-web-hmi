@@ -37,7 +37,9 @@ async def test_t13_status_structure():
     assert "comm_quality" in data
     assert data["system"]["current_state"] == "Standby"
     assert data["system"]["operation_state"] == "idle"
-    assert data["system"]["can_start_test"] is True
+    assert data["system"]["can_start_test"] is False
+    assert data["data_fresh"] is True
+    assert data["control_ready"] is False
     assert data["system"]["can_stop_test"] is False
 
 

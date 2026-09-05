@@ -1,3 +1,3 @@
 """smd-web-hmi 后端应用包。"""
 
-__version__ = "0.3.0-rc.1"
+__version__ = "0.3.0-rc.2"

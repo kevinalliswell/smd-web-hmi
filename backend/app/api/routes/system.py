@@ -11,11 +11,11 @@ from pydantic import BaseModel
 
 from app import __version__
 from app.api.deps import DbDep, UserDep, get_command_service, get_hostcomm_client, require_role
+from app.api.operation_api import OPERATION_ERRORS, operation_http_error
 from app.api.schemas import err, ok
 from app.core.config import get_settings
 from app.db.database import get_schema_status
 from app.hostcomm.protocol import now_iso
-from app.services.command_service import CommandError
 from app.services.maintenance_service import maintenance_manager
 
 router = APIRouter(prefix="/api/system", tags=["system"])
@@ -108,9 +108,9 @@ async def sync_time(request: Request, user: UserDep, db: DbDep):
             client_ip=request.client.host if request.client else None,
             db_session=db,
         )
-    except CommandError as exc:
-        raise HTTPException(status_code=exc.status_code, detail=err(exc.error_code, exc.message))
-    return ok({"sent_time": ts, "result": result.get("result"), "reason_code": result.get("reason_code")})
+    except OPERATION_ERRORS as exc:
+        raise operation_http_error(exc) from exc
+    return ok({"sent_time": ts, **result})
 
 
 @router.get("/hostcomm/status", dependencies=[Depends(require_role("maintainer"))])

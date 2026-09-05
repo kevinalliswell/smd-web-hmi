@@ -27,7 +27,7 @@ class _FakeClient:
         self._readback_error = readback_error
         self.last_set = None
 
-    async def send_command(self, command, params, *, operator_id, role, confirm_token=None):
+    async def send_command(self, command, params, *, operator_id, role, confirm_token=None, msg_id=None):
         self.last_set = params
         return {
             "command": command,
@@ -53,6 +53,10 @@ class _FakeCache:
     def __init__(self, state="Standby"):
         self._state = state
 
+    @property
+    def current_state(self):
+        return self.get_field("system.current_state")
+
     def get_field(self, path):
         return self._state if path == "system.current_state" else None
 
@@ -72,7 +76,12 @@ async def test_set_parameters_full_chain(db_session):
     assert client.last_set["values"] == VALUES
     # 写了 1 条参数快照 + 1 条审计
     assert await db_session.scalar(select(func.count()).select_from(ParameterSnapshot)) == 1
-    assert await db_session.scalar(select(func.count()).select_from(OperatorAction)) == 1
+    assert (
+        await db_session.scalar(
+            select(func.count()).select_from(OperatorAction).where(OperatorAction.action_type == "set_parameters")
+        )
+        == 1
+    )
     snap = (await db_session.execute(select(ParameterSnapshot))).scalar_one()
     assert snap.source == "set_by_hmi"
     assert snap.param_crc == "0xABCD1234"
@@ -96,7 +105,12 @@ async def test_set_parameters_running_rejected(db_session):
         await service.set_parameters(VALUES, _crc(), operator_id="adm", role="admin", db_session=db_session)
     assert ei.value.error_code == "state_not_allowed"
     # 未下发，无审计
-    assert await db_session.scalar(select(func.count()).select_from(OperatorAction)) == 0
+    assert (
+        await db_session.scalar(
+            select(func.count()).select_from(OperatorAction).where(OperatorAction.action_type == "set_parameters")
+        )
+        == 0
+    )
 
 
 # ----------------------------------------------------- CRC 不匹配，不下发
@@ -115,7 +129,12 @@ async def test_set_parameters_device_rejected(db_session):
     assert ei.value.status_code == 400
     assert ei.value.error_code == "invalid_state"
     # 有 1 条 rejected 审计，但无快照
-    assert await db_session.scalar(select(func.count()).select_from(OperatorAction)) == 1
+    assert (
+        await db_session.scalar(
+            select(func.count()).select_from(OperatorAction).where(OperatorAction.action_type == "set_parameters")
+        )
+        == 1
+    )
     assert await db_session.scalar(select(func.count()).select_from(ParameterSnapshot)) == 0
 
 
@@ -127,7 +146,12 @@ async def test_set_parameters_readback_mismatch(db_session):
     assert ei.value.status_code == 409
     assert ei.value.error_code == "parameter_readback_mismatch"
     # accepted 审计 + mismatch 审计 = 2，无快照
-    assert await db_session.scalar(select(func.count()).select_from(OperatorAction)) == 2
+    assert (
+        await db_session.scalar(
+            select(func.count()).select_from(OperatorAction).where(OperatorAction.action_type == "set_parameters")
+        )
+        == 2
+    )
     assert await db_session.scalar(select(func.count()).select_from(ParameterSnapshot)) == 0
 
 
@@ -139,7 +163,15 @@ async def test_set_parameters_readback_timeout_is_audited(db_session):
     with pytest.raises(HostCommTimeoutError):
         await service.set_parameters(VALUES, _crc(), operator_id="adm", role="admin", db_session=db_session)
 
-    actions = (await db_session.execute(select(OperatorAction).order_by(OperatorAction.id))).scalars().all()
+    actions = (
+        (
+            await db_session.execute(
+                select(OperatorAction).where(OperatorAction.action_type == "set_parameters").order_by(OperatorAction.id)
+            )
+        )
+        .scalars()
+        .all()
+    )
     assert [(row.result, row.reason_code) for row in actions] == [
         ("accepted", "ok"),
         ("error", "device_comm_timeout"),

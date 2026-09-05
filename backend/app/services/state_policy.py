@@ -92,12 +92,21 @@ def parameter_changes_allowed(state: str | None) -> bool:
     return classify_state(state) == "idle" or normalize_state(state) == "fault"
 
 
-def enrich_status_snapshot(snapshot: dict[str, Any] | None) -> dict[str, Any]:
+def snapshot_state(snapshot: dict[str, Any]) -> str | None:
+    """规范状态路径优先；两个位置有冲突时禁止据此放行控制。"""
+    canonical = (snapshot.get("state_machine") or {}).get("current_state")
+    legacy = (snapshot.get("system") or {}).get("current_state")
+    if canonical and legacy and normalize_state(canonical) != normalize_state(legacy):
+        return None
+    state = canonical or legacy
+    return state if isinstance(state, str) and state.strip() else None
+
+
+def enrich_status_snapshot(snapshot: dict[str, Any] | None, *, control_ready: bool = True) -> dict[str, Any]:
     """给状态快照附加前端操作所需的权威分类，不修改输入对象。"""
     enriched = dict(snapshot or {})
     system = dict(enriched.get("system") or {})
-    state_machine = enriched.get("state_machine") or {}
-    current_state = state_machine.get("current_state") or system.get("current_state")
+    current_state = snapshot_state(enriched)
     operation_state = classify_state(current_state)
 
     system.update(
@@ -105,7 +114,8 @@ def enrich_status_snapshot(snapshot: dict[str, Any] | None) -> dict[str, Any]:
             "operation_state": operation_state,
             "state_policy_version": STATE_POLICY_VERSION,
             "is_running": operation_state == "running",
-            "can_start_test": operation_state == "idle",
+            "can_start_test": control_ready and operation_state == "idle",
+            "can_set_parameters": control_ready and parameter_changes_allowed(current_state),
             "can_stop_test": operation_state in {"running", "fault", "unknown"},
         }
     )

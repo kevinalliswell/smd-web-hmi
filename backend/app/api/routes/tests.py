@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -15,6 +16,14 @@ from app.hostcomm.protocol import now_iso
 from app.services.trend_service import query_downsampled_points
 
 router = APIRouter(prefix="/api/tests", tags=["tests"], dependencies=[Depends(get_current_user)])
+
+
+def _json_object(raw):
+    try:
+        value = json.loads(raw or "{}")
+        return value if isinstance(value, dict) else {}
+    except (ValueError, TypeError):
+        return {}
 
 
 @router.get("")
@@ -33,7 +42,17 @@ async def list_tests(db: DbDep, page: Page = 1, size: PageSize = 20):
                 "end_reason": r.end_reason,
                 "original_height_mm": r.original_height_mm,
                 "sample_label": r.sample_label,
+                "phase": r.phase,
+                "mode": r.mode,
+                "data_integrity": r.data_integrity,
+                "measurement_completed_at": r.measurement_completed_at,
+                "safety_completed_at": r.safety_completed_at,
+                "recipe_snapshot": _json_object(r.recipe_snapshot_json),
+                "measurement_basis": _json_object(r.measurement_basis_json),
                 "report_path": r.report_path,
+                "phase": r.phase,
+                "mode": r.mode,
+                "data_integrity": r.data_integrity,
             }
             for r in rows
         ]
@@ -54,6 +73,13 @@ async def current_test(db: DbDep):
             "start_time": r.start_time,
             "original_height_mm": r.original_height_mm,
             "sample_label": r.sample_label,
+            "phase": r.phase,
+            "mode": r.mode,
+            "data_integrity": r.data_integrity,
+            "measurement_completed_at": r.measurement_completed_at,
+            "safety_completed_at": r.safety_completed_at,
+            "recipe_snapshot": _json_object(r.recipe_snapshot_json),
+            "measurement_basis": _json_object(r.measurement_basis_json),
         }
     )
 
@@ -93,6 +119,13 @@ async def test_detail(test_id: TestIdPath, db: DbDep):
             "end_reason": r.end_reason,
             "state_at_end": r.state_at_end,
             "sample_label": r.sample_label,
+            "phase": r.phase,
+            "mode": r.mode,
+            "data_integrity": r.data_integrity,
+            "measurement_completed_at": r.measurement_completed_at,
+            "safety_completed_at": r.safety_completed_at,
+            "recipe_snapshot": _json_object(r.recipe_snapshot_json),
+            "measurement_basis": _json_object(r.measurement_basis_json),
             "original_height_mm": r.original_height_mm,
             "notes": r.notes,
             "report_path": r.report_path,

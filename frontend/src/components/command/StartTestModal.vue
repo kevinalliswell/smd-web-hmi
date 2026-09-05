@@ -1,9 +1,13 @@
 <script setup>
 // 启动试验：输入试验编号 → 二次确认（含 CO 安全提示）→ 经后端获取 confirm_token 后下发。
 import { computed, onMounted, ref } from 'vue'
+import { useModalFocus } from '@/composables/useModalFocus'
+const { dialog, onDialogKeydown } = useModalFocus()
 import { requestConfirmToken, sendCommand } from '@/api/commands'
 import { fetchNextTestId } from '@/api/tests'
+import RecipePicker from '@/components/recipes/RecipePicker.vue'
 import ConfirmDialog from '@/components/shared/ConfirmDialog.vue'
+import OperationResult from '@/components/command/OperationResult.vue'
 
 const emit = defineEmits(['close', 'done'])
 const initialSuggestion = suggestTestId()
@@ -11,7 +15,18 @@ const testId = ref(initialSuggestion)
 const originalHeightMm = ref('')
 const sampleLabel = ref('')
 const notes = ref('')
+const recipe = ref(null)
 const error = ref('')
+const unknownOperationId = ref(null)
+function onOperationResolved(result) {
+  if (result.operation_status === 'rejected') {
+    error.value = result.reason_code || '设备已拒绝，请核查后重新确认'
+    unknownOperationId.value = null
+    return
+  }
+  emit('done', result)
+  emit('close')
+}
 const submitting = ref(false)
 const confirming = ref(false)
 const canContinue = computed(() => {
@@ -45,6 +60,7 @@ function onStart() {
 }
 
 async function onConfirm() {
+  if (unknownOperationId.value || submitting.value) return
   error.value = ''
   submitting.value = true
   try {
@@ -57,6 +73,9 @@ async function onConfirm() {
         original_height_mm: Number(originalHeightMm.value),
         sample_label: sampleLabel.value.trim() || undefined,
         notes: notes.value.trim() || undefined,
+        ...(recipe.value
+          ? { recipe_id: recipe.value.recipe_id, recipe_version: recipe.value.version }
+          : {}),
       },
       confirm_token,
     )
@@ -64,7 +83,9 @@ async function onConfirm() {
     confirming.value = false
     emit('close')
   } catch (e) {
-    error.value = e.response?.data?.message || '启动失败'
+    unknownOperationId.value = e.outcomeUnknown ? e.operationId : null
+    error.value =
+      e.response?.data?.detail?.message || e.response?.data?.message || e.message || '启动失败'
   } finally {
     submitting.value = false
   }
@@ -72,11 +93,32 @@ async function onConfirm() {
 </script>
 
 <template>
-  <div class="overlay" @click.self="emit('close')" @keydown.esc="emit('close')">
-    <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="start-test-title">
-      <div id="start-test-title" class="dlg-title">启动试验</div>
+  <div
+    class="overlay"
+    @click.self="emit('close')"
+    @keydown.esc="emit('close')"
+  >
+    <div
+      ref="dialog"
+      tabindex="-1"
+      @keydown="onDialogKeydown"
+      class="dialog"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="start-test-title"
+    >
+      <div
+        id="start-test-title"
+        class="dlg-title"
+      >
+        启动试验
+      </div>
       <label for="start-test-id">试验编号</label>
-      <input id="start-test-id" v-model="testId" maxlength="64" />
+      <input
+        id="start-test-id"
+        v-model="testId"
+        maxlength="64"
+      />
       <label for="start-test-height">原始料层高度 H (mm) <b aria-hidden="true">*</b></label>
       <input
         id="start-test-height"
@@ -88,14 +130,43 @@ async function onConfirm() {
         required
       />
       <label for="start-test-label">样品标识</label>
-      <input id="start-test-label" v-model="sampleLabel" maxlength="128" />
+      <input
+        id="start-test-label"
+        v-model="sampleLabel"
+        maxlength="128"
+      />
+      <details>
+        <summary>选择已下发配方</summary>
+        <RecipePicker @select="recipe = $event" />
+        <p class="muted">支持配方的设备必须选择已回读一致的版本；旧设备留空使用固定流程。</p>
+      </details>
+      <p v-if="recipe">
+        {{ recipe.definition.name }} · v{{ recipe.version }} ·
+        {{ recipe.definition.mode === 'standard' ? '标准候选模板' : '非标' }}
+      </p>
       <label for="start-test-notes">备注</label>
-      <textarea id="start-test-notes" v-model="notes" maxlength="1000" rows="3" />
-      <div v-if="error && !confirming" class="err">{{ error }}</div>
+      <textarea
+        id="start-test-notes"
+        v-model="notes"
+        maxlength="1000"
+        rows="3"
+      />
+      <div
+        v-if="error && !confirming"
+        class="err"
+      >
+        {{ error }}
+      </div>
 
       <div class="actions">
         <button @click="emit('close')">取消</button>
-        <button class="primary" :disabled="!canContinue" @click="onStart">下一步</button>
+        <button
+          class="primary"
+          :disabled="!canContinue"
+          @click="onStart"
+        >
+          下一步
+        </button>
       </div>
     </div>
 
@@ -106,25 +177,83 @@ async function onConfirm() {
       busy-text="下发中…"
       danger
       :busy="submitting"
+      :confirm-disabled="Boolean(unknownOperationId)"
       :close-on-confirm="false"
       @confirm="onConfirm"
     >
+      <p v-if="recipe">
+        {{ recipe.definition.name }} · v{{ recipe.version }}。后台将核对设备执行版本。
+      </p>
       <div class="co-warn">
         本试验涉及 CO 工艺阶段。请确认现场排风、CO 监测与安全继电器均正常。
         启动请求将发送至控制板，最终由 STM32 状态机与硬接线联锁裁决。
       </div>
-      <div v-if="error" class="err">{{ error }}</div>
+      <div
+        v-if="error"
+        class="err"
+      >
+        {{ error }}
+      </div>
+      <OperationResult
+        v-if="unknownOperationId"
+        :operation-id="unknownOperationId"
+        @resolved="onOperationResolved"
+      />
     </ConfirmDialog>
   </div>
 </template>
 
 <style scoped>
-.overlay { position: fixed; inset: 0; background: rgba(0,0,0,.6); display: flex; align-items: center; justify-content: center; z-index: 100; }
-.dialog { background: var(--bg-card); border: 1px solid var(--border-hi); border-radius: 10px; width: 420px; padding: 20px; display: flex; flex-direction: column; gap: 10px; }
-.dlg-title { font-size: 16px; font-weight: 700; }
-label { font-size: 12px; color: var(--text-sec); }
-.co-warn { background: var(--yellow-dim); border: 1px solid var(--yellow); color: var(--warning-text); border-radius: 6px; padding: 10px; font-size: 12px; line-height: 1.6; }
-.err { color: var(--danger-text); font-size: 12px; }
-.actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 6px; }
-textarea { resize: vertical; min-height: 58px; }
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+.dialog {
+  background: var(--bg-card);
+  border: 1px solid var(--border-hi);
+  border-radius: 10px;
+  width: min(520px, calc(100vw - 24px));
+  max-height: calc(100dvh - 24px);
+  overflow-y: auto;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.dlg-title {
+  font-size: 16px;
+  font-weight: 700;
+}
+label {
+  font-size: 12px;
+  color: var(--text-sec);
+}
+.co-warn {
+  background: var(--yellow-dim);
+  border: 1px solid var(--yellow);
+  color: var(--warning-text);
+  border-radius: 6px;
+  padding: 10px;
+  font-size: 12px;
+  line-height: 1.6;
+}
+.err {
+  color: var(--danger-text);
+  font-size: 12px;
+}
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 6px;
+}
+textarea {
+  resize: vertical;
+  min-height: 58px;
+}
 </style>

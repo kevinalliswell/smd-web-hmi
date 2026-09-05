@@ -30,3 +30,10 @@ export function fetchTestEvents(testId) {
 export function fetchTestAlarms(testId) {
   return apiClient.get(`/api/tests/${testId}/alarms`).then((r) => r.data.data)
 }
+
+export function reviseTestMetadata(testId, body) {
+  return apiClient.patch(`/api/tests/${encodeURIComponent(testId)}/metadata`, body).then((r) => r.data.data)
+}
+export function reviewCloseTest(testId, reason) {
+  return apiClient.post(`/api/tests/${encodeURIComponent(testId)}/review-close`, { reason, physical_safety_confirmed: true }).then((r) => r.data.data)
+}

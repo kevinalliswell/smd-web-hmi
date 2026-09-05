@@ -1,5 +1,7 @@
 <script setup>
 import { computed, ref, watch } from 'vue'
+import { useModalFocus } from '@/composables/useModalFocus'
+const { dialog, onDialogKeydown } = useModalFocus()
 
 const props = defineProps({
   modelValue: { type: Boolean, default: false },
@@ -51,7 +53,7 @@ watch(
 
 <template>
   <div v-if="modelValue" class="overlay" @click.self="cancel" @keydown.esc="cancel">
-    <form class="dialog" role="dialog" aria-modal="true" aria-labelledby="password-reset-title" @submit.prevent="submit">
+    <form ref="dialog" tabindex="-1" @keydown="onDialogKeydown" class="dialog" role="dialog" aria-modal="true" aria-labelledby="password-reset-title" @submit.prevent="submit">
       <div id="password-reset-title" class="dlg-title">重置 {{ username }} 的密码</div>
       <p class="security-note">请设置独立密码，且勿通过聊天或纸条传递。</p>
 

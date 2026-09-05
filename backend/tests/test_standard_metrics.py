@@ -1,0 +1,250 @@
+"""GB/T 34211 §9 / 附录 B 的人工核算用例。"""
+
+import json
+from types import SimpleNamespace
+
+import pytest
+
+from app.services.standard_metrics import MetricAccumulator, evaluate_repeatability
+
+
+def point(furnace, temp, height, dp=0, *, first_drip=False, valid=1):
+    return SimpleNamespace(
+        furnace_pv=furnace,
+        burden_temp=temp,
+        burden_temp_v=valid,
+        displacement=height,
+        displacement_v=valid,
+        delta_p=dp,
+        delta_p_v=valid,
+        drip_weight=1 if first_drip else 0,
+        ext_json=json.dumps(
+            {
+                "measurement": {"first_drip": first_drip, "first_drip_valid": True, "drip_weight_valid": True},
+                "_hostcomm": {"capabilities": ["measurement_events_v1"]},
+            }
+        ),
+    )
+
+
+def metrics(points, **kwargs):
+    reducer = MetricAccumulator(20, **kwargs)
+    for row in points:
+        reducer.add(row)
+    return reducer.finish()
+
+
+def test_reference_600_and_height_decrease_not_absolute_displacement():
+    result = metrics(
+        [
+            point(500, 490, 31),
+            point(600, 590, 30),
+            point(900, 890, 28),
+            point(1100, 1090, 22, 500),
+            point(1300, 1290, 20, 1000, first_drip=True),
+        ]
+    )
+    assert result["reference_displacement_mm"] == 30
+    assert result["t10"] == 890
+    assert result["t40"] == 1090
+    assert result["ts"] == 1090
+    assert result["td_drip_temp"] == 1290
+    assert result["delta_h_mm"] == 2
+    assert result["t40_minus_t10"] == 200
+    assert result["td_minus_ts"] == 200
+    assert result["td_minus_t10"] == 400
+
+
+def test_invalid_channels_and_unverified_weight_do_not_make_metrics():
+    result = metrics([point(600, 590, 30), point(1000, 990, 20, 2000, first_drip=True, valid=0)])
+    assert result["t10"] is None
+    assert result["delta_p_max"] == 0
+    assert result["td_drip_temp"] is None
+    assert result["invalid_sample_count"] == 1
+    weight_only = point(1000, 990, 20)
+    weight_only.drip_weight = 100
+    assert metrics([weight_only])["td_drip_temp"] is None
+
+
+def test_missing_reference_and_gap_are_explicit():
+    result = metrics([point(700, 690, 20), point(1000, 990, 10)])
+    assert result["t10"] is None
+    assert "reference_600_missing" in result["limitations"]
+    gap = metrics([point(590, 580, 30), point(600, 590, 29, valid=0), point(610, 600, 28)])
+    assert gap["reference_displacement_mm"] is None
+
+
+def test_reference_interpolation_is_identified_as_estimate():
+    result = metrics([point(590, 580, 31), point(610, 600, 29)])
+    assert result["reference_displacement_mm"] == 30
+    assert result["reference_source"] == "interpolated_at_600"
+    assert "reference_600_interpolated" in result["limitations"]
+
+
+def test_no_drip_1580_requires_valid_completed_measurement_and_detector():
+    rows = [point(600, 590, 30), point(1600, 1580, 20)]
+    assert metrics(rows)["td_drip_temp"] is None
+    assert metrics(rows, measurement_complete=True, detector_verified=True, data_complete=True)["td_drip_temp"] == 1580
+    assert metrics(rows, measurement_complete=True, detector_verified=True, data_complete=False)["td_drip_temp"] is None
+
+
+@pytest.mark.parametrize(
+    "values,expected,required",
+    [
+        ([1000, 1010], 1005, 0),
+        ([1000, 1011], None, 1),
+        ([1000, 1015, 1005], 1007, 0),
+        ([1000, 1016], None, 2),
+        ([1000, 1021], None, 2),
+        ([1000, 1021, 1002, 1004], 1003, 0),
+        ([1000, 1011, 1030], None, 1),
+        ([1000, 1011, 1030, 1005], 1008, 0),
+    ],
+)
+def test_appendix_b_repeat_branches(values, expected, required):
+    result = evaluate_repeatability("t10", values)
+    assert result["result"] == expected
+    assert result["additional_runs"] == required
+
+
+def test_td_has_its_own_tolerances_and_rounding_is_half_up():
+    assert evaluate_repeatability("td_drip_temp", [1000, 1020])["result"] == 1010
+    assert evaluate_repeatability("t10", [1000, 1001])["result"] == 1001
+    with pytest.raises(ValueError):
+        evaluate_repeatability("t10", [float("nan"), 1000])
+
+
+@pytest.mark.parametrize("extra", ["{bad json", "[]", '{"measurement":true}', '{"_hostcomm":"bad"}', '{"_hmi":[1]}'])
+def test_malformed_metadata_is_a_limitation_not_a_report_crash(extra):
+    sample = point(600, 590, 30)
+    sample.ext_json = extra
+    result = metrics([sample])
+    assert "malformed_sample_metadata" in result["limitations"]
+    assert result["td_drip_temp"] is None
+
+
+def test_first_drip_requires_negotiated_event_capability_and_valid_detector():
+    sample = point(1300, 1290, 20, first_drip=True)
+    extra = json.loads(sample.ext_json)
+    extra["_hostcomm"] = {"capabilities": []}
+    sample.ext_json = json.dumps(extra)
+    assert metrics([sample])["td_drip_temp"] is None
+
+
+def test_cooling_after_measurement_boundary_cannot_change_standard_metrics():
+    complete = point(1600, 1580, 29, 100)
+    extra = json.loads(complete.ext_json)
+    extra.update(
+        state_machine={"measurement_complete": True},
+        _hostcomm={"capabilities": ["run_lifecycle_v1", "measurement_events_v1"]},
+    )
+    complete.ext_json = json.dumps(extra)
+    cooling = point(1100, 1000, 10, 20000, first_drip=True)
+    result = metrics([point(600, 590, 30), complete, cooling])
+    assert result["t10"] is None and result["ts"] is None and result["td_drip_temp"] is None
+    assert result["delta_p_max"] == 100
+    assert result["excluded_sample_count"] == 1
+
+
+def test_no_drip_substitution_requires_observed_1580_and_detector_health():
+    kwargs = dict(measurement_complete=True, detector_verified=True, data_complete=True)
+    assert metrics([point(600, 590, 30)], **kwargs)["td_drip_temp"] is None
+    failed = point(1600, 1580, 20)
+    extra = json.loads(failed.ext_json)
+    extra["measurement"]["first_drip_valid"] = False
+    failed.ext_json = json.dumps(extra)
+    assert metrics([point(600, 590, 30), failed], **kwargs)["td_drip_temp"] is None
+
+
+@pytest.mark.parametrize(
+    "values,expected,needed",
+    [
+        ([1000.1, 1010.1], 1005, 0),
+        ([1000.1, 1015.1, 1005.1], 1007, 0),
+        ([1000.1, 1016.1, 1020.1, 1005.1], 1010, 0),
+        ([1000, 1011, 1015, 1100], 1009, 0),
+        ([1000, 1011, 1020, 1005], 1009, 0),
+        ([1000, 1020, 1002], None, 1),
+        ([1000, 1020, 1002, 1004], 1007, 0),
+        ([1000, 1021, 1002], None, 1),
+    ],
+)
+def test_appendix_b_exact_decimal_boundaries_and_earliest_decision(values, expected, needed):
+    result = evaluate_repeatability("t10", values)
+    assert result["result"] == expected
+    assert result["additional_runs"] == needed
+
+
+def test_appendix_b_binary_float_error_does_not_force_an_extra_run():
+    assert abs(1024.13 - 1014.13) > 10  # IEEE-754 跨指数区间的具体反例。
+    result = evaluate_repeatability("t10", [1014.13, 1024.13])
+    assert result["result"] == 1019
+    assert result["additional_runs"] == 0
+
+
+def test_cooling_boundary_remains_closed_when_legacy_device_returns_to_standby():
+    cooling = point(1100, 1000, 20, 2000)
+    cooling.current_state = "Cooling"
+    standby = point(1000, 900, 0, 20000, first_drip=True)
+    standby.current_state = "Standby"
+    result = metrics([point(600, 590, 30, 100), cooling, standby])
+    assert result["delta_p_max"] == 100
+    assert result["ts"] is None
+    assert result["excluded_sample_count"] == 2
+
+
+@pytest.mark.parametrize("boundary", ["persisted", "lifecycle", "both"])
+@pytest.mark.parametrize("current_state,phase", [("Hold", None), ("N2Replace", None), ("N2Replace", "safe_disposal")])
+@pytest.mark.parametrize("first_drip", [True, False])
+def test_terminal_measurement_frame_is_included_before_disposal(boundary, current_state, phase, first_drip):
+    terminal = point(1600, 1580, 20, 1000, first_drip=first_drip)
+    extra = json.loads(terminal.ext_json)
+    extra["state_machine"] = {"current_state": current_state, "test_id": "boundary-test"}
+    if phase is not None:
+        extra["state_machine"]["phase"] = phase
+    if boundary in {"lifecycle", "both"}:
+        extra["state_machine"]["measurement_complete"] = True
+        extra["_hostcomm"]["capabilities"].append("run_lifecycle_v1")
+    terminal.ext_json = json.dumps(extra)
+    cooling = point(1700, 1600, 40, 20000, first_drip=True)
+    extra["state_machine"]["current_state"] = "Cooling"
+    extra["measurement"]["first_drip"] = True
+    cooling.ext_json = json.dumps(extra)  # A latched measurement_complete does not reopen the window.
+    standby = point(1800, 1700, 45, 30000, first_drip=True)
+    standby.current_state = "Standby"
+    rows = [point(600, 590, 30, 100), point(1400, 1380, 28, 500), terminal, cooling, standby]
+    for index, row in enumerate(rows, 1):
+        row.id = index
+    result = metrics(
+        rows,
+        test_id="boundary-test",
+        measurement_end_sample_id=3 if boundary in {"persisted", "both"} else None,
+        measurement_complete=True,
+        detector_verified=True,
+        data_complete=True,
+    )
+    assert result["furnace_pv_max"] == 1600
+    assert result["burden_temp_max"] == 1580
+    assert result["delta_p_max"] == 1000
+    assert result["delta_p_max_temp"] == 1580
+    assert result["t40"] == 1580
+    assert result["td_drip_temp"] == 1580
+    assert result["td_source"] == ("first_drip_event" if first_drip else "completed_without_drip")
+    assert result["delta_h_mm"] == 8  # Uses the terminal displacement, not the previous or cooling frame.
+    assert result["drip_weight_total"] == (1 if first_drip else 0)
+    assert result["measurement_sample_count"] == 3
+    assert result["excluded_sample_count"] == 2
+
+
+@pytest.mark.parametrize("test_id,capability", [("other-test", True), ("boundary-test", False)])
+def test_disposal_frame_without_trusted_end_boundary_remains_excluded(test_id, capability):
+    terminal = point(1600, 1580, 20, 1000, first_drip=True)
+    extra = json.loads(terminal.ext_json)
+    extra["state_machine"] = {"current_state": "N2Replace", "test_id": test_id, "measurement_complete": True}
+    if capability:
+        extra["_hostcomm"]["capabilities"].append("run_lifecycle_v1")
+    terminal.ext_json = json.dumps(extra)
+    result = metrics([point(600, 590, 30, 100), terminal], test_id="boundary-test")
+    assert result["measurement_sample_count"] == 1
+    assert result["delta_p_max"] == 100
+    assert result["td_drip_temp"] is None

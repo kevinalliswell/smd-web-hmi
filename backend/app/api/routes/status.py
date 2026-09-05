@@ -9,6 +9,7 @@ from app.api.schemas import err, ok
 from app.api.validation import MaxPoints, TestId
 from app.core.time import normalize_utc_iso
 from app.services.cache import status_cache
+from app.services.maintenance_service import maintenance_manager
 from app.services.sampling_health import sampling_health
 from app.services.state_policy import enrich_status_snapshot
 from app.services.trend_service import query_downsampled_points
@@ -24,8 +25,11 @@ async def get_status(request: Request):
     snapshot = await status_cache.get_snapshot()
     quality = status_cache.comm_quality(link_online)
 
-    payload = enrich_status_snapshot(snapshot)
+    control_ready = quality == "online" and maintenance_manager.upgrade_state()["state"] == "idle"
+    payload = enrich_status_snapshot(snapshot, control_ready=control_ready)
     payload["comm_quality"] = quality
+    payload["data_fresh"] = status_cache.is_fresh
+    payload["control_ready"] = control_ready
     payload["last_update"] = status_cache.last_update
     payload["data_persistence"] = sampling_health.snapshot()
     return ok(payload)

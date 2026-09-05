@@ -1,6 +1,7 @@
 <script setup>
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
+import VersionMismatchBanner from '@/components/layout/VersionMismatchBanner.vue'
 import AppHeader from '@/components/layout/AppHeader.vue'
 import AppSidebar from '@/components/layout/AppSidebar.vue'
 import AppFooter from '@/components/layout/AppFooter.vue'
@@ -67,7 +68,7 @@ onUnmounted(() => {
       />
       <AppSidebar :open="navigationOpen" @navigate="closeNavigation" />
       <main class="content">
-        <div class="content-inner"><RouterView /></div>
+        <div class="content-inner"><VersionMismatchBanner /><RouterView /></div>
       </main>
     </div>
     <AppFooter />

@@ -4,7 +4,7 @@
 - 连接后先 hello/hello_ack 协商能力。
 - 周期心跳（默认 2s），连续 N 次超时后断线并进入自动重连。
 - 断线自动重连（指数退避 1→2→4→8→30s 上限）。
-- 请求/响应匹配：command 按 request_msg_id；status/parameters 按下一帧类型。
+- 请求/响应匹配：command 按 request_msg_id；快照按协商能力关联，旧协议串行等待。
 - 收帧分发：status_snapshot 更新缓存并广播，event 写日志并广播。
 - 帧解析容错（非法 JSON 不 crash，由 FrameParser 处理）。
 
@@ -19,7 +19,8 @@ from collections.abc import Awaitable, Callable
 from typing import Any
 
 from app.core.logging import get_logger
-from app.hostcomm.protocol import FrameParser, make_frame, new_msg_id
+from app.hostcomm.contracts import validate_hello, validate_result
+from app.hostcomm.protocol import FrameParser, make_frame, new_msg_id, now_iso
 
 logger = get_logger("hostcomm.client")
 
@@ -32,6 +33,10 @@ class HostCommError(Exception):
 
 class HostCommTimeoutError(HostCommError):
     """请求在超时时间内未收到响应。"""
+
+
+class HostCommProtocolError(HostCommError):
+    """协议不兼容或结果不能安全解释。"""
 
 
 class HostCommNotConnectedError(HostCommError):
@@ -62,6 +67,7 @@ class HostCommClient:
         on_status: Callback | None = None,
         on_event: Callback | None = None,
         on_comm_status: Callback | None = None,
+        callback_queue_size: int = 256,
     ) -> None:
         self.host = host
         self.port = port
@@ -85,15 +91,24 @@ class HostCommClient:
 
         # 请求跟踪
         self._pending_cmd: dict[str, asyncio.Future[dict[str, Any]]] = {}
-        self._waiters: dict[str, list[asyncio.Future[dict[str, Any]]]] = {}
+        self._waiters: dict[str, list[tuple[str, asyncio.Future[dict[str, Any]]]]] = {}
+        self._snapshot_locks: dict[str, asyncio.Lock] = {}
+        self._command_names: dict[str, str] = {}
+        self._sent_command_ids: set[str] = set()
+        self._handshake_complete = False
+        self._session_id = ""
+        self._callback_dropped = 0
+        self._callback_overloaded = False
+        if callback_queue_size < 1:
+            raise ValueError("callback_queue_size must be positive")
 
         # 任务
         self._reader_task: asyncio.Task | None = None
         self._heartbeat_task: asyncio.Task | None = None
         self._reconnect_task: asyncio.Task | None = None
         self._callback_queues: dict[str, asyncio.Queue[tuple[Callback, dict[str, Any]]]] = {
-            "data": asyncio.Queue(),
-            "comm": asyncio.Queue(),
+            "data": asyncio.Queue(maxsize=callback_queue_size),
+            "comm": asyncio.Queue(maxsize=8),
         }
         self._callback_workers: dict[str, asyncio.Task[None]] = {}
         self._connection_loss_lock = asyncio.Lock()
@@ -109,7 +124,12 @@ class HostCommClient:
     # ----------------------------------------------------------- 属性
     @property
     def is_online(self) -> bool:
-        return self._connected and self._comm_quality == "online"
+        return (
+            self._connected
+            and self._handshake_complete
+            and not self._callback_overloaded
+            and self._comm_quality == "online"
+        )
 
     @property
     def comm_quality(self) -> str:
@@ -139,6 +159,11 @@ class HostCommClient:
             "json_errors": self._parser.json_errors,
             "heartbeat_age_s": age,
             "missed_heartbeats": self._missed_heartbeats,
+            "callback_queue_depth": self._callback_queues["data"].qsize(),
+            "callback_dropped": self._callback_dropped,
+            "callback_overloaded": self._callback_overloaded,
+            "session_id": self._session_id,
+            "handshake_complete": self._handshake_complete,
         }
 
     # ----------------------------------------------------------- 连接生命周期
@@ -164,13 +189,21 @@ class HostCommClient:
 
     async def _open(self) -> None:
         try:
-            self._reader, self._writer = await asyncio.open_connection(self.host, self.port)
+            self._reader, self._writer = await asyncio.wait_for(
+                asyncio.open_connection(self.host, self.port), timeout=self.command_timeout
+            )
             self._parser = FrameParser()
             self._connected = True
             # 启动收帧任务
             self._reader_task = asyncio.create_task(self._reader_loop(), name="hostcomm-reader")
             # 握手
             self.hello_ack = await self._handshake()
+            try:
+                validate_hello(self.hello_ack)
+            except ValueError as exc:
+                raise HostCommProtocolError(str(exc)) from exc
+            self._handshake_complete = True
+            self._session_id = new_msg_id("session")
             logger.info("hostcomm.connected", host=self.host, port=self.port, caps=self.capabilities)
             await self._set_comm_quality("online")
             # 启动心跳
@@ -214,6 +247,7 @@ class HostCommClient:
 
     async def _teardown_connection(self) -> None:
         self._connected = False
+        self._handshake_complete = False
         tasks = [
             task
             for task in (self._heartbeat_task, self._reader_task)
@@ -243,7 +277,7 @@ class HostCommClient:
                 fut.set_exception(exc)
         self._pending_cmd.clear()
         for futs in self._waiters.values():
-            for fut in futs:
+            for _, fut in futs:
                 if not fut.done():
                     fut.set_exception(exc)
         self._waiters.clear()
@@ -298,18 +332,23 @@ class HostCommClient:
     async def _dispatch(self, frame: dict[str, Any]) -> None:
         msg_type = frame.get("type")
         payload = frame.get("payload", {}) or {}
+        if not isinstance(payload, dict):
+            raise HostCommProtocolError("HostComm payload 必须是对象")
 
         if msg_type == "heartbeat_ack":
             self._last_heartbeat_ack = time.monotonic()
             self._missed_heartbeats = 0
-            await self._set_comm_quality("online")
+            if self._handshake_complete:
+                await self._set_comm_quality("online")
             return
 
         if msg_type == "status_snapshot":
+            if not self._handshake_complete:
+                return
             await self._set_comm_quality("online")
             # 先唤醒请求方，再把 DB/WS 回调放到独立任务，保持收帧循环畅通。
             self._resolve_waiter("status_snapshot", frame)
-            self._schedule_callback(self.on_status, payload)
+            self._schedule_callback(self.on_status, self._with_receipt(frame))
             return
 
         if msg_type in ("hello_ack", "parameters_snapshot"):
@@ -320,23 +359,71 @@ class HostCommClient:
             req = payload.get("request_msg_id")
             fut = self._pending_cmd.pop(req, None)
             if fut is not None and not fut.done():
-                fut.set_result(frame)
+                try:
+                    validate_result(payload, self._command_names.get(req, ""))
+                except ValueError as exc:
+                    fut.set_exception(HostCommProtocolError(str(exc)))
+                else:
+                    fut.set_result(frame)
             return
 
         if msg_type == "event":
-            self._schedule_callback(self.on_event, payload)
+            if not self._handshake_complete:
+                return
+            self._schedule_callback(self.on_event, self._with_receipt(frame))
             return
 
         if msg_type == "error":
             logger.warning("hostcomm.error_frame", payload=payload)
+            request_id = payload.get("request_msg_id")
+            error = HostCommProtocolError(str(payload.get("reason_code", "device_protocol_error")))
+            fut = self._pending_cmd.pop(request_id, None)
+            if fut is not None and not fut.done():
+                fut.set_exception(error)
+            for kind, waiters in self._waiters.items():
+                for mid, waiter in waiters:
+                    if not waiter.done() and (mid == request_id or (kind == "hello_ack" and not request_id)):
+                        waiter.set_exception(error)
             return
 
         logger.debug("hostcomm.unhandled_frame", type=msg_type)
+
+    def _with_receipt(self, frame: dict[str, Any]) -> dict[str, Any]:
+        payload = dict(frame.get("payload") or {})
+        payload["_hostcomm"] = {
+            "msg_id": frame.get("msg_id"),
+            "device_timestamp": frame.get("timestamp"),
+            "received_at": now_iso(),
+            "received_monotonic": time.monotonic(),
+            "session_id": self._session_id,
+            "dropped_callbacks": self._callback_dropped,
+            "capabilities": self.capabilities.copy(),
+        }
+        return payload
 
     def _schedule_callback(self, cb: Callback | None, payload: dict[str, Any], *, channel: str = "data") -> None:
         if cb is None:
             return
         queue = self._callback_queues[channel]
+        if queue.full():
+            if channel == "data":
+                self._callback_dropped += 1
+                self._callback_overloaded = True
+                self._comm_quality = "degraded"
+                logger.error("hostcomm.callback_overflow", dropped=self._callback_dropped)
+                self._schedule_callback(
+                    self.on_comm_status,
+                    {
+                        "status": "degraded",
+                        "reason": "callback_overload",
+                        "dropped_callbacks": self._callback_dropped,
+                    },
+                    channel="comm",
+                )
+                return
+            # 通信状态只保留最近变化；数据缺口计数在 stats 中持续保留。
+            queue.get_nowait()
+            queue.task_done()
         queue.put_nowait((cb, payload))
         worker = self._callback_workers.get(channel)
         if worker is None or worker.done():
@@ -356,6 +443,8 @@ class HostCommClient:
                 await self._emit(cb, payload)
             finally:
                 queue.task_done()
+                if channel == "data" and queue.empty():
+                    self._callback_overloaded = False
 
     async def _emit(self, cb: Callback | None, payload: dict[str, Any]) -> None:
         if cb is None:
@@ -371,43 +460,58 @@ class HostCommClient:
         futs = self._waiters.get(expect_type)
         if not futs:
             return
-        fut = futs.pop(0)
-        if not fut.done():
-            fut.set_result(frame)
+        request_id = (frame.get("payload") or {}).get("request_msg_id")
+        correlated = expect_type != "hello_ack" and "request_correlation_v1" in self.capabilities
+        for index, (mid, fut) in enumerate(futs):
+            if (request_id is not None and request_id != mid) or (correlated and request_id is None):
+                continue
+            futs.pop(index)
+            if not fut.done():
+                fut.set_result(frame)
+            return
 
     # ----------------------------------------------------------- 发送原语
     async def _send(self, frame: dict[str, Any]) -> None:
         if self._writer is None or not self._connected:
             raise HostCommNotConnectedError("not connected")
         self._writer.write(FrameParser.encode(frame))
-        await self._writer.drain()
+        try:
+            await asyncio.wait_for(self._writer.drain(), timeout=self.command_timeout)
+        except asyncio.TimeoutError as exc:
+            raise HostCommTimeoutError("HostComm 写入超时，执行结果未知") from exc
 
     async def _await_type(self, expect_type: str, frame: dict[str, Any], *, timeout: float) -> dict[str, Any]:
         """发送 frame 并等待下一帧 expect_type 类型的响应。"""
         loop = asyncio.get_running_loop()
         fut: asyncio.Future[dict[str, Any]] = loop.create_future()
-        self._waiters.setdefault(expect_type, []).append(fut)
+        entry = (frame["msg_id"], fut)
+        self._waiters.setdefault(expect_type, []).append(entry)
         try:
             await self._send(frame)
             return await asyncio.wait_for(fut, timeout)
         except asyncio.TimeoutError as exc:
+            if expect_type != "hello_ack" and "request_correlation_v1" not in self.capabilities:
+                # 旧协议没有响应ID，超时后必须换会话，防止迟到回复冒充下一请求。
+                await self._on_connection_lost()
             raise HostCommTimeoutError(f"等待 {expect_type} 超时（{timeout}s）") from exc
         finally:
             futs = self._waiters.get(expect_type)
-            if futs and fut in futs:
-                futs.remove(fut)
+            if futs and entry in futs:
+                futs.remove(entry)
 
     # ----------------------------------------------------------- 公共接口
     async def get_status(self) -> dict[str, Any]:
         """请求并返回最新 status_snapshot 的 payload。"""
         frame = make_frame("get_status", prefix="pc-status")
-        resp = await self._await_type("status_snapshot", frame, timeout=self.command_timeout)
+        async with self._snapshot_locks.setdefault("status_snapshot", asyncio.Lock()):
+            resp = await self._await_type("status_snapshot", frame, timeout=self.command_timeout)
         return resp.get("payload", {})
 
     async def get_parameters(self) -> dict[str, Any]:
         """请求并返回 parameters_snapshot 的 payload。"""
         frame = make_frame("get_parameters", prefix="pc-param")
-        resp = await self._await_type("parameters_snapshot", frame, timeout=self.command_timeout)
+        async with self._snapshot_locks.setdefault("parameters_snapshot", asyncio.Lock()):
+            resp = await self._await_type("parameters_snapshot", frame, timeout=self.command_timeout)
         return resp.get("payload", {})
 
     async def send_command(
@@ -422,10 +526,18 @@ class HostCommClient:
     ) -> dict[str, Any]:
         """发送 command 帧，等待 command_result，返回其 payload。
 
-        超时（默认 3s）抛出 HostCommTimeoutError。msg_id 不复用，重试由上层
-        重新生成（命令幂等性见规格 5.4）。
+        超时表示执行结果未知。稳定 msg_id 由持久事务提供；未经验证的
+        固件去重不能作为自动重发依据，本客户端拒绝再次发送已发送ID。
         """
+        if not self.is_online or "command" not in self.capabilities:
+            raise HostCommNotConnectedError("未完成协商或数据通道过载，禁止新控制请求")
+        if command == "sync_time" and "sync_time" not in self.capabilities:
+            raise HostCommProtocolError("固件未声明 sync_time 能力")
         mid = msg_id or new_msg_id("pc-cmd")
+        if mid in self._sent_command_ids:
+            raise HostCommProtocolError("不能自动重发已发送的 msg_id；请查询持久操作状态")
+        self._sent_command_ids.add(mid)
+        self._command_names[mid] = command
         payload: dict[str, Any] = {
             "command": command,
             "operator_id": operator_id,
@@ -447,6 +559,7 @@ class HostCommClient:
             raise HostCommTimeoutError(f"命令 {command} 超时（{self.command_timeout}s）") from exc
         finally:
             self._pending_cmd.pop(mid, None)
+            self._command_names.pop(mid, None)
 
     # ----------------------------------------------------------- 心跳
     async def _heartbeat_loop(self) -> None:
@@ -487,6 +600,8 @@ class HostCommClient:
 
     # ----------------------------------------------------------- comm_quality
     async def _set_comm_quality(self, quality: str) -> None:
+        if quality == "online" and self._callback_overloaded:
+            quality = "degraded"
         if quality == self._comm_quality:
             return
         self._comm_quality = quality

@@ -27,7 +27,7 @@ class _FakeClient:
         self._error = error
         self.sent: list[tuple] = []
 
-    async def send_command(self, command, params, *, operator_id, role, confirm_token=None):
+    async def send_command(self, command, params, *, operator_id, role, confirm_token=None, msg_id=None):
         self.sent.append((command, params))
         if self._error is not None:
             raise self._error
@@ -43,6 +43,10 @@ class _FakeClient:
 class _FakeCache:
     def __init__(self, state="Standby"):
         self._state = state
+
+    @property
+    def current_state(self):
+        return self.get_field("system.current_state")
 
     def get_field(self, path):
         if path == "system.current_state":
@@ -114,9 +118,13 @@ async def test_t10_operator_action_logged(db_session):
         role="operator",
         db_session=db_session,
     )
-    count = await db_session.scalar(select(func.count()).select_from(OperatorAction))
+    count = await db_session.scalar(
+        select(func.count()).select_from(OperatorAction).where(OperatorAction.action_type == "tare_balance")
+    )
     assert count == 1
-    row = (await db_session.execute(select(OperatorAction))).scalar_one()
+    row = (
+        await db_session.execute(select(OperatorAction).where(OperatorAction.action_type == "tare_balance"))
+    ).scalar_one()
     assert row.action_type == "tare_balance"
     assert row.operator_id == "op001"
     assert row.result == "accepted"
@@ -135,7 +143,9 @@ async def test_command_timeout_has_explicit_audit_reason(db_session):
             db_session=db_session,
         )
 
-    row = (await db_session.execute(select(OperatorAction))).scalar_one()
+    row = (
+        await db_session.execute(select(OperatorAction).where(OperatorAction.action_type == "tare_balance"))
+    ).scalar_one()
     assert row.result == "error"
     assert row.reason_code == "device_comm_timeout"
 

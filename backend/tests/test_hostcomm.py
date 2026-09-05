@@ -283,6 +283,7 @@ async def test_status_callback_does_not_block_frame_dispatch():
         await callback_release.wait()
 
     client = HostCommClient("127.0.0.1", 34211, auto_reconnect=False, on_status=slow_callback)
+    client._handshake_complete = True
     frame = {"type": "status_snapshot", "payload": {"system": {"current_state": "Standby"}}}
 
     try:
@@ -306,6 +307,7 @@ async def test_status_callbacks_preserve_frame_order():
         completed.append(payload["seq"])
 
     client = HostCommClient("127.0.0.1", 34211, auto_reconnect=False, on_status=ordered_callback)
+    client._handshake_complete = True
 
     try:
         await client._dispatch({"type": "status_snapshot", "payload": {"seq": 1}})

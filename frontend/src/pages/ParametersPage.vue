@@ -1,9 +1,12 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 import { useRole } from '@/composables/useRole'
+import { useDeviceStore } from '@/stores/device'
 import { fetchParameters, putParameters } from '@/api/parameters'
 import ConfirmDialog from '@/components/shared/ConfirmDialog.vue'
+import OperationResult from '@/components/command/OperationResult.vue'
 
+const device = useDeviceStore()
 const { canConfigure } = useRole()
 const editable = computed(() => canConfigure())
 
@@ -15,6 +18,16 @@ const offline = ref(false)
 const banner = ref(null) // {type:'ok'|'err', text}
 const showConfirm = ref(false)
 const submitting = ref(false)
+const unknownOperationId = ref(null)
+function onOperationResolved(result) {
+  unknownOperationId.value = null
+  if (result.operation_status === 'verified') {
+    banner.value = { type: 'ok', text: '参数已回读确认一致' }
+    load()
+  } else {
+    banner.value = { type: 'err', text: result.reason_code || '参数请求已被拒绝' }
+  }
+}
 
 // 分组与字段中文标签（未知键回退原名）
 const GROUP_LABELS = {
@@ -85,7 +98,10 @@ async function load() {
       deviceCrc.value = data.parameter_crc || ''
     }
   } catch (e) {
-    banner.value = { type: 'err', text: '读取参数失败：' + (e.response?.data?.message || e.message) }
+    banner.value = {
+      type: 'err',
+      text: '读取参数失败：' + (e.response?.data?.message || e.message),
+    }
   } finally {
     loading.value = false
   }
@@ -97,6 +113,11 @@ function reset() {
 }
 
 async function submit() {
+  if (unknownOperationId.value || !device.canSetParameters) {
+    banner.value = { type: 'err', text: '设备状态不允许改参或数据已过期，请刷新状态后重试' }
+    showConfirm.value = false
+    return
+  }
   submitting.value = true
   banner.value = null
   try {
@@ -110,8 +131,12 @@ async function submit() {
       banner.value = { type: 'err', text: '回读未确认一致' }
     }
   } catch (e) {
-    const d = e.response?.data
-    banner.value = { type: 'err', text: `下发失败 [${d?.error_code || ''}]：${d?.message || e.message}` }
+    unknownOperationId.value = e.outcomeUnknown ? e.operationId : null
+    const d = e.response?.data?.detail || e.response?.data
+    banner.value = {
+      type: 'err',
+      text: `下发${e.outcomeUnknown ? '结果未知' : '失败'} [${d?.error_code || ''}]：${d?.message || e.message}`,
+    }
   } finally {
     submitting.value = false
     showConfirm.value = false
@@ -125,24 +150,64 @@ onMounted(load)
   <div class="page">
     <div class="page-head">
       <h1 class="page-title">参数配置</h1>
-      <div v-if="deviceCrc" class="crc mono">设备参数 CRC：{{ deviceCrc }}</div>
+      <div
+        v-if="deviceCrc"
+        class="crc mono"
+      >
+        设备参数 CRC：{{ deviceCrc }}
+      </div>
       <div class="spacer" />
       <button @click="load">刷新</button>
     </div>
 
-    <div v-if="banner" class="banner" :class="banner.type">{{ banner.text }}</div>
+    <div
+      v-if="banner"
+      class="banner"
+      :class="banner.type"
+    >
+      {{ banner.text }}
+    </div>
+    <OperationResult
+      v-if="unknownOperationId"
+      :operation-id="unknownOperationId"
+      require-verified
+      @resolved="onOperationResolved"
+    />
 
-    <div v-if="loading" class="card muted">读取参数中…</div>
-    <div v-else-if="offline" class="card muted">HostComm 离线，暂无法读取参数。</div>
+    <div
+      v-if="loading"
+      class="card muted"
+    >
+      读取参数中…
+    </div>
+    <div
+      v-else-if="offline"
+      class="card muted"
+    >
+      HostComm 离线，暂无法读取参数。
+    </div>
 
     <template v-else>
-      <p v-if="!editable" class="muted">当前角色为只读视图；参数下发需要 Admin 及以上角色。</p>
+      <p
+        v-if="!editable"
+        class="muted"
+      >
+        当前角色为只读视图；参数下发需要 Admin 及以上角色。
+      </p>
 
       <div class="groups">
-        <div v-for="g in groups" :key="g" class="card group">
+        <div
+          v-for="g in groups"
+          :key="g"
+          class="card group"
+        >
           <div class="card-title">{{ groupLabel(g) }}</div>
           <div class="fields">
-            <div v-for="f in Object.keys(form[g])" :key="f" class="field">
+            <div
+              v-for="f in Object.keys(form[g])"
+              :key="f"
+              class="field"
+            >
               <label :for="`parameter-${g}-${f}`">{{ fieldLabel(f) }}</label>
               <input
                 :id="`parameter-${g}-${f}`"
@@ -156,11 +221,32 @@ onMounted(load)
         </div>
       </div>
 
-      <div v-if="editable" class="actions">
+      <p
+        v-if="editable && !device.canSetParameters"
+        role="status"
+        class="muted"
+      >
+        设备尚未确认允许改参，或实时数据已过期；暂不能下发。
+      </p>
+      <div
+        v-if="editable"
+        class="actions"
+      >
         <span class="muted">{{ dirty ? `${diffs.length} 项待下发` : '无改动' }}</span>
         <div class="spacer" />
-        <button :disabled="!dirty" @click="reset">还原</button>
-        <button class="primary" :disabled="!dirty || submitting" @click="showConfirm = true">
+        <button
+          :disabled="!dirty"
+          @click="reset"
+        >
+          还原
+        </button>
+        <button
+          class="primary"
+          :disabled="
+            !dirty || submitting || !device.canSetParameters || Boolean(unknownOperationId)
+          "
+          @click="showConfirm = true"
+        >
           下发参数
         </button>
       </div>
@@ -171,17 +257,29 @@ onMounted(load)
       v-model="showConfirm"
       title="确认下发参数"
       confirm-text="确认下发"
+      :busy="submitting"
+      :close-on-confirm="false"
       @confirm="submit"
     >
-      <p class="muted" style="margin-bottom: 10px">
+      <p
+        class="muted"
+        style="margin-bottom: 10px"
+      >
         以下 {{ diffs.length }} 项将下发至控制板（非运行态生效，下发后自动回读确认）：
       </p>
       <table class="diff">
         <thead>
-          <tr><th>参数</th><th>当前</th><th>修改为</th></tr>
+          <tr>
+            <th>参数</th>
+            <th>当前</th>
+            <th>修改为</th>
+          </tr>
         </thead>
         <tbody>
-          <tr v-for="d in diffs" :key="d.group + '.' + d.field">
+          <tr
+            v-for="d in diffs"
+            :key="d.group + '.' + d.field"
+          >
             <td>{{ groupLabel(d.group) }} · {{ fieldLabel(d.field) }}</td>
             <td class="mono">{{ d.from }}</td>
             <td class="mono changed">{{ d.to }}</td>
@@ -193,26 +291,110 @@ onMounted(load)
 </template>
 
 <style scoped>
-.page { display: flex; flex-direction: column; gap: 16px; }
-.page-head { display: flex; align-items: center; gap: 12px; }
-.page-title { font-size: 18px; font-weight: 700; }
-.crc { color: var(--text-sec); font-size: 12px; }
-.spacer { flex: 1; }
-.banner { border-radius: 6px; padding: 8px 12px; font-size: 12px; }
-.banner.ok { background: var(--green-dim); border: 1px solid var(--green); color: var(--success-text); }
-.banner.err { background: var(--red-dim); border: 1px solid var(--red); color: var(--danger-text); }
-.groups { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
-.card-title { font-weight: 700; margin-bottom: 10px; }
-.fields { display: flex; flex-direction: column; gap: 8px; }
-.field { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-.field label { color: var(--text-sec); font-size: 12px; }
-.field input { width: 130px; text-align: right; }
-.field input.changed { border-color: var(--yellow); color: var(--yellow); }
-.actions { display: flex; align-items: center; gap: 10px; }
-.diff { width: 100%; border-collapse: collapse; font-size: 12px; }
-.diff th, .diff td { text-align: left; padding: 5px 8px; border-bottom: 1px solid var(--border); }
-.diff th { color: var(--text-sec); font-weight: 600; }
-.diff .changed { color: var(--yellow); }
-@media (max-width: 1000px) { .groups { grid-template-columns: 1fr; } }
-@media (max-width: 560px) { .page-head, .actions { align-items: stretch; flex-direction: column; } .field input { width: 112px; } }
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.page-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.page-title {
+  font-size: 18px;
+  font-weight: 700;
+}
+.crc {
+  color: var(--text-sec);
+  font-size: 12px;
+}
+.spacer {
+  flex: 1;
+}
+.banner {
+  border-radius: 6px;
+  padding: 8px 12px;
+  font-size: 12px;
+}
+.banner.ok {
+  background: var(--green-dim);
+  border: 1px solid var(--green);
+  color: var(--success-text);
+}
+.banner.err {
+  background: var(--red-dim);
+  border: 1px solid var(--red);
+  color: var(--danger-text);
+}
+.groups {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 16px;
+}
+.card-title {
+  font-weight: 700;
+  margin-bottom: 10px;
+}
+.fields {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.field {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.field label {
+  color: var(--text-sec);
+  font-size: 12px;
+}
+.field input {
+  width: 130px;
+  text-align: right;
+}
+.field input.changed {
+  border-color: var(--yellow);
+  color: var(--yellow);
+}
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.diff {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.diff th,
+.diff td {
+  text-align: left;
+  padding: 5px 8px;
+  border-bottom: 1px solid var(--border);
+}
+.diff th {
+  color: var(--text-sec);
+  font-weight: 600;
+}
+.diff .changed {
+  color: var(--yellow);
+}
+@media (max-width: 1000px) {
+  .groups {
+    grid-template-columns: 1fr;
+  }
+}
+@media (max-width: 560px) {
+  .page-head,
+  .actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .field input {
+    width: 112px;
+  }
+}
 </style>

@@ -1,7 +1,8 @@
 <script setup>
-// 历史曲线回放：静态多通道折线图（炉温/料层温度 左轴 ℃；压差/位移/重量 右轴）。
-import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
+// 相同量纲共享坐标；所有小图使用同一组采样时间，便于对照。
+import { onBeforeUnmount, onMounted, watch } from 'vue'
 import { formatTime } from '@/utils/dateTime'
+import { finiteValue } from '@/utils/measurementQuality'
 import {
   Chart,
   LineController,
@@ -14,77 +15,178 @@ import {
 } from 'chart.js'
 import { getChartTheme, subscribeChartTheme } from '@/utils/chartTheme'
 
-Chart.register(LineController, LineElement, PointElement, LinearScale, CategoryScale, Tooltip, Legend)
+Chart.register(
+  LineController,
+  LineElement,
+  PointElement,
+  LinearScale,
+  CategoryScale,
+  Tooltip,
+  Legend,
+)
 
-const props = defineProps({
-  points: { type: Array, default: () => [] },
-})
-
-const canvas = ref(null)
-let chart = null
-let unsubscribeTheme = null
-
-function buildData() {
-  const labels = props.points.map((p) => formatTime(p.ts))
-  const col = (key) => props.points.map((p) => p[key])
-  return {
-    labels,
-    datasets: [
-      { label: '炉温 (℃)', yAxisID: 'yTemp', data: col('furnace_pv'), borderColor: '#38bdf8', borderWidth: 1.5, pointRadius: 0, tension: 0.2 },
-      { label: '料层温度 (℃)', yAxisID: 'yTemp', data: col('burden_temp'), borderColor: '#a78bfa', borderWidth: 1.5, pointRadius: 0, tension: 0.2 },
-      { label: '压差 (Pa)', yAxisID: 'yAux', data: col('delta_p'), borderColor: '#f59e0b', borderWidth: 1.5, pointRadius: 0, tension: 0.2 },
-      { label: '位移 (mm)', yAxisID: 'yAux', data: col('displacement'), borderColor: '#22c55e', borderWidth: 1.5, pointRadius: 0, tension: 0.2 },
-      { label: '滴落重量 (g)', yAxisID: 'yAux', data: col('drip_weight'), borderColor: '#ef4444', borderWidth: 1.5, pointRadius: 0, tension: 0.2 },
+const props = defineProps({ points: { type: Array, default: () => [] } })
+const groups = [
+  {
+    key: 'temperature',
+    title: '温度',
+    unit: '℃',
+    channels: [
+      { key: 'furnace_pv', label: '炉温', color: '#38bdf8' },
+      { key: 'burden_temp', label: '料层温度', color: '#a78bfa' },
     ],
+  },
+  {
+    key: 'pressure',
+    title: '压差',
+    unit: 'Pa',
+    channels: [{ key: 'delta_p', label: '压差', color: '#f59e0b' }],
+  },
+  {
+    key: 'displacement',
+    title: '位移',
+    unit: 'mm',
+    channels: [{ key: 'displacement', label: '位移', color: '#22c55e' }],
+  },
+  {
+    key: 'weight',
+    title: '滴落重量',
+    unit: 'g',
+    channels: [{ key: 'drip_weight', label: '滴落重量', color: '#ef4444' }],
+  },
+]
+const canvases = {}
+const charts = new Map()
+const subscriptions = []
+
+function hasData(group) {
+  return props.points.some((point) =>
+    group.channels.some((channel) => finiteValue(point[channel.key]) !== null),
+  )
+}
+
+function buildData(group) {
+  return {
+    labels: props.points.map((point) => formatTime(point.ts)),
+    datasets: group.channels.map((channel) => ({
+      label: `${channel.label} (${group.unit})`,
+      data: props.points.map((point) => finiteValue(point[channel.key])),
+      borderColor: channel.color,
+      borderWidth: 1.5,
+      pointRadius: 0,
+      tension: 0,
+      spanGaps: false,
+    })),
   }
 }
 
 function render() {
   const colors = getChartTheme()
-  if (chart) {
-    chart.data = buildData()
-    chart.update('none')
-    return
-  }
-  chart = new Chart(canvas.value, {
-    type: 'line',
-    data: buildData(),
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      animation: false,
-      interaction: { intersect: false, mode: 'index' },
-      scales: {
-        x: { grid: { color: colors.grid }, ticks: { color: colors.tick, maxTicksLimit: 10 } },
-        yTemp: { position: 'left', grid: { color: colors.grid }, ticks: { color: colors.accent }, title: { display: true, text: '温度 ℃', color: colors.accent } },
-        yAux: { position: 'right', grid: { drawOnChartArea: false }, ticks: { color: colors.tick }, title: { display: true, text: 'Pa / mm / g', color: colors.tick } },
+  for (const group of groups) {
+    const existing = charts.get(group.key)
+    if (existing) {
+      existing.data = buildData(group)
+      existing.update('none')
+      continue
+    }
+    const chart = new Chart(canvases[group.key], {
+      type: 'line',
+      data: buildData(group),
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        animation: false,
+        interaction: { intersect: false, mode: 'index' },
+        scales: {
+          x: {
+            grid: { color: colors.grid },
+            ticks: { color: colors.tick, maxTicksLimit: 4, maxRotation: 0 },
+          },
+          y: {
+            grid: { color: colors.grid },
+            ticks: { color: colors.tick },
+            title: { display: true, text: `${group.title} (${group.unit})`, color: colors.tick },
+          },
+        },
+        plugins: { legend: { labels: { color: colors.tick, boxWidth: 12 } } },
       },
-      plugins: { legend: { labels: { color: colors.tick, boxWidth: 12 } } },
-    },
-  })
+    })
+    charts.set(group.key, chart)
+    subscriptions.push(subscribeChartTheme(() => chart))
+  }
 }
 
-onMounted(() => {
-  render()
-  unsubscribeTheme = subscribeChartTheme(() => chart)
-})
-watch(() => props.points, render, { deep: false })
+onMounted(render)
+watch(() => props.points, render)
 onBeforeUnmount(() => {
-  unsubscribeTheme?.()
-  chart?.destroy()
-  chart = null
+  subscriptions.forEach((unsubscribe) => unsubscribe())
+  charts.forEach((chart) => chart.destroy())
+  charts.clear()
 })
 </script>
 
 <template>
-  <div class="chart-wrap">
-    <canvas ref="canvas" />
-    <div v-if="!points.length" class="empty muted">无曲线数据</div>
+  <div class="history-plots">
+    <figure
+      v-for="group in groups"
+      :key="group.key"
+    >
+      <figcaption>
+        {{ group.title }} <span class="muted">{{ group.unit }}</span>
+      </figcaption>
+      <div class="chart-wrap">
+        <canvas
+          :ref="
+            (element) => {
+              canvases[group.key] = element
+            }
+          "
+          role="img"
+          :aria-label="`${group.title}历史曲线，单位${group.unit}`"
+        />
+        <div
+          v-if="!hasData(group)"
+          class="empty muted"
+        >
+          无有效{{ group.title }}数据
+        </div>
+      </div>
+    </figure>
   </div>
 </template>
 
 <style scoped>
-.chart-wrap { position: relative; height: 320px; width: 100%; }
-.empty { position: absolute; inset: 0; display: grid; place-items: center; }
-@media (max-width: 560px) { .chart-wrap { height: 250px; } }
+.history-plots {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+figure {
+  margin: 0;
+  min-width: 0;
+}
+figcaption {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+.chart-wrap {
+  position: relative;
+  height: 220px;
+  width: 100%;
+}
+.empty {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-size: 12px;
+}
+@media (max-width: 700px) {
+  .history-plots {
+    grid-template-columns: 1fr;
+  }
+}
 </style>

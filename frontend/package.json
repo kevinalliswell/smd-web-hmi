@@ -1,6 +1,6 @@
 {
   "name": "smd-web-hmi-frontend",
-  "version": "0.3.0-rc.1",
+  "version": "0.3.0-rc.2",
   "private": true,
   "type": "module",
   "scripts": {
@@ -10,7 +10,11 @@
     "lint:fix": "eslint . --fix",
     "preview": "vite preview",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "typecheck": "vue-tsc -p tsconfig.api.json --noEmit",
+    "types:generate": "openapi-typescript src/api/generated/openapi.json -o src/api/generated/schema.d.ts",
+    "types:check": "openapi-typescript src/api/generated/openapi.json -o src/api/generated/schema.d.ts --check",
+    "api:schema": "python scripts/export-openapi.py"
   },
   "dependencies": {
     "axios": "^1.20.0",
@@ -27,7 +31,13 @@
     "eslint-plugin-vue": "^10.10.0",
     "globals": "^17.11.0",
     "jsdom": "^25.0.1",
-    "vite": "^6.0.5",
-    "vitest": "^4.1.11"
+    "openapi-typescript": "^7.13.0",
+    "typescript": "^5.9.3",
+    "vite": "~6.4.3",
+    "vitest": "^4.1.11",
+    "vue-tsc": "^3.3.11"
+  },
+  "engines": {
+    "node": ">=24 <25"
   }
 }

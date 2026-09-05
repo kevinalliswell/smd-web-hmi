@@ -44,7 +44,7 @@ const subDevices = computed(() => {
   const norm = (status, alarm) => ({
     status: status || '—',
     alarm: alarm || null,
-    ok: (status ? status === 'ok' : true) && !alarm,
+    ok: !status || device.dataStale ? null : alarm ? false : status === 'ok' ? true : ['fault', 'error', 'offline', 'unstable', 'timeout'].includes(status) ? false : null,
   })
   return [
     { name: '控温仪', ...norm(t.temp_ctrl_run_state, t.temp_ctrl_alarm_code) },
@@ -52,7 +52,7 @@ const subDevices = computed(() => {
     { name: 'CO MFC', ...norm(g.co_status, g.co_alarm_code) },
     {
       name: '电子天平',
-      ...norm(m.balance_status || (m.balance_stable ? 'ok' : 'unstable'), m.balance_alarm_code),
+      ...norm(m.balance_status || (typeof m.balance_stable === 'boolean' ? (m.balance_stable ? 'ok' : 'unstable') : undefined), m.balance_alarm_code),
     },
   ]
 })
@@ -111,9 +111,9 @@ onBeforeUnmount(() => clearInterval(timer))
         <div class="card-title">子设备通信状态</div>
         <div class="dev-list">
           <div v-for="d in subDevices" :key="d.name" class="dev-row">
-            <span class="dot" :class="d.ok ? 'dot-green' : 'dot-red'" />
+            <span class="dot" :class="d.ok === null ? 'dot-gray' : d.ok ? 'dot-green' : 'dot-red'" />
             <span class="dev-name">{{ d.name }}</span>
-            <span class="dev-status muted">{{ d.status }}</span>
+            <span class="dev-status muted">{{ device.dataStale ? '数据过期' : d.status }}</span>
             <span v-if="d.alarm" class="dev-alarm">{{ d.alarm }}</span>
           </div>
         </div>

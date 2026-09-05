@@ -14,14 +14,14 @@ const router = useRouter()
 const auth = useAuthStore()
 const device = useDeviceStore()
 const alarms = useAlarmsStore()
-const { commQuality, currentState } = storeToRefs(device)
+const { commQuality, currentState, dataStale } = storeToRefs(device)
 const { unackedCount } = storeToRefs(alarms)
 
 const commDot = computed(
-  () => ({ online: 'dot-green', degraded: 'dot-yellow', offline: 'dot-red' })[commQuality.value] || 'dot-gray',
+  () => dataStale.value && commQuality.value !== 'offline' ? 'dot-yellow' : ({ online: 'dot-green', degraded: 'dot-yellow', offline: 'dot-red' })[commQuality.value] || 'dot-gray',
 )
 const commLabel = computed(
-  () => ({ online: '通信正常', degraded: '通信降级', offline: '通信断开' })[commQuality.value] || '未知',
+  () => dataStale.value && commQuality.value !== 'offline' ? '数据过期' : ({ online: '通信正常', degraded: '通信降级', offline: '通信断开' })[commQuality.value] || '未知',
 )
 
 function onLogout() {

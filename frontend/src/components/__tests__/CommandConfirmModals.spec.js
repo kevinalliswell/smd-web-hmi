@@ -1,5 +1,7 @@
+vi.mock('@/api/recipes', () => ({ fetchRecipes: vi.fn().mockResolvedValue({ items: [], total: 0 }), fetchRecipeVersions: vi.fn() }))
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
+import RecipePicker from '@/components/recipes/RecipePicker.vue'
 import ConfirmDialog from '@/components/shared/ConfirmDialog.vue'
 import StartTestModal from '@/components/command/StartTestModal.vue'
 import StopTestModal from '@/components/command/StopTestModal.vue'
@@ -53,6 +55,17 @@ describe('command confirmation modals', () => {
       }),
       'token-1',
     )
+  })
+
+  it('starts with the exact selected immutable recipe version', async () => {
+    const wrapper = mount(StartTestModal)
+    wrapper.findComponent(RecipePicker).vm.$emit('select', { recipe_id: 'r1', version: 3, definition: { name: '候选配方', mode: 'custom' } })
+    await wrapper.find('#start-test-height').setValue('25.5')
+    await wrapper.find('button.primary').trigger('click')
+    await wrapper.findComponent(ConfirmDialog).find('button.danger').trigger('click')
+    await flushPromises()
+    expect(sendCommand).toHaveBeenCalledWith('start_test', expect.objectContaining({ recipe_id: 'r1', recipe_version: 3 }), 'token-1')
+    wrapper.unmount()
   })
 
   it.each([

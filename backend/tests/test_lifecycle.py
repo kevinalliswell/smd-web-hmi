@@ -25,7 +25,7 @@ class _FakeClient:
         self.command_params = []
         self.parameter_error = parameter_error
 
-    async def send_command(self, command, params, *, operator_id, role, confirm_token=None):
+    async def send_command(self, command, params, *, operator_id, role, confirm_token=None, msg_id=None):
         self.commands.append(command)
         self.command_params.append(params)
         # start/stop 受控停止均推进到一个具体状态
@@ -50,6 +50,10 @@ class _FakeClient:
 
 
 class _FakeCache:
+    @property
+    def current_state(self):
+        return self.get_field("system.current_state")
+
     def get_field(self, path):
         return "Standby"  # 非运行态，允许 start
 
@@ -104,26 +108,23 @@ async def test_start_test_creates_session(db_session):
     assert snapshot.fw_version == "FW-START"
 
 
-async def test_start_parameter_readback_failure_is_audited_without_masking_accepted_start(db_session):
-    """控制板已启动时，参数回读失败不能把 API 伪装成启动失败。"""
+async def test_start_parameter_readback_failure_prevents_send_and_is_audited(db_session):
+    """参数必须在启动前可读；读回失败不能创建缺乏归档的实验。"""
     service = CommandService(_FakeClient(parameter_error=HostCommTimeoutError("timeout")), _FakeCache())
-
-    result = await service.execute(
-        "start_test",
-        {"test_id": "TEST-PARAM-TIMEOUT"},
-        operator_id="op001",
-        role="operator",
-        confirm_token=confirm_tokens.issue(),
-        db_session=db_session,
-    )
-
-    assert result["result"] == "accepted"
+    with pytest.raises(HostCommTimeoutError):
+        await service.execute(
+            "start_test",
+            {"test_id": "TEST-PARAM-TIMEOUT"},
+            operator_id="op001",
+            role="operator",
+            confirm_token=confirm_tokens.issue(),
+            db_session=db_session,
+        )
+    assert service._client.commands == []
     assert await db_session.scalar(select(func.count()).select_from(ParameterSnapshot)) == 0
-    actions = (await db_session.execute(select(OperatorAction).order_by(OperatorAction.id))).scalars().all()
-    assert [(row.action_type, row.result, row.reason_code) for row in actions] == [
-        ("start_test", "accepted", "ok"),
-        ("capture_start_parameters", "error", "device_comm_timeout"),
-    ]
+    assert await db_session.scalar(select(func.count()).select_from(TestSession)) == 0
+    actions = (await db_session.scalars(select(OperatorAction).where(OperatorAction.action_type == "start_test"))).all()
+    assert [(row.result, row.reason_code) for row in actions] == [("error", "device_comm_timeout")]
 
 
 async def test_start_test_rejects_existing_id_before_device_command(db_session):
@@ -168,8 +169,8 @@ async def test_sample_point_written(db_session):
 
 
 # ---------------------------------------------------- stop → 会话收尾
-async def test_stop_test_closes_session(db_session):
-    """stop_test 受理后 test_session 收尾（写 end_time / end_reason）。"""
+async def test_stop_test_keeps_session_until_safe_completion(db_session):
+    """受理停止不等于冷却完成，继续采样并保留会话。"""
     service = CommandService(_FakeClient(), _FakeCache())
     start_token = confirm_tokens.issue()
     await service.execute(
@@ -189,14 +190,14 @@ async def test_stop_test_closes_session(db_session):
         confirm_token=stop_token,
         db_session=db_session,
     )
-    assert active_test.active_test_id is None
+    assert active_test.active_test_id == "TEST-20260610-002"
     row = await db_session.scalar(select(TestSession).where(TestSession.test_id == "TEST-20260610-002"))
-    assert row.end_time is not None
-    assert row.end_reason == "operator_stop"
-    assert row.state_at_end == "Cooling"
+    assert row.end_time is None
+    assert row.stop_requested_at is not None
+    assert row.phase == "stopping"
 
 
-async def test_stop_test_closes_latest_open_session_after_runtime_loss(db_session):
+async def test_stop_test_restores_latest_open_session_after_runtime_loss(db_session):
     row = TestSession(
         test_id="TEST-20260610-003",
         operator_id="op001",
@@ -217,8 +218,9 @@ async def test_stop_test_closes_latest_open_session_after_runtime_loss(db_sessio
     )
 
     await db_session.refresh(row)
-    assert row.end_time is not None
-    assert row.end_reason == "operator_stop"
+    assert row.end_time is None
+    assert row.stop_requested_at is not None
+    assert active_test.active_test_id == row.test_id
 
 
 async def test_reconcile_restores_matching_running_session(db_session):
@@ -241,7 +243,7 @@ async def test_reconcile_restores_matching_running_session(db_session):
     assert row.end_time is None
 
 
-async def test_reconcile_closes_stale_session_when_device_is_idle(db_session):
+async def test_reconcile_requires_review_when_device_is_idle(db_session):
     row = TestSession(
         test_id="TEST-20260610-005",
         operator_id="op001",
@@ -256,10 +258,11 @@ async def test_reconcile_closes_stale_session_when_device_is_idle(db_session):
     )
 
     await db_session.refresh(row)
-    assert result["closed"] == 1
+    assert result["closed"] == 0
     assert active_test.active_test_id is None
-    assert row.end_time is not None
-    assert row.end_reason == "backend_restart"
+    assert row.end_time is None
+    assert row.phase == "needs_review"
+    assert row.data_integrity == "incomplete"
 
 
 # ---------------------------------------------------- device_status 滚动裁剪
@@ -347,6 +350,7 @@ async def test_snapshot_write_failures_raise_and_clear_visible_alarm(monkeypatch
 
         monkeypatch.setattr(logging_service, "append_device_status", successful_write)
         monkeypatch.setattr(logging_service, "append_sample_point", successful_write)
+        monkeypatch.setattr(main_module, "advance_test_session", successful_write)
         await main_module._persist_snapshot(_snapshot())
 
         assert [item[0] for item in broadcasts] == ["alarm_new", "alarm_clear"]
@@ -354,3 +358,53 @@ async def test_snapshot_write_failures_raise_and_clear_visible_alarm(monkeypatch
     finally:
         active_test.stop()
         sampling_health.reset()
+
+
+async def test_explicit_safe_end_requires_cool_temperature_and_records_final_sample(db_session):
+    from app.services.test_session_service import advance_test_session
+
+    row = TestSession(test_id="SAFE-END", operator_id="op", start_time="2026-09-05T00:00:00Z")
+    db_session.add(row)
+    await db_session.commit()
+    active_test.start(row.test_id)
+    snapshot = {
+        "_hostcomm": {"capabilities": ["run_lifecycle_v1", "measurement_events_v1"]},
+        "state_machine": {"test_id": row.test_id, "measurement_complete": True, "safe_complete": True},
+        "measurement": {"burden_temp_deg_c": 220, "burden_temp_valid": True},
+    }
+    await advance_test_session(db_session, row.test_id, snapshot)
+    assert row.measurement_completed_at is not None
+    assert row.end_time is None
+    snapshot["measurement"]["burden_temp_deg_c"] = 199
+    await logging_service.append_sample_point(db_session, row.test_id, snapshot)
+    await advance_test_session(db_session, row.test_id, snapshot)
+    assert row.end_time is not None
+    assert row.safety_completed_at is not None
+    assert active_test.active_test_id is None
+    assert await db_session.scalar(select(func.count()).select_from(SamplePoint)) == 1
+
+
+async def test_legacy_end_name_does_not_certify_completion(db_session):
+    from app.services.test_session_service import advance_test_session
+
+    row = TestSession(test_id="LEGACY-END", operator_id="op", start_time="2026-09-05T00:00:00Z")
+    db_session.add(row)
+    await db_session.commit()
+    active_test.start(row.test_id)
+    await advance_test_session(
+        db_session,
+        row.test_id,
+        {"state_machine": {"test_id": row.test_id, "current_state": "Complete", "safe_complete": True}},
+    )
+    assert row.end_time is None
+
+
+async def test_sample_keeps_transport_evidence_and_unknown_quality(db_session):
+    snapshot = _snapshot()
+    snapshot["_hostcomm"] = {"device_timestamp": "2026-09-05T00:00:00Z", "received_at": "2026-09-05T00:00:02Z"}
+    await logging_service.append_sample_point(db_session, "RAW", snapshot)
+    sample = (await db_session.execute(select(SamplePoint))).scalar_one()
+    assert sample.burden_temp_v == -1
+    assert sample.delta_p_v == -1
+    assert "device_timestamp" in sample.ext_json
+    assert sample.ts == "2026-09-05T00:00:02+00:00"
