@@ -1,6 +1,7 @@
 """普通用户桌面薄壳；不启动/停止后台，不暴露 Python JS bridge。"""
 
 import ctypes
+import importlib
 import json
 import os
 import sys
@@ -17,6 +18,8 @@ def main() -> None:
         root = version_root()
         runtime = require_fixed_runtime(root)
         if "--self-check" in sys.argv:
+            # webview顶层导入不加载CLR和WebView2互操作程序集；冻结验收须覆盖实际renderer。
+            importlib.import_module("webview.platforms.edgechromium")
             return
         client = json.loads((data_root() / "client.json").read_text(encoding="utf-8"))
         parsed = urlsplit(client["url"])
@@ -32,6 +35,9 @@ def main() -> None:
         profile = Path(os.environ["LOCALAPPDATA"]) / "SmdHmi/WebView2"
         webview.start(gui="edgechromium", debug=False, private_mode=False, storage_path=str(profile))
     except Exception as exc:
+        if "--self-check" in sys.argv:
+            # SystemExit让windowed bootloader返回失败，不弹出无人值守CI无法关闭的异常对话框。
+            raise SystemExit(f"desktop renderer self-check failed: {exc}") from exc
         if os.name == "nt":
             ctypes.windll.user32.MessageBoxW(None, "无法打开实验界面。后台服务不会因此停止。\n" + str(exc), "SMD", 0x10)
         raise

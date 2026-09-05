@@ -60,3 +60,73 @@ def test_service_captures_structlog_print_stream(caplog):
         stream.write("\n")
         stream.flush()
     assert '{"event":"device.offline"}' in caplog.text
+
+
+def test_shell_self_check_loads_frozen_edge_renderer(tmp_path, monkeypatch):
+    import sys
+    from types import SimpleNamespace
+
+    from smd_desktop import shell
+
+    loaded = []
+    monkeypatch.setitem(sys.modules, "webview", SimpleNamespace())
+    monkeypatch.setattr(sys, "argv", ["SmdDesktop.exe", "--self-check"])
+    monkeypatch.setattr(shell, "version_root", lambda: tmp_path)
+    monkeypatch.setattr(shell, "require_fixed_runtime", lambda root: root / "webview2")
+    monkeypatch.setattr("importlib.import_module", lambda name: loaded.append(name))
+    shell.main()
+    assert loaded == ["webview.platforms.edgechromium"]
+
+
+def test_shell_self_check_failure_never_opens_modal_dialog(tmp_path, monkeypatch):
+    import sys
+    from types import SimpleNamespace
+
+    from smd_desktop import shell
+
+    dialogs = []
+
+    def missing_renderer(name):
+        raise ImportError("missing CLR renderer")
+
+    monkeypatch.setitem(sys.modules, "webview", SimpleNamespace())
+    monkeypatch.setattr(sys, "argv", ["SmdDesktop.exe", "--self-check"])
+    monkeypatch.setattr(shell, "version_root", lambda: tmp_path)
+    monkeypatch.setattr(shell, "require_fixed_runtime", lambda root: root)
+    monkeypatch.setattr(shell.os, "name", "nt")
+    monkeypatch.setattr(
+        shell.ctypes,
+        "windll",
+        SimpleNamespace(user32=SimpleNamespace(MessageBoxW=lambda *args: dialogs.append(args))),
+        raising=False,
+    )
+    monkeypatch.setattr("importlib.import_module", missing_renderer)
+    with pytest.raises(SystemExit, match="missing CLR"):
+        shell.main()
+    assert dialogs == []
+
+
+def test_service_self_check_loads_http_application_without_starting_gateway(tmp_path, monkeypatch):
+    import sys
+    from types import SimpleNamespace
+
+    from smd_desktop import service
+
+    loaded = []
+
+    class Config:
+        def __init__(self, application, **kwargs):
+            loaded.append(application)
+
+        def load(self):
+            loaded.append("loaded")
+
+    monkeypatch.setattr(sys, "argv", ["SmdService.exe", "--self-check"])
+    for name in ("servicemanager", "win32service", "win32serviceutil"):
+        monkeypatch.setitem(sys.modules, name, SimpleNamespace())
+    monkeypatch.setitem(sys.modules, "uvicorn", SimpleNamespace(Config=Config))
+    monkeypatch.setattr(service, "data_root", lambda: tmp_path)
+    monkeypatch.setattr(service, "version_root", lambda: tmp_path)
+    monkeypatch.setattr(service, "load_environment", lambda *args: None)
+    service.main()
+    assert loaded == ["app.main:app", "loaded"]

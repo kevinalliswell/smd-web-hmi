@@ -34,6 +34,13 @@ def main() -> None:
     import win32service
     import win32serviceutil
 
+    if "--self-check" in sys.argv:
+        import uvicorn
+
+        # 加载冻结HTTP/WebSocket实现、应用及其数据依赖；不进入lifespan或连接设备。
+        uvicorn.Config("app.main:app", log_config=None, proxy_headers=False).load()
+        return
+
     class SmdService(win32serviceutil.ServiceFramework):
         _svc_name_ = "SmdHmi"
         _svc_display_name_ = "SMD Experiment Backend"

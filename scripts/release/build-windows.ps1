@@ -26,18 +26,7 @@ $Signature = Get-AuthenticodeSignature $RuntimeExe[0].FullName
 if ($Signature.Status -ne 'Valid' -or $Signature.SignerCertificate.Subject -notmatch 'O=Microsoft Corporation') { throw 'Runtime Microsoft signature invalid' }
 if ($RuntimeExe[0].VersionInfo.ProductVersion -ne $Lock.version) { throw 'Fixed Runtime product version differs from lock' }
 Copy-Item $RuntimeExe[0].Directory.FullName (Join-Path $Stage 'webview2') -Recurse
-foreach ($App in @(@('service','SmdService'), @('shell','SmdDesktop'), @('updater','SmdUpdate'))) {
-    $Arguments = @('-m','PyInstaller','--noconfirm','--clean','--onedir','--name',$App[1],
-        '--paths','backend','--paths','desktop','--distpath',$Stage,
-        '--workpath',"$OutputDir/freeze-work",'--specpath',"$OutputDir/spec",
-        '--collect-submodules','app','--collect-all','webview','--collect-all','pythonnet',
-        '--hidden-import','win32timezone','--hidden-import','uvicorn.logging','--hidden-import','uvicorn.loops.auto',
-        '--hidden-import','uvicorn.protocols.http.auto','--hidden-import','uvicorn.protocols.websockets.auto','--hidden-import','uvicorn.lifespan.on',
-        '--add-data','backend/alembic.ini:.','--add-data','backend/app/db/migrations:app/db/migrations')
-    if ($App[0] -eq 'shell') { $Arguments += '--windowed' }
-    $Arguments += "desktop/entries/$($App[0]).py"
-    Invoke-Checked 'python' $Arguments
-}
+Invoke-Checked 'python' @('scripts/release/freeze.py','--output',$Stage,'--work',"$OutputDir/freeze-work")
 Copy-Item frontend/dist (Join-Path $Stage 'frontend') -Recurse
 Copy-Item deploy/windows/configure-acl.ps1 $Stage
 Copy-Item deploy/windows/configure-recovery.ps1 $Stage
@@ -49,6 +38,7 @@ $Db = (Join-Path $Smoke 'smd.db').Replace('\','/')
 @("SMD_DB_PATH=$Db",'HOSTCOMM_MOCK=true','SMD_JWT_SECRET=ci-only-secret-at-least-thirty-two-bytes') | Set-Content (Join-Path $Smoke 'config/service.env') -Encoding utf8
 try {
     Invoke-Checked (Join-Path $Stage 'SmdService/SmdService.exe') @('--migrate')
+    Invoke-Checked (Join-Path $Stage 'SmdService/SmdService.exe') @('--self-check')
     Invoke-Checked (Join-Path $Stage 'SmdUpdate/SmdUpdate.exe') @('--self-check')
     Invoke-Checked (Join-Path $Stage 'SmdDesktop/SmdDesktop.exe') @('--self-check')
     if (-not (Test-Path (Join-Path $Smoke 'smd.db'))) { throw 'Frozen migration did not create configured DB' }
