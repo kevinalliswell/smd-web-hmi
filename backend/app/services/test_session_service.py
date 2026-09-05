@@ -3,15 +3,17 @@
 from __future__ import annotations
 
 import json
-import math
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models import EventLog, TestSession
+from app.db.models import EventLog, SamplePoint, TestSession
 from app.hostcomm.protocol import now_iso
+from app.services.snapshot_data import capabilities, json_object, object_value
+from app.services.standard_metrics import number
 from app.services.state_policy import classify_state
+from app.services.telemetry_integrity import continuity_proven
 from app.services.test_id import InvalidTestIdError, validate_test_id
 from app.services.test_runtime import active_test
 
@@ -46,7 +48,7 @@ async def reconcile_test_sessions(
         if len(rows) == 1:
             restored = rows[0]
     else:
-        sm = device_snapshot.get("state_machine") or {}
+        sm = object_value(device_snapshot.get("state_machine"))
         device_id = sm.get("test_id")
         if device_id:
             restored = next((row for row in rows if row.test_id == device_id), None)
@@ -91,33 +93,53 @@ async def advance_test_session(session: AsyncSession, test_id: str, snapshot: di
     row = await session.scalar(select(TestSession).where(TestSession.test_id == test_id))
     if row is None or row.end_time is not None:
         return
-    sm = snapshot.get("state_machine") or {}
-    transport = snapshot.get("_hostcomm") or {}
-    capabilities = transport.get("capabilities") or []
-    if sm.get("test_id") != row.test_id:
-        return
+    sm = object_value(snapshot.get("state_machine"))
+    transport = object_value(snapshot.get("_hostcomm"))
+    hmi = object_value(snapshot.get("_hmi"))
+    caps = capabilities(snapshot)
     previous_phase = row.phase
-    if transport.get("dropped_callbacks", 0) or (snapshot.get("_hmi") or {}).get("persistence_failures", 0):
+    if hmi.get("persistence_failures") or hmi.get("telemetry_issues"):
         row.data_integrity = "incomplete"
-    if "run_lifecycle_v1" not in capabilities:
+    basis, valid_basis = json_object(row.measurement_basis_json)
+    if not valid_basis:
+        row.data_integrity = "incomplete"
+        basis["invalid_previous_basis"] = True
+    if sm.get("test_id") != row.test_id or "run_lifecycle_v1" not in caps:
+        row.measurement_basis_json = json.dumps(basis)
+        await session.commit()  # 缺口证据不能因旧固件没有生命周期能力而丢失。
         return
-    if row.phase == "needs_review":
+    needs_review = row.phase == "needs_review"
+    if needs_review:
         row.data_integrity = "incomplete"
-    row.phase = "stopping" if row.stop_requested_at else "measuring"
-    if sm.get("measurement_complete") is True:
-        row.measurement_completed_at = row.measurement_completed_at or now_iso()
-        row.phase = "safe_disposal"
-    basis = json.loads(row.measurement_basis_json or "{}")
-    if "measurement_events_v1" in capabilities:
-        basis["detector_verified"] = True
+    measurement = object_value(snapshot.get("measurement"))
+    if row.measurement_completed_at is None:
+        detector = (
+            "measurement_events_v1" in caps
+            and measurement.get("first_drip_valid") is True
+            and type(measurement.get("first_drip")) is bool
+        )
+        furnace = number(object_value(snapshot.get("temperature")).get("furnace_pv_deg_c"))
+        if furnace is not None and furnace >= 600:
+            basis["detector_verified"] = basis.get("detector_verified", True) is True and detector
+        if sm.get("measurement_complete") is True:
+            row.measurement_completed_at = now_iso()
+            basis["measurement_end_sample_id"] = await session.scalar(
+                select(func.max(SamplePoint.id)).where(SamplePoint.test_id == row.test_id)
+            )
+            basis["measurement_device_timestamp"] = transport.get("device_timestamp")
+            if row.data_integrity != "incomplete" and continuity_proven(object_value(basis.get("telemetry"))):
+                row.data_integrity = "complete"
+            basis["measurement_data_integrity"] = row.data_integrity
+    row.phase = (
+        "needs_review"
+        if needs_review
+        else "safe_disposal" if row.measurement_completed_at else "stopping" if row.stop_requested_at else "measuring"
+    )
     row.measurement_basis_json = json.dumps(basis)
-    measurement = snapshot.get("measurement") or {}
     temperature = measurement.get("burden_temp_deg_c")
+    cooling_temperature = number(temperature) if type(temperature) in (float, int) else None
     cool = (
-        measurement.get("burden_temp_valid") is True
-        and type(temperature) in (float, int)
-        and math.isfinite(temperature)
-        and temperature < 200
+        measurement.get("burden_temp_valid") is True and cooling_temperature is not None and cooling_temperature < 200
     )
     if sm.get("safe_complete") is True and cool:
         row.safety_completed_at = row.end_time = now_iso()
@@ -126,7 +148,7 @@ async def advance_test_session(session: AsyncSession, test_id: str, snapshot: di
             if row.stop_requested_at
             else "completed" if row.measurement_completed_at else "safe_end_incomplete"
         )
-        row.state_at_end = sm.get("current_state")
+        row.state_at_end = sm.get("current_state") if isinstance(sm.get("current_state"), str) else None
         row.phase = "completed"
         # 缺少源端序号/补传证据时，网络看似正常也不能推定数据完整。
         if not row.measurement_completed_at:

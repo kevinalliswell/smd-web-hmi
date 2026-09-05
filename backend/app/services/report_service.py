@@ -42,7 +42,7 @@ METRIC_ROWS = (
     ("最大位移", "displacement_max", 2, " mm"),
     ("T10（10% 收缩温度）", "t10", 1, " ℃"),
     ("T40（40% 收缩温度）", "t40", 1, " ℃"),
-    ("软熔开始温度 Ts", "ts", 1, " ℃"),
+    ("熔化开始温度 Ts", "ts", 1, " ℃"),
     ("熔落带厚度 ΔH", "delta_h_mm", 1, " mm"),
     ("T40 − T10", "t40_minus_t10", 1, " ℃"),
     ("Td − Ts", "td_minus_ts", 1, " ℃"),
@@ -108,13 +108,16 @@ async def compute_metrics_from_database(
     boundary = basis.get("measurement_end_sample_id")
     if boundary is not None and (type(boundary) is not int or boundary <= 0):
         basis_valid, boundary = False, None
+    measurement_integrity = basis.get("measurement_data_integrity", getattr(test, "data_integrity", "unknown"))
+    if not isinstance(measurement_integrity, str) or measurement_integrity not in {"unknown", "complete", "incomplete"}:
+        basis_valid, measurement_integrity = False, "unknown"
     recipe_raw = getattr(test, "recipe_snapshot_json", None)
     recipe, recipe_valid = json_object(recipe_raw if recipe_raw != "null" else None)
     reducer = MetricAccumulator(
         original_height_mm,
         measurement_complete=basis_valid and getattr(test, "measurement_completed_at", None) is not None,
         detector_verified=basis.get("detector_verified") is True,
-        data_complete=basis_valid and getattr(test, "data_integrity", None) == "complete",
+        data_complete=basis_valid and measurement_integrity == "complete",
         measurement_end_sample_id=boundary,
         test_id=test_id,
     )
@@ -138,6 +141,7 @@ async def compute_metrics_from_database(
         standard="GB/T 34211-2017",
         mode=getattr(test, "mode", "custom"),
         data_integrity=getattr(test, "data_integrity", "unknown"),
+        measurement_data_integrity=measurement_integrity,
         recipe_snapshot=recipe if recipe else None,
         compliance="not_certified",
     )
@@ -149,7 +153,8 @@ def _provenance_rows(test, metrics):
         ("参考标准", "GB/T 34211-2017"),
         ("实验模式", "标准模板" if metrics.get("mode") == "standard" else "非标 / 历史未标定"),
         ("算法版本", metrics.get("algorithm_version", "unknown")),
-        ("数据完整性", metrics.get("data_integrity", "unknown")),
+        ("全实验数据完整性", metrics.get("data_integrity", "unknown")),
+        ("测定段数据完整性", metrics.get("measurement_data_integrity", "unknown")),
         ("测定窗口采样点", str(metrics.get("measurement_sample_count", 0))),
         ("测定窗口外保留点", str(metrics.get("excluded_sample_count", 0))),
         ("600 ℃ 位移基准来源", metrics.get("reference_source") or "缺失"),

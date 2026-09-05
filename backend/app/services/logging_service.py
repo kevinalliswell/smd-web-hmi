@@ -17,6 +17,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import AlarmLog, DeviceStatus, EventLog, ParameterSnapshot, SamplePoint
 from app.hostcomm.protocol import now_iso
+from app.services.snapshot_data import object_value
+from app.services.standard_metrics import number
+from app.services.telemetry_integrity import track_sample
 
 DEVICE_STATUS_RETENTION_HOURS = 24
 DEVICE_STATUS_CLEANUP_INTERVAL_SECONDS = 300
@@ -90,45 +93,53 @@ async def append_parameter_snapshot(
 
 
 async def append_sample_point(
-    session: AsyncSession, test_id: str, snapshot: dict[str, Any], *, source: str = "live_poll"
+    session: AsyncSession, test_id: str, snapshot: dict[str, Any], *, source: str = "live_poll", commit: bool = True
 ) -> None:
     """从 status_snapshot 提取核心曲线字段写入 sample_point。"""
-    temp = snapshot.get("temperature", {})
-    gas = snapshot.get("gas", {})
-    meas = snapshot.get("measurement", {})
-    sm = snapshot.get("state_machine", {})
-    safety = snapshot.get("safety", {})
+    snapshot = await track_sample(session, test_id, snapshot)
+    temp = object_value(snapshot.get("temperature"))
+    gas = object_value(snapshot.get("gas"))
+    meas = object_value(snapshot.get("measurement"))
+    sm = object_value(snapshot.get("state_machine"))
+    safety = object_value(snapshot.get("safety"))
 
     session.add(
         SamplePoint(
             test_id=test_id,
-            ts=(snapshot.get("_hostcomm") or {}).get("received_at") or now_iso(),
+            ts=object_value(snapshot.get("_hostcomm")).get("received_at") or now_iso(),
             source=source,
-            furnace_pv=temp.get("furnace_pv_deg_c"),
-            furnace_sv=temp.get("furnace_sv_deg_c"),
-            burden_temp=meas.get("burden_temp_deg_c"),
+            furnace_pv=number(temp.get("furnace_pv_deg_c")),
+            furnace_sv=number(temp.get("furnace_sv_deg_c")),
+            burden_temp=number(meas.get("burden_temp_deg_c")),
             burden_temp_v=(
                 1 if meas.get("burden_temp_valid") is True else 0 if meas.get("burden_temp_valid") is False else -1
             ),
-            temp_output_pct=temp.get("temp_output_percent"),
-            program_step=temp.get("program_step"),
-            n2_sp=gas.get("n2_sp_l_min"),
-            n2_pv=gas.get("n2_pv_l_min"),
-            co_sp=gas.get("co_sp_l_min"),
-            co_pv=gas.get("co_pv_l_min"),
-            drip_weight=meas.get("drip_weight_g"),
-            delta_p=meas.get("delta_p_pa"),
+            temp_output_pct=number(temp.get("temp_output_percent")),
+            program_step=temp.get("program_step") if type(temp.get("program_step")) is int else None,
+            n2_sp=number(gas.get("n2_sp_l_min")),
+            n2_pv=number(gas.get("n2_pv_l_min")),
+            co_sp=number(gas.get("co_sp_l_min")),
+            co_pv=number(gas.get("co_pv_l_min")),
+            drip_weight=number(meas.get("drip_weight_g")),
+            delta_p=number(meas.get("delta_p_pa")),
             delta_p_v=(1 if meas.get("delta_p_valid") is True else 0 if meas.get("delta_p_valid") is False else -1),
-            displacement=meas.get("displacement_mm"),
+            displacement=number(meas.get("displacement_mm")),
             displacement_v=(
                 1 if meas.get("displacement_valid") is True else 0 if meas.get("displacement_valid") is False else -1
             ),
-            current_state=sm.get("current_state"),
-            safety_relay=int(bool(safety.get("safety_relay_allowed", False))),
+            current_state=sm.get("current_state") if isinstance(sm.get("current_state"), str) else None,
+            safety_relay=(
+                1
+                if safety.get("safety_relay_allowed") is True
+                else 0 if safety.get("safety_relay_allowed") is False else None
+            ),
             ext_json=json.dumps(snapshot, ensure_ascii=False),
         )
     )
-    await session.commit()
+    if commit:
+        await session.commit()
+    else:
+        await session.flush()
 
 
 async def append_event(
