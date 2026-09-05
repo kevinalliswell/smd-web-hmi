@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import asyncio
+import math
 import time
 from typing import Any
 
@@ -28,7 +29,12 @@ class StatusCache:
     async def update(self, snapshot: dict[str, Any], ts_iso: str | None = None) -> None:
         async with self._lock:
             self._snapshot = snapshot
-            self._last_update_monotonic = time.monotonic()
+            received = (snapshot.get("_hostcomm") or {}).get("received_monotonic", time.monotonic())
+            self._last_update_monotonic = (
+                min(received, time.monotonic())
+                if isinstance(received, (int, float)) and math.isfinite(received) and received >= 0
+                else None
+            )
             self._last_update_iso = ts_iso
 
     async def get_snapshot(self) -> dict[str, Any]:

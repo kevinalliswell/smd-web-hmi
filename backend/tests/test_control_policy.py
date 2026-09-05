@@ -67,3 +67,15 @@ async def test_generic_parameter_command_uses_verified_path(db_session):
     )
     assert result["readback_ok"] is True
     assert board.readbacks == 1
+
+
+async def test_backlogged_snapshot_keeps_receipt_age():
+    cache = StatusCache()
+    await cache.update(
+        {
+            "state_machine": {"current_state": "Standby"},
+            "_hostcomm": {"received_monotonic": time.monotonic() - 10},
+        }
+    )
+    assert cache.is_fresh is False
+    assert cache.current_state is None
