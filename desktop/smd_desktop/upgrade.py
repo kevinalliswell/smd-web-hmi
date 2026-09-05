@@ -72,21 +72,7 @@ class UpgradeTransaction:
         source = Path(permit["db_path"]).resolve()
         if source != Path(stored["db_path"]).resolve() or not source.is_file():
             raise UpgradeError("维护票据数据库不是后台实际数据库")
-        target = self.install / "versions" / manifest["version"]
-        if target.exists():
-            if verify_bundle(target) != manifest:
-                raise UpgradeError("目标版本目录已存在且内容不同")
-        else:
-            staged = target.with_name(f".{target.name}.{uuid.uuid4().hex}.staging")
-            try:
-                shutil.copytree(package, staged)
-                verify_bundle(staged)
-                staged.replace(target)
-            finally:
-                if staged.exists():
-                    shutil.rmtree(staged)
         backup_dir = self.data / "updates" / permit["upgrade_id"]
-        backup_dir.mkdir(parents=True, exist_ok=False)
         journal = {
             "schema_version": 1,
             "upgrade_id": permit["upgrade_id"],
@@ -98,6 +84,20 @@ class UpgradeTransaction:
         }
         self._record(journal, "prepared")
         try:
+            target = self.install / "versions" / manifest["version"]
+            if target.exists():
+                if verify_bundle(target) != manifest:
+                    raise UpgradeError("目标版本目录已存在且内容不同")
+            else:
+                staged = target.with_name(f".{target.name}.{uuid.uuid4().hex}.staging")
+                try:
+                    shutil.copytree(package, staged)
+                    verify_bundle(staged)
+                    staged.replace(target)
+                finally:
+                    if staged.exists():
+                        shutil.rmtree(staged)
+            backup_dir.mkdir(parents=True, exist_ok=False)
             self.platform.stop()
             self._record(journal, "stopped")
             backup = backup_dir / "database.sqlite"
@@ -151,14 +151,52 @@ class UpgradeTransaction:
         self._record(journal, "rolled_back")
         self._clear_gate(journal)
 
+    def _recover_unstarted_claim(self) -> dict | None:
+        """领取成功但调用方断线/写日志失败时，先补恢复事务再验证旧服务。
+
+        apply在日志持久化前不停止服务或修改数据库；没有日志时不能凭领取
+        票据直接解锁，仍须执行配置恢复与旧版本schema/页面健康检查。
+        """
+        if not self.gate_path.exists():
+            return None
+        gate = json.loads(self.gate_path.read_text(encoding="utf-8"))
+        if gate.get("state") != "claimed":
+            return None
+        previous = json.loads(self.pointer_path.read_text(encoding="utf-8"))
+        identity = gate.get("upgrade_id", "")
+        if not re.fullmatch(r"[0-9a-f]{32}", identity) or gate.get("current_version") != previous.get("version"):
+            raise UpgradeError("未记录的领取票据与已安装版本不一致，保持维护门禁")
+        source = Path(gate.get("db_path", "")).resolve()
+        if not source.is_file():
+            raise UpgradeError("无法验证未开始升级的实际数据库，保持维护门禁")
+        backup_dir = self.data / "updates" / identity
+        if backup_dir.exists() and any(backup_dir.iterdir()):
+            raise UpgradeError("存在备份产物但升级日志缺失，需人工核对，禁止推断尚未修改数据库")
+        journal = {
+            "schema_version": 1,
+            "upgrade_id": identity,
+            "previous": previous,
+            "target_version": gate.get("target_version"),
+            "db_path": str(source),
+            "backup_dir": str(backup_dir),
+            "backup_ready": False,
+            "recovered_unstarted_claim": True,
+        }
+        self._record(journal, "claim_recovery")
+        return journal
+
     def recover(self) -> None:
         """断电重启后显式执行；重复恢复不会再次改动已提交数据库。"""
-        if not self.journal_path.exists():
-            return
-        journal = json.loads(self.journal_path.read_text(encoding="utf-8"))
-        if journal["phase"] in self.TERMINAL:
-            self._clear_gate(journal)
-            return
+        journal = None
+        if self.journal_path.exists():
+            journal = json.loads(self.journal_path.read_text(encoding="utf-8"))
+            if journal["phase"] in self.TERMINAL:
+                self._clear_gate(journal)
+                journal = None
+        if journal is None:
+            journal = self._recover_unstarted_claim()
+            if journal is None:
+                return
         try:
             self._rollback(journal)
         except Exception:

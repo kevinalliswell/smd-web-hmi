@@ -154,3 +154,99 @@ def test_corrupt_backup_keeps_gate_and_service_stopped(installation):
     assert (data / "maintenance.json").exists()
     assert not platform.running
     assert json.loads(transaction.journal_path.read_text())["phase"] == "rollback_failed"
+
+
+def test_copy_failure_is_inside_journal_and_rolls_back(installation, monkeypatch):
+    from smd_desktop import upgrade
+
+    root, data, package, source, permit = installation
+    transaction = UpgradeTransaction(root, data, Platform(source))
+
+    def fail_copy(*args, **kwargs):
+        raise OSError("disk full during staging")
+
+    monkeypatch.setattr(upgrade.shutil, "copytree", fail_copy)
+    with pytest.raises(UpgradeError, match="回退"):
+        transaction.apply(package, permit)
+    assert json.loads(transaction.journal_path.read_text())["phase"] == "rolled_back"
+    assert not transaction.gate_path.exists()
+    assert read_value(source) == "original"
+
+
+def test_claimed_before_journal_can_recover_without_bypassing_transaction(installation):
+    root, data, package, source, permit = installation
+    platform = Platform(source)
+    transaction = UpgradeTransaction(root, data, platform)
+    assert not transaction.journal_path.exists()
+    transaction.recover()
+    journal = json.loads(transaction.journal_path.read_text())
+    assert journal["upgrade_id"] == permit["upgrade_id"]
+    assert journal["phase"] == "rolled_back"
+    assert journal["recovered_unstarted_claim"] is True
+    assert platform.version == "0.3.0" and platform.running
+    assert not transaction.gate_path.exists()
+    assert read_value(source) == "original"
+
+
+def test_orphan_claim_recovery_keeps_gate_if_old_service_cannot_be_verified(installation):
+    root, data, package, source, permit = installation
+    platform = Platform(source)
+
+    def fail_health(version):
+        raise UpgradeError("old schema cannot be verified")
+
+    platform.healthy = fail_health
+    transaction = UpgradeTransaction(root, data, platform)
+    with pytest.raises(UpgradeError):
+        transaction.recover()
+    assert transaction.gate_path.exists()
+    assert json.loads(transaction.journal_path.read_text())["phase"] == "rollback_failed"
+
+
+def test_power_cut_during_staging_is_recoverable(installation, monkeypatch):
+    from smd_desktop import upgrade
+
+    root, data, package, source, permit = installation
+    platform = Platform(source)
+    transaction = UpgradeTransaction(root, data, platform)
+
+    def power_cut(*args, **kwargs):
+        raise SystemExit("power cut copying payload")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(upgrade.shutil, "copytree", power_cut)
+        with pytest.raises(SystemExit):
+            transaction.apply(package, permit)
+    transaction.recover()
+    assert json.loads(transaction.journal_path.read_text())["phase"] == "rolled_back"
+    assert not transaction.gate_path.exists()
+
+
+def test_failed_initial_journal_write_is_recoverable_after_storage_recovers(installation, monkeypatch):
+    root, data, package, source, permit = installation
+    transaction = UpgradeTransaction(root, data, Platform(source))
+
+    def no_space(*args, **kwargs):
+        raise OSError("journal disk full")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(transaction, "_record", no_space)
+        with pytest.raises(OSError, match="disk full"):
+            transaction.apply(package, permit)
+    assert transaction.gate_path.exists()
+    assert not transaction.journal_path.exists()
+    transaction.recover()
+    assert json.loads(transaction.journal_path.read_text())["phase"] == "rolled_back"
+    assert not transaction.gate_path.exists()
+
+
+def test_missing_journal_with_backup_evidence_never_assumes_no_database_change(installation):
+    root, data, package, source, permit = installation
+    backup_dir = data / "updates" / permit["upgrade_id"]
+    backup_dir.mkdir(parents=True)
+    (backup_dir / "database.sqlite").write_bytes(b"unaccounted backup")
+    transaction = UpgradeTransaction(root, data, Platform(source))
+    with pytest.raises(UpgradeError, match="备份产物"):
+        transaction.recover()
+    assert transaction.gate_path.exists()
+    assert not transaction.journal_path.exists()
