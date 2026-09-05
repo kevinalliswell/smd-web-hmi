@@ -2,8 +2,11 @@
 
 import importlib.util
 import json
+import os
+import sqlite3
 import subprocess
 import sys
+from contextlib import closing
 from pathlib import Path
 
 import pytest
@@ -95,3 +98,86 @@ print(json.dumps(sorted(name for name in namespace['hiddenimports'] if name == '
         )
         collected = set(json.loads(result.stdout))
         assert expected <= collected, f"{args}: missing app modules {sorted(expected - collected)}"
+
+
+def test_frozen_backend_migrates_and_loads_http_websocket_runtime(tmp_path, monkeypatch):
+    """Native frozen backend probe: real Alembic/SQLite and Uvicorn, without SCM/UI.
+
+    Run in a packaging environment with PyInstaller installed. This checks the
+    runtime dependency closure, not just the generated spec's option strings.
+    """
+    pytest.importorskip("PyInstaller")
+    run = subprocess.run
+    builds = []
+    with monkeypatch.context() as capture:
+        capture.setattr(freeze.subprocess, "run", lambda args, **kwargs: builds.append((args, kwargs)))
+        capture.setattr(
+            sys, "argv", ["freeze.py", "--output", str(tmp_path / "payload"), "--work", str(tmp_path / "build")]
+        )
+        freeze.main()
+    command, options = builds[0]
+    # Keep the service's application/data/dynamic-import closure. Only omit the
+    # two UI/CLR collections and Windows timezone adapter for this portable probe.
+    arguments = []
+    iterator = iter(command[:-1])
+    for argument in iterator:
+        if argument == "--collect-all":
+            assert next(iterator) in {"webview", "pythonnet"}
+        elif argument == "--hidden-import":
+            module = next(iterator)
+            if module != "win32timezone":
+                arguments.extend((argument, module))
+        else:
+            arguments.append(argument)
+    entry = tmp_path / "backend_probe.py"
+    entry.write_text(
+        """
+import asyncio
+import sys
+from pathlib import Path
+from smd_desktop.runtime import load_environment
+from smd_desktop.service import migrate
+from app.db.database import assert_schema_current, dispose_engine
+import uvicorn
+
+data = Path(sys.argv[1])
+load_environment(data, data / 'version')
+migrate()
+migrate()  # An already migrated database must also work in the frozen program.
+async def check_database():
+    await assert_schema_current()
+    await dispose_engine()
+asyncio.run(check_database())
+config = uvicorn.Config('app.main:app', log_config=None, proxy_headers=False)
+config.load()
+config.setup_event_loop()
+assert config.http_protocol_class is not None
+assert config.ws_protocol_class is not None
+assert config.lifespan_class is not None
+assert callable(config.loaded_app)
+print('frozen backend migration and HTTP/WebSocket imports passed')
+""",
+        encoding="utf-8",
+    )
+    environment = {**options["env"], "PYINSTALLER_CONFIG_DIR": str(tmp_path / "pyinstaller-cache")}
+    build = run([*arguments, str(entry)], env=environment, cwd=tmp_path, capture_output=True, text=True, timeout=300)
+    (tmp_path / "freeze-build.log").write_text(build.stdout + build.stderr, encoding="utf-8")
+    assert build.returncode == 0, build.stdout + build.stderr
+    data = tmp_path / "data"
+    (data / "config").mkdir(parents=True)
+    database = data / "smd.db"
+    (data / "config/service.env").write_text(
+        "SMD_DB_PATH=" + json.dumps(str(database), ensure_ascii=False) + '\nSMD_JWT_SECRET="' + "a" * 64 + '"\n',
+        encoding="utf-8",
+    )
+    executable = tmp_path / "payload/SmdService" / ("SmdService.exe" if os.name == "nt" else "SmdService")
+    # Remove source/build import paths so only the frozen bundle can satisfy imports.
+    clean_environment = {key: value for key, value in os.environ.items() if key not in {"PYTHONPATH", "PYTHONHOME"}}
+    result = run(
+        [str(executable), str(data)], env=clean_environment, cwd=tmp_path, capture_output=True, text=True, timeout=60
+    )
+    (tmp_path / "freeze-runtime.log").write_text(result.stdout + result.stderr, encoding="utf-8")
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "frozen backend migration and HTTP/WebSocket imports passed" in result.stdout
+    with closing(sqlite3.connect(database)) as connection:
+        assert connection.execute("SELECT version_num FROM alembic_version").fetchone()[0]

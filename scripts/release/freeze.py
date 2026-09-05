@@ -19,6 +19,9 @@ def arguments(repo: Path, output: Path, work: Path, entry: str, name: str) -> li
     args.extend(("--distpath", str(output), "--workpath", str(work), "--specpath", str(work / "spec")))
     args.extend(("--collect-submodules", "app", "--collect-all", "webview", "--collect-all", "pythonnet"))
     for module in (
+        # SQLAlchemy's SQLite dialect calls __import__("aiosqlite") at runtime.
+        # Its PyInstaller hook collects dialects but does not include this driver.
+        "aiosqlite",
         "win32timezone",
         "uvicorn.logging",
         "uvicorn.loops.auto",
