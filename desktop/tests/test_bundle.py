@@ -16,6 +16,8 @@ def bundle(root: Path):
         "webview2/msedgewebview2.exe",
         "webview2/icudtl.dat",
         "sbom.cdx.json",
+        "configure-acl.ps1",
+        "configure-recovery.ps1",
     ):
         file = root / relative
         file.parent.mkdir(parents=True, exist_ok=True)
@@ -56,3 +58,13 @@ def test_manifest_rejects_traversal_and_unlisted_files(tmp_path):
     (root / "injected.exe").write_bytes(b"extra")
     with pytest.raises(BundleError, match="清单"):
         verify_bundle(root)
+
+
+def test_public_certificate_allowed_but_private_key_not_shipped(tmp_path):
+    from smd_desktop.bundle import _files
+
+    (tmp_path / "ca.pem").write_text("-----BEGIN CERTIFICATE-----\npublic")
+    assert "ca.pem" in _files(tmp_path)
+    (tmp_path / "secret.pem").write_text("-----BEGIN PRIVATE KEY-----\nsecret")
+    with pytest.raises(BundleError):
+        _files(tmp_path)

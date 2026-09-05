@@ -4,7 +4,7 @@ import logging
 import sys
 from logging.handlers import RotatingFileHandler
 
-from .runtime import data_root, load_environment, version_root
+from .runtime import data_root, load_environment, tls_options, version_root
 from .single_instance import single_instance
 
 
@@ -69,6 +69,7 @@ def main() -> None:
                     workers=1,
                     log_config=None,
                     proxy_headers=False,
+                    **tls_options(settings.smd_host),
                 )
                 self.server = uvicorn.Server(config)
                 self.server.should_exit = self.stop_requested

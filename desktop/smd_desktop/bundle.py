@@ -16,6 +16,8 @@ REQUIRED = (
     "webview2/msedgewebview2.exe",
     "webview2/icudtl.dat",
     "sbom.cdx.json",
+    "configure-acl.ps1",
+    "configure-recovery.ps1",
 )
 
 
@@ -41,8 +43,10 @@ def _files(root: Path) -> dict[str, Path]:
             raise BundleError("离线包禁止符号链接或重解析目录")
         if path.is_file() and path != root / "manifest.json":
             name = path.relative_to(root).as_posix()
-            if path.name in {".env", "service.env"} or path.suffix in {".db", ".sqlite", ".pem", ".key"}:
+            if path.name in {".env", "service.env"} or path.suffix in {".db", ".sqlite", ".key"}:
                 raise BundleError("离线包不得包含现场数据库、配置或私钥")
+            if path.suffix == ".pem" and b"PRIVATE KEY" in path.read_bytes():
+                raise BundleError("离线包不得包含私钥")
             files[name] = path
     return files
 

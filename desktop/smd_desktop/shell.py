@@ -3,6 +3,7 @@
 import ctypes
 import json
 import os
+import sys
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -15,6 +16,8 @@ def main() -> None:
 
         root = version_root()
         runtime = require_fixed_runtime(root)
+        if "--self-check" in sys.argv:
+            return
         client = json.loads((data_root() / "client.json").read_text(encoding="utf-8"))
         parsed = urlsplit(client["url"])
         if (

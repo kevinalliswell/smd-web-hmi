@@ -65,6 +65,8 @@ def installation(tmp_path):
         "webview2/msedgewebview2.exe",
         "webview2/icudtl.dat",
         "sbom.cdx.json",
+        "configure-acl.ps1",
+        "configure-recovery.ps1",
     ):
         path = package / name
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -137,3 +139,18 @@ def test_recover_old_committed_journal_does_not_clear_new_maintenance(installati
     (data / "maintenance.json").write_text(json.dumps(new_permit))
     transaction.recover()
     assert (data / "maintenance.json").exists()
+
+
+def test_corrupt_backup_keeps_gate_and_service_stopped(installation):
+    root, data, package, source, permit = installation
+    platform = Platform(source, fail="power")
+    transaction = UpgradeTransaction(root, data, platform)
+    with pytest.raises(SystemExit):
+        transaction.apply(package, permit)
+    journal = json.loads(transaction.journal_path.read_text())
+    (Path(journal["backup_dir"]) / "database.sqlite").write_bytes(b"corrupt")
+    with pytest.raises(UpgradeError, match="摘要"):
+        transaction.recover()
+    assert (data / "maintenance.json").exists()
+    assert not platform.running
+    assert json.loads(transaction.journal_path.read_text())["phase"] == "rollback_failed"

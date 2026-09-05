@@ -22,6 +22,8 @@ def test_config_is_absolute_and_loaded_without_interpolation(tmp_path, monkeypat
         'SMD_JWT_SECRET="literal${DO_NOT_EXPAND}"\nSMD_DB_PATH="' + str(tmp_path / "custom/db.sqlite") + '"\n'
     )
     monkeypatch.setenv("SMD_JWT_SECRET", "stale")
+    for key in ("SMD_DB_PATH", "SMD_FRONTEND_DIST", "SMD_MAINTENANCE_FILE"):
+        monkeypatch.setenv(key, "")
     load_environment(tmp_path, tmp_path / "versions/0.3.0")
     import os
 
@@ -32,3 +34,16 @@ def test_config_is_absolute_and_loaded_without_interpolation(tmp_path, monkeypat
 def test_runtime_never_falls_back_to_system_webview(tmp_path):
     with pytest.raises(RuntimeError, match="WebView2"):
         require_fixed_runtime(tmp_path)
+
+
+def test_lan_listener_requires_tls_pair(monkeypatch):
+    from smd_desktop.runtime import tls_options
+
+    monkeypatch.delenv("SMD_TLS_CERTFILE", raising=False)
+    monkeypatch.delenv("SMD_TLS_KEYFILE", raising=False)
+    assert tls_options("127.0.0.1") == {}
+    with pytest.raises(RuntimeError, match="TLS"):
+        tls_options("0.0.0.0")
+    monkeypatch.setenv("SMD_TLS_CERTFILE", "cert.pem")
+    with pytest.raises(RuntimeError, match="TLS"):
+        tls_options("0.0.0.0")

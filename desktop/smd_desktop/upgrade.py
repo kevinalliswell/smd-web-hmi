@@ -115,9 +115,11 @@ class UpgradeTransaction:
             self._record(journal, "committed")
             self._clear_gate(journal)
         except Exception as error:
+            journal["last_error"] = str(error)
             try:
                 self._rollback(journal)
             except Exception as rollback_error:
+                journal["rollback_error"] = str(rollback_error)
                 self._record(journal, "rollback_failed")
                 raise UpgradeError("升级失败且回退未完成；保持维护锁，请执行本机恢复") from rollback_error
             raise UpgradeError(f"升级已回退: {error}") from error
