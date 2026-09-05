@@ -106,7 +106,10 @@ def initialize(package: Path, install: Path, data: Path, platform: WindowsPlatfo
             "HOSTCOMM_PORT": "34211",
             "SMD_BOOTSTRAP_ADMIN_PASSWORD_FILE": str(password),
         }
-        atomic_text(env_file, "\n".join(key + "=" + json.dumps(value) for key, value in env.items()) + "\n")
+        # dotenv handles quoted backslashes, but does not decode JSON's Unicode escapes.
+        atomic_text(
+            env_file, "\n".join(key + "=" + json.dumps(value, ensure_ascii=False) for key, value in env.items()) + "\n"
+        )
     atomic_json(data / "client.json", {"url": "http://127.0.0.1:8000"})
     windows_powershell.run(acl_command, check=True)
     platform.configure(target)
