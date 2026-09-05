@@ -24,6 +24,7 @@ from app.core.logging import get_logger
 from app.hostcomm.client import HostCommNotConnectedError, HostCommTimeoutError
 from app.hostcomm.protocol import now_iso
 from app.services import logging_service
+from app.services.control_ownership import assert_control_owner
 from app.services.maintenance_service import maintenance_manager
 from app.services.operations import OperationExecution, run_operation
 from app.services.state_policy import classify_state, parameter_changes_allowed
@@ -256,6 +257,25 @@ class CommandService:
             check_confirm_token(command, confirm_token)
             # 4. set_parameters CRC 校验
             check_parameter_crc(command, params)
+            await assert_control_owner(db_session, operator_id, role, command)
+            expected_recipe = None
+            if command == "start_test":
+                try:
+                    expected_recipe = await self._prepare_start_archive(db_session, params, operator_id, operation)
+                except (HostCommTimeoutError, HostCommNotConnectedError) as exc:
+                    await self._write_audit(
+                        db_session,
+                        command=command,
+                        params=params,
+                        operator_id=operator_id,
+                        role=role,
+                        result="error",
+                        reason_code=(
+                            "device_comm_timeout" if isinstance(exc, HostCommTimeoutError) else "device_comm_fault"
+                        ),
+                        client_ip=client_ip,
+                    )
+                    raise
 
             result_payload = await self._send_with_audit(
                 command,
@@ -266,6 +286,7 @@ class CommandService:
                 client_ip=client_ip,
                 db_session=db_session,
                 operation=operation,
+                expected_recipe=expected_recipe,
             )
 
             # 命令被控制板受理后，处理试验会话生命周期（建/收会话）
@@ -336,6 +357,7 @@ class CommandService:
         client_ip: str | None,
         db_session,
         operation: OperationExecution,
+        expected_recipe: dict | None = None,
     ) -> dict:
         result_label = "error"
         reason_code = None
@@ -343,6 +365,8 @@ class CommandService:
             if self._client is None or not getattr(self._client, "is_online", False):
                 raise CommandError(503, "device_comm_fault", "HostComm 未连接")
             device_params = {"test_id": params["test_id"]} if command == "start_test" else params
+            if command == "start_test" and expected_recipe is not None:
+                device_params["expected_recipe"] = expected_recipe
             check_state(command, self._cache.current_state)
             await operation.mark_sent()
             result_payload = await self._client.send_command(
@@ -397,25 +421,8 @@ class CommandService:
             test_id = params.get("test_id")
             if not test_id:
                 return
-            db_session.add(
-                TestSession(
-                    test_id=test_id,
-                    operator_id=operator_id,
-                    start_time=now_iso(),
-                    original_height_mm=params.get("original_height_mm"),
-                    sample_label=params.get("sample_label") or None,
-                    notes=params.get("notes") or None,
-                )
-            )
-            await db_session.commit()
-            active_test.start(test_id)
-            await self._capture_start_parameters(
-                db_session,
-                test_id=test_id,
-                operator_id=operator_id,
-                role=role,
-                client_ip=client_ip,
-            )
+            # 会话及参数在发送前已持久化，ACK仅恢复当前采集身份，不宣布实验结束。
+            active_test.restore(test_id, needs_device_reconcile=True)
 
         elif command == "stop_test":
             test_id = active_test.active_test_id
@@ -432,53 +439,75 @@ class CommandService:
                 await db_session.commit()
                 active_test.restore(row.test_id, needs_device_reconcile=True)
 
-    async def _capture_start_parameters(
-        self,
-        db_session,
-        *,
-        test_id: str,
-        operator_id: str,
-        role: str,
-        client_ip: str | None,
-    ) -> None:
-        """试验已实际启动后立即归档参数；失败只审计，不伪装成启动失败。"""
-        reason_code = "parameter_snapshot_failed"
-        try:
-            readback = await self._client.get_parameters()
-            await logging_service.append_parameter_snapshot(
-                db_session,
-                readback,
-                test_id=test_id,
-                operator_id=operator_id,
-                source="test_start",
-            )
-            return
-        except HostCommTimeoutError:
-            reason_code = "device_comm_timeout"
-        except HostCommNotConnectedError:
-            reason_code = "device_comm_fault"
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("parameter_snapshot.capture_failed", test_id=test_id, error=str(exc))
+    async def _prepare_start_archive(
+        self, db_session, params: dict, operator_id: str, operation: OperationExecution
+    ) -> dict | None:
+        from app.db.models import TestSession
+        from app.services.parameter_service import ParameterService
+        from app.services.recipe_service import RecipeService
 
-        try:
-            await db_session.rollback()
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("parameter_snapshot.rollback_failed", test_id=test_id, error=str(exc))
-            return
-        try:
-            await audit_action(
-                db_session,
-                operator_id=operator_id,
-                role=role,
-                action_type="capture_start_parameters",
-                params={"test_id": test_id},
-                result="error",
-                reason_code=reason_code,
-                test_id=test_id,
-                client_ip=client_ip,
+        for field in ("sample_metadata", "report_context"):
+            if params.get(field) is not None and not isinstance(params[field], dict):
+                raise CommandError(422, "invalid_experiment_metadata", f"{field}必须为对象")
+        snapshot = await ParameterService(self._client, self._cache).get_parameters()
+        device_values = snapshot.get("params", snapshot.get("values"))
+        if not isinstance(device_values, dict):
+            raise CommandError(502, "invalid_parameter_snapshot", "启动前必须取得有效参数快照")
+        caps = list(getattr(self._client, "capabilities", []))
+        hello = getattr(self._client, "hello_ack", None) or {}
+        provenance = {
+            "firmware": snapshot.get("fw_version") or hello.get("payload", {}).get("fw_version"),
+            "protocol_version": hello.get("protocol_version"),
+            "capabilities": caps,
+            "operation_id": operation.operation_id,
+            "safety_profile": snapshot.get("safety_profile"),
+        }
+        mode = "custom"
+        if "recipe_v1" in caps:
+            if not isinstance(params.get("recipe_id"), str) or type(params.get("recipe_version")) is not int:
+                raise CommandError(422, "recipe_selection_required", "启动必须选择保存的配方版本")
+            binding = await RecipeService(db_session, self._client, self._cache).validate_bundle(
+                device_values.get("recipe"), snapshot
             )
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("parameter_snapshot.audit_failed", test_id=test_id, error=str(exc))
+            if binding["recipe_id"] != params["recipe_id"] or binding["version"] != params["recipe_version"]:
+                raise CommandError(409, "active_recipe_mismatch", "设备当前配方与启动所选版本不一致")
+            mode = binding["definition"]["mode"]
+        else:
+            if params.get("recipe_id") is not None or params.get("recipe_version") is not None:
+                raise CommandError(409, "device_missing_recipe_v1", "旧固件不能执行所选配方")
+            binding = {"kind": "legacy_unverified", "parameters": device_values}
+        row = TestSession(
+            test_id=params["test_id"],
+            operator_id=operator_id,
+            start_time=now_iso(),
+            original_height_mm=params.get("original_height_mm"),
+            sample_label=params.get("sample_label") or None,
+            notes=params.get("notes") or None,
+            phase="awaiting_device",
+            mode=mode,
+            data_integrity="unknown",
+            recipe_snapshot_json=json.dumps({**binding, **provenance}, ensure_ascii=False),
+            measurement_basis_json=json.dumps(
+                {
+                    "schema_version": 1,
+                    "reference": "GB/T 34211-2017",
+                    "shrinkage_basis": "H600",
+                    "detector_verified": False,
+                    "rules_reference": (binding.get("validation") or {}).get("rules_reference"),
+                    "sample_metadata": params.get("sample_metadata") or {},
+                    "report_context": params.get("report_context") or {},
+                }
+            ),
+        )
+        db_session.add(row)
+        # 此提交在mark_sent前完成；后续断线/超时保留未闭合记录供对账，不重建第二个实验。
+        await logging_service.append_parameter_snapshot(
+            db_session, snapshot, test_id=row.test_id, operator_id=operator_id, source="test_start"
+        )
+        await db_session.commit()
+        if "recipe_v1" in caps:
+            return {key: binding[key] for key in ("recipe_id", "version", "digest")}
+        return None
 
     async def _write_audit(
         self,

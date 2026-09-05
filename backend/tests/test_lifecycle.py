@@ -108,26 +108,23 @@ async def test_start_test_creates_session(db_session):
     assert snapshot.fw_version == "FW-START"
 
 
-async def test_start_parameter_readback_failure_is_audited_without_masking_accepted_start(db_session):
-    """控制板已启动时，参数回读失败不能把 API 伪装成启动失败。"""
+async def test_start_parameter_readback_failure_prevents_send_and_is_audited(db_session):
+    """参数必须在启动前可读；读回失败不能创建缺乏归档的实验。"""
     service = CommandService(_FakeClient(parameter_error=HostCommTimeoutError("timeout")), _FakeCache())
-
-    result = await service.execute(
-        "start_test",
-        {"test_id": "TEST-PARAM-TIMEOUT"},
-        operator_id="op001",
-        role="operator",
-        confirm_token=confirm_tokens.issue(),
-        db_session=db_session,
-    )
-
-    assert result["result"] == "accepted"
+    with pytest.raises(HostCommTimeoutError):
+        await service.execute(
+            "start_test",
+            {"test_id": "TEST-PARAM-TIMEOUT"},
+            operator_id="op001",
+            role="operator",
+            confirm_token=confirm_tokens.issue(),
+            db_session=db_session,
+        )
+    assert service._client.commands == []
     assert await db_session.scalar(select(func.count()).select_from(ParameterSnapshot)) == 0
-    actions = (await db_session.execute(select(OperatorAction).order_by(OperatorAction.id))).scalars().all()
-    assert [(row.action_type, row.result, row.reason_code) for row in actions] == [
-        ("start_test", "accepted", "ok"),
-        ("capture_start_parameters", "error", "device_comm_timeout"),
-    ]
+    assert await db_session.scalar(select(func.count()).select_from(TestSession)) == 0
+    actions = (await db_session.scalars(select(OperatorAction).where(OperatorAction.action_type == "start_test"))).all()
+    assert [(row.result, row.reason_code) for row in actions] == [("error", "device_comm_timeout")]
 
 
 async def test_start_test_rejects_existing_id_before_device_command(db_session):

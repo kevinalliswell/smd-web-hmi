@@ -118,9 +118,13 @@ async def test_t10_operator_action_logged(db_session):
         role="operator",
         db_session=db_session,
     )
-    count = await db_session.scalar(select(func.count()).select_from(OperatorAction))
+    count = await db_session.scalar(
+        select(func.count()).select_from(OperatorAction).where(OperatorAction.action_type == "tare_balance")
+    )
     assert count == 1
-    row = (await db_session.execute(select(OperatorAction))).scalar_one()
+    row = (
+        await db_session.execute(select(OperatorAction).where(OperatorAction.action_type == "tare_balance"))
+    ).scalar_one()
     assert row.action_type == "tare_balance"
     assert row.operator_id == "op001"
     assert row.result == "accepted"
@@ -139,7 +143,9 @@ async def test_command_timeout_has_explicit_audit_reason(db_session):
             db_session=db_session,
         )
 
-    row = (await db_session.execute(select(OperatorAction))).scalar_one()
+    row = (
+        await db_session.execute(select(OperatorAction).where(OperatorAction.action_type == "tare_balance"))
+    ).scalar_one()
     assert row.result == "error"
     assert row.reason_code == "device_comm_timeout"
 

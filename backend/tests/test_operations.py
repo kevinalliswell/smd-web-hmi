@@ -185,9 +185,13 @@ async def test_patch_parameters_preserves_other_fields_and_does_not_reread_on_re
     board = PatchBoard(db_session)
     service = ParameterService(board, await ready_cache())
     args = dict(operator_id="a", role="admin", db_session=db_session, operation_id="patch-1")
-    first = await service.patch_parameters({"recipe": {"recipe_id": "std-1"}}, **args)
-    second = await service.patch_parameters({"recipe": {"recipe_id": "std-1"}}, **args)
-    assert first["params"] == {"recipe": {"recipe_id": "std-1"}, "process": {"end_temp_deg_c": 1580}, "gas": {"n2": 5}}
+    first = await service.patch_parameters({"calibration": {"revision": "cal-1"}}, **args)
+    second = await service.patch_parameters({"calibration": {"revision": "cal-1"}}, **args)
+    assert first["params"] == {
+        "calibration": {"revision": "cal-1"},
+        "process": {"end_temp_deg_c": 1580},
+        "gas": {"n2": 5},
+    }
     assert second["operation_status"] == "verified"
     assert board.reads == 2
     assert len(board.sent) == 1

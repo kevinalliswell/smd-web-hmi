@@ -87,7 +87,9 @@ async def test_sync_time_uses_real_operator_and_appends_audit(db_session):
     assert client.calls[0]["operator_id"] == "admin-a"
     assert client.calls[0]["role"] == "admin"
 
-    action = (await db_session.execute(select(OperatorAction))).scalar_one()
+    action = (
+        await db_session.execute(select(OperatorAction).where(OperatorAction.action_type == "sync_time"))
+    ).scalar_one()
     assert action.action_type == "sync_time"
     assert action.operator_id == "admin-a"
     assert action.operator_role == "admin"
