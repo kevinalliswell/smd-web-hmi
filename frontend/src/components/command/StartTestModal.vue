@@ -1,6 +1,8 @@
 <script setup>
 // 启动试验：输入试验编号 → 二次确认（含 CO 安全提示）→ 经后端获取 confirm_token 后下发。
 import { computed, onMounted, ref } from 'vue'
+import { useModalFocus } from '@/composables/useModalFocus'
+const { dialog, onDialogKeydown } = useModalFocus()
 import { requestConfirmToken, sendCommand } from '@/api/commands'
 import { fetchNextTestId } from '@/api/tests'
 import RecipePicker from '@/components/recipes/RecipePicker.vue'
@@ -97,6 +99,9 @@ async function onConfirm() {
     @keydown.esc="emit('close')"
   >
     <div
+      ref="dialog"
+      tabindex="-1"
+      @keydown="onDialogKeydown"
       class="dialog"
       role="dialog"
       aria-modal="true"

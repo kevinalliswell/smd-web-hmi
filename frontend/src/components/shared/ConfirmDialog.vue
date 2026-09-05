@@ -1,4 +1,6 @@
 <script setup>
+import { useModalFocus } from '@/composables/useModalFocus'
+const { dialog, onDialogKeydown } = useModalFocus('[data-dialog-cancel]')
 // 通用二次确认组件。CO/安全相关操作必须走此组件，不得使用 window.confirm()。
 const props = defineProps({
   modelValue: { type: Boolean, default: false },
@@ -28,7 +30,7 @@ function onCancel() {
 
 <template>
   <div v-if="modelValue" class="overlay" @click.self="onCancel" @keydown.esc.stop="onCancel">
-    <div class="dialog" :class="{ danger }" role="dialog" aria-modal="true" aria-labelledby="confirm-dialog-title">
+    <div ref="dialog" tabindex="-1" @keydown="onDialogKeydown" class="dialog" :class="{ danger }" role="dialog" aria-modal="true" aria-labelledby="confirm-dialog-title">
       <div id="confirm-dialog-title" class="dlg-title">
         <span v-if="danger" class="warn-icon">⚠</span>{{ title }}
       </div>
@@ -36,7 +38,7 @@ function onCancel() {
         <slot>{{ message }}</slot>
       </div>
       <div class="dlg-actions">
-        <button :disabled="busy" @click="onCancel">{{ cancelText }}</button>
+        <button data-dialog-cancel :disabled="busy" @click="onCancel">{{ cancelText }}</button>
         <button :class="danger ? 'danger' : 'primary'" :disabled="busy || confirmDisabled" @click="onConfirm">
           {{ busy ? busyText : confirmText }}
         </button>
