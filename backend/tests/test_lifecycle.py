@@ -25,7 +25,7 @@ class _FakeClient:
         self.command_params = []
         self.parameter_error = parameter_error
 
-    async def send_command(self, command, params, *, operator_id, role, confirm_token=None):
+    async def send_command(self, command, params, *, operator_id, role, confirm_token=None, msg_id=None):
         self.commands.append(command)
         self.command_params.append(params)
         # start/stop 受控停止均推进到一个具体状态

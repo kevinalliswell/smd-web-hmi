@@ -27,7 +27,7 @@ class _FakeClient:
         self._error = error
         self.sent: list[tuple] = []
 
-    async def send_command(self, command, params, *, operator_id, role, confirm_token=None):
+    async def send_command(self, command, params, *, operator_id, role, confirm_token=None, msg_id=None):
         self.sent.append((command, params))
         if self._error is not None:
             raise self._error

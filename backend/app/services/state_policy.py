@@ -102,7 +102,7 @@ def snapshot_state(snapshot: dict[str, Any]) -> str | None:
     return state if isinstance(state, str) and state.strip() else None
 
 
-def enrich_status_snapshot(snapshot: dict[str, Any] | None) -> dict[str, Any]:
+def enrich_status_snapshot(snapshot: dict[str, Any] | None, *, control_ready: bool = True) -> dict[str, Any]:
     """给状态快照附加前端操作所需的权威分类，不修改输入对象。"""
     enriched = dict(snapshot or {})
     system = dict(enriched.get("system") or {})
@@ -114,7 +114,8 @@ def enrich_status_snapshot(snapshot: dict[str, Any] | None) -> dict[str, Any]:
             "operation_state": operation_state,
             "state_policy_version": STATE_POLICY_VERSION,
             "is_running": operation_state == "running",
-            "can_start_test": operation_state == "idle",
+            "can_start_test": control_ready and operation_state == "idle",
+            "can_set_parameters": control_ready and parameter_changes_allowed(current_state),
             "can_stop_test": operation_state in {"running", "fault", "unknown"},
         }
     )

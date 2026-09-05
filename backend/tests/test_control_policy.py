@@ -25,22 +25,26 @@ class Board:
         return {"params": self.sent[-1][1]["values"], "parameter_crc": "device-crc"}
 
 
-async def test_canonical_standby_allows_parameter_write_and_running_rejects():
+async def test_canonical_standby_allows_parameter_write_and_running_rejects(db_session):
     cache, board = StatusCache(), Board()
     service = ParameterService(board, cache)
     values = {"process": {"end_temp_deg_c": 1580}}
     await cache.update({"state_machine": {"current_state": "Standby"}})
-    assert (await service.set_parameters(values, compute_param_crc(values), operator_id="a", role="admin"))[
-        "readback_ok"
-    ]
+    assert (
+        await service.set_parameters(
+            values, compute_param_crc(values), operator_id="a", role="admin", db_session=db_session
+        )
+    )["readback_ok"]
     await cache.update({"state_machine": {"current_state": "Reducing"}})
     with pytest.raises(CommandError, match=""):
-        await service.set_parameters(values, compute_param_crc(values), operator_id="a", role="admin")
+        await service.set_parameters(
+            values, compute_param_crc(values), operator_id="a", role="admin", db_session=db_session
+        )
     assert len(board.sent) == 1
 
 
 @pytest.mark.parametrize("mode", ["missing", "stale", "conflict"])
-async def test_uncertain_state_never_sends_parameters(mode):
+async def test_uncertain_state_never_sends_parameters(mode, db_session):
     cache, board = StatusCache(), Board()
     if mode != "missing":
         payload = {"state_machine": {"current_state": "Standby"}}
@@ -50,7 +54,9 @@ async def test_uncertain_state_never_sends_parameters(mode):
     if mode == "stale":
         cache._last_update_monotonic = time.monotonic() - 10
     with pytest.raises(CommandError):
-        await ParameterService(board, cache).set_parameters({}, compute_param_crc({}), operator_id="a", role="admin")
+        await ParameterService(board, cache).set_parameters(
+            {}, compute_param_crc({}), operator_id="a", role="admin", db_session=db_session
+        )
     assert board.sent == []
 
 
@@ -79,3 +85,25 @@ async def test_backlogged_snapshot_keeps_receipt_age():
     )
     assert cache.is_fresh is False
     assert cache.current_state is None
+
+
+async def test_invalidated_snapshot_cannot_be_refreshed_by_old_callback():
+    cache = StatusCache()
+    snapshot = {"state_machine": {"current_state": "Standby"}, "_hostcomm": {"received_monotonic": time.monotonic()}}
+    await cache.update(snapshot)
+    cache.invalidate()
+    await cache.update(snapshot)
+    assert cache.current_state is None
+    assert not cache.is_fresh
+    await cache.update({"state_machine": {"current_state": "Standby"}})
+    assert cache.current_state == "Standby"
+
+
+def test_status_controls_use_single_state_and_availability_policy():
+    from app.services.state_policy import enrich_status_snapshot
+
+    ready = enrich_status_snapshot({"state_machine": {"current_state": "Standby"}}, control_ready=True)
+    blocked = enrich_status_snapshot({"state_machine": {"current_state": "Standby"}}, control_ready=False)
+    assert ready["system"]["can_set_parameters"] is True
+    assert blocked["system"]["can_set_parameters"] is False
+    assert blocked["system"]["can_start_test"] is False

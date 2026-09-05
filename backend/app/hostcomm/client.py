@@ -4,7 +4,7 @@
 - 连接后先 hello/hello_ack 协商能力。
 - 周期心跳（默认 2s），连续 N 次超时后断线并进入自动重连。
 - 断线自动重连（指数退避 1→2→4→8→30s 上限）。
-- 请求/响应匹配：command 按 request_msg_id；status/parameters 按下一帧类型。
+- 请求/响应匹配：command 按 request_msg_id；快照按协商能力关联，旧协议串行等待。
 - 收帧分发：status_snapshot 更新缓存并广播，event 写日志并广播。
 - 帧解析容错（非法 JSON 不 crash，由 FrameParser 处理）。
 
@@ -343,8 +343,9 @@ class HostCommClient:
             return
 
         if msg_type == "status_snapshot":
-            if self._handshake_complete:
-                await self._set_comm_quality("online")
+            if not self._handshake_complete:
+                return
+            await self._set_comm_quality("online")
             # 先唤醒请求方，再把 DB/WS 回调放到独立任务，保持收帧循环畅通。
             self._resolve_waiter("status_snapshot", frame)
             self._schedule_callback(self.on_status, self._with_receipt(frame))
@@ -367,6 +368,8 @@ class HostCommClient:
             return
 
         if msg_type == "event":
+            if not self._handshake_complete:
+                return
             self._schedule_callback(self.on_event, self._with_receipt(frame))
             return
 
@@ -394,6 +397,7 @@ class HostCommClient:
             "received_monotonic": time.monotonic(),
             "session_id": self._session_id,
             "dropped_callbacks": self._callback_dropped,
+            "capabilities": self.capabilities.copy(),
         }
         return payload
 

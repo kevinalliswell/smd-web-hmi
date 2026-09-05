@@ -2,13 +2,54 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Header, HTTPException, Request
+from pydantic import Field
+from sqlalchemy import select
 
 from app.api.deps import DbDep, UserDep, get_command_service
+from app.api.operation_api import OPERATION_ERRORS, operation_http_error, request_operation_id
 from app.api.schemas import CommandRequest, ConfirmIntentRequest, err, ok
-from app.services.command_service import CO_COMMANDS, CommandError, confirm_tokens
+from app.api.validation import Page, PageSize
+from app.db.operation_models import Operation
+from app.services.command_service import CO_COMMANDS, confirm_tokens
+from app.services.operations import get_operation, operation_payload
 
 router = APIRouter(prefix="/api/commands", tags=["commands"])
+
+
+class OperationCommandRequest(CommandRequest):
+    operation_id: str | None = Field(default=None, min_length=1, max_length=128)
+
+
+@router.get("/operations")
+async def list_operations(user: UserDep, db: DbDep, page: Page = 1, size: PageSize = 20):
+    """查询本人操作；Admin可查全部，不访问设备。"""
+    query = select(Operation)
+    if not user.has_role("admin"):
+        query = query.where(Operation.operator_id == user.username)
+    rows = (
+        (
+            await db.execute(
+                query.order_by(Operation.created_at.desc(), Operation.operation_id)
+                .offset((page - 1) * size)
+                .limit(size)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return ok([operation_payload(row) for row in rows])
+
+
+@router.get("/operations/{operation_id}")
+async def operation_status(operation_id: str, user: UserDep, db: DbDep):
+    """读取持久操作结果；本人或Admin，不会重发命令。"""
+    row = await get_operation(db, operation_id)
+    if row is None or (row.operator_id != user.username and not user.has_role("admin")):
+        raise HTTPException(status_code=404, detail=err("not_found", "操作记录不存在"))
+    data = operation_payload(row)
+    data.update({"command": row.command, "created_at": row.created_at, "updated_at": row.updated_at})
+    return ok(data)
 
 
 @router.post("/confirm-intent")
@@ -28,7 +69,13 @@ async def confirm_intent(body: ConfirmIntentRequest, user: UserDep):
 
 @router.post("")
 @router.post("/")
-async def post_command(body: CommandRequest, request: Request, user: UserDep, db: DbDep):
+async def post_command(
+    body: OperationCommandRequest,
+    request: Request,
+    user: UserDep,
+    db: DbDep,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+):
     """下发命令到 STM32（经权限/状态/确认/CRC 校验）。权限：Operator+。"""
     service = get_command_service(request)
     client_ip = request.client.host if request.client else None
@@ -41,7 +88,8 @@ async def post_command(body: CommandRequest, request: Request, user: UserDep, db
             confirm_token=body.confirm_token,
             client_ip=client_ip,
             db_session=db,
+            operation_id=request_operation_id(body.operation_id, idempotency_key),
         )
-    except CommandError as exc:
-        raise HTTPException(status_code=exc.status_code, detail=err(exc.error_code, exc.message))
+    except OPERATION_ERRORS as exc:
+        raise operation_http_error(exc) from exc
     return ok(result)

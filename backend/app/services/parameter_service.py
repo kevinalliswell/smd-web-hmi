@@ -11,13 +11,23 @@
 
 from __future__ import annotations
 
+import copy
 import json
 from typing import Any
 
 from app.core.logging import get_logger
 from app.hostcomm.client import HostCommNotConnectedError, HostCommTimeoutError
 from app.services import logging_service
-from app.services.command_service import CommandError, audit_action, check_parameter_crc, check_permission, check_state
+from app.services.command_service import (
+    CommandError,
+    audit_action,
+    check_parameter_crc,
+    check_permission,
+    check_state,
+    compute_param_crc,
+)
+from app.services.maintenance_service import maintenance_manager
+from app.services.operations import OperationExecution, run_operation
 from app.services.test_runtime import active_test
 
 logger = get_logger("service.parameter")
@@ -54,8 +64,92 @@ class ParameterService:
         role: str,
         client_ip: str | None = None,
         db_session=None,
+        operation_id: str | None = None,
     ) -> dict[str, Any]:
         """下发参数并回读确认。任一步失败抛 CommandError，并写审计。"""
+        check_permission("set_parameters", role)
+        values = copy.deepcopy(values)
+
+        async def perform(operation: OperationExecution) -> dict:
+            return await self._set_parameters(
+                values,
+                param_crc,
+                operator_id=operator_id,
+                role=role,
+                client_ip=client_ip,
+                db_session=db_session,
+                operation=operation,
+            )
+
+        async with maintenance_manager.command_guard():
+            return await run_operation(
+                db_session,
+                command="set_parameters",
+                params={"values": values, "param_crc": param_crc},
+                operator_id=operator_id,
+                role=role,
+                operation_id=operation_id,
+                client_ip=client_ip,
+                perform=perform,
+            )
+
+    async def patch_parameters(
+        self,
+        patch: dict[str, Any],
+        *,
+        operator_id: str,
+        role: str,
+        client_ip: str | None = None,
+        db_session=None,
+        operation_id: str | None = None,
+    ) -> dict[str, Any]:
+        """同一维护锁内读取、替换顶层字段、下发和回读；重试按原patch查重。
+
+        配方服务可传入完整recipe字段而保留其他参数。调用者不得预先持有command_guard。
+        """
+        check_permission("set_parameters", role)
+        patch = copy.deepcopy(patch)
+
+        async def perform(operation: OperationExecution) -> dict:
+            check_state("set_parameters", self._cache.current_state)
+            snapshot = await self.get_parameters()
+            current = snapshot.get("params", snapshot.get("values"))
+            if not isinstance(current, dict):
+                raise CommandError(502, "invalid_parameter_snapshot", "参数快照缺少有效参数对象")
+            values = {**copy.deepcopy(current), **patch}
+            return await self._set_parameters(
+                values,
+                compute_param_crc(values),
+                operator_id=operator_id,
+                role=role,
+                client_ip=client_ip,
+                db_session=db_session,
+                operation=operation,
+            )
+
+        async with maintenance_manager.command_guard():
+            return await run_operation(
+                db_session,
+                command="set_parameters",
+                params={"patch": patch},
+                operator_id=operator_id,
+                role=role,
+                operation_id=operation_id,
+                client_ip=client_ip,
+                perform=perform,
+            )
+
+    async def _set_parameters(
+        self,
+        values: dict[str, Any],
+        param_crc: str | None,
+        *,
+        operator_id: str,
+        role: str,
+        client_ip: str | None,
+        db_session,
+        operation: OperationExecution,
+    ) -> dict[str, Any]:
         # 1. 非运行态校验（安全红线 8）
         check_permission("set_parameters", role)
         current_state = self._cache.current_state
@@ -80,11 +174,14 @@ class ParameterService:
 
         # 4. 下发命令
         try:
+            check_state("set_parameters", self._cache.current_state)
+            await operation.mark_sent()
             result = await self._client.send_command(
                 "set_parameters",
                 {"values": values, "param_crc": param_crc},
                 operator_id=operator_id,
                 role=role,
+                msg_id=operation.msg_id,
             )
         except (HostCommTimeoutError, HostCommNotConnectedError) as exc:
             await self._audit_comm_failure(
@@ -96,6 +193,7 @@ class ParameterService:
                 db_session=db_session,
             )
             raise
+        await operation.record_device_result(result)
         result_label = result.get("result", "error")
         reason_code = result.get("reason_code")
 

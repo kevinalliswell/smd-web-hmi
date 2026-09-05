@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import asyncio
 import binascii
+import copy
 import json
 import time
 import uuid
@@ -23,6 +24,8 @@ from app.core.logging import get_logger
 from app.hostcomm.client import HostCommNotConnectedError, HostCommTimeoutError
 from app.hostcomm.protocol import now_iso
 from app.services import logging_service
+from app.services.maintenance_service import maintenance_manager
+from app.services.operations import OperationExecution, run_operation
 from app.services.state_policy import classify_state, parameter_changes_allowed
 from app.services.test_id import InvalidTestIdError, validate_test_id
 
@@ -188,9 +191,10 @@ class CommandService:
         confirm_token: str | None = None,
         client_ip: str | None = None,
         db_session=None,
+        operation_id: str | None = None,
     ) -> dict:
         """执行命令并返回 command_result payload。校验失败抛 CommandError。"""
-        params = params or {}
+        params = copy.deepcopy(params or {})
 
         # 1. 权限校验
         check_permission(command, role)
@@ -204,7 +208,45 @@ class CommandService:
                 role=role,
                 client_ip=client_ip,
                 db_session=db_session,
+                operation_id=operation_id,
             )
+
+        async def perform(operation: OperationExecution) -> dict:
+            return await self._execute(
+                command,
+                params,
+                operator_id=operator_id,
+                role=role,
+                confirm_token=confirm_token,
+                client_ip=client_ip,
+                db_session=db_session,
+                operation=operation,
+            )
+
+        async with maintenance_manager.command_guard():
+            return await run_operation(
+                db_session,
+                command=command,
+                params=params,
+                operator_id=operator_id,
+                role=role,
+                operation_id=operation_id,
+                client_ip=client_ip,
+                perform=perform,
+            )
+
+    async def _execute(
+        self,
+        command: str,
+        params: dict,
+        *,
+        operator_id: str,
+        role: str,
+        confirm_token: str | None,
+        client_ip: str | None,
+        db_session,
+        operation: OperationExecution,
+    ) -> dict:
         # 2. 状态校验（StatusCache 对缺失/过期/冲突状态返回 None）
         current_state = self._cache.current_state
         check_state(command, current_state)
@@ -223,6 +265,7 @@ class CommandService:
                 confirm_token=confirm_token,
                 client_ip=client_ip,
                 db_session=db_session,
+                operation=operation,
             )
 
             # 命令被控制板受理后，处理试验会话生命周期（建/收会话）
@@ -292,6 +335,7 @@ class CommandService:
         confirm_token: str | None,
         client_ip: str | None,
         db_session,
+        operation: OperationExecution,
     ) -> dict:
         result_label = "error"
         reason_code = None
@@ -299,9 +343,17 @@ class CommandService:
             if self._client is None or not getattr(self._client, "is_online", False):
                 raise CommandError(503, "device_comm_fault", "HostComm 未连接")
             device_params = {"test_id": params["test_id"]} if command == "start_test" else params
+            check_state(command, self._cache.current_state)
+            await operation.mark_sent()
             result_payload = await self._client.send_command(
-                command, device_params, operator_id=operator_id, role=role, confirm_token=confirm_token
+                command,
+                device_params,
+                operator_id=operator_id,
+                role=role,
+                confirm_token=confirm_token,
+                msg_id=operation.msg_id,
             )
+            await operation.record_device_result(result_payload)
             result_label = result_payload.get("result", "error")
             reason_code = result_payload.get("reason_code")
             return result_payload

@@ -27,7 +27,7 @@ class _FakeClient:
         self._readback_error = readback_error
         self.last_set = None
 
-    async def send_command(self, command, params, *, operator_id, role, confirm_token=None):
+    async def send_command(self, command, params, *, operator_id, role, confirm_token=None, msg_id=None):
         self.last_set = params
         return {
             "command": command,

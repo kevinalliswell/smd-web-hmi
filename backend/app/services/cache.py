@@ -24,12 +24,15 @@ class StatusCache:
         self._snapshot: dict[str, Any] = {}
         self._last_update_monotonic: float | None = None
         self._last_update_iso: str | None = None
+        self._invalidated_at = 0.0
         self._degraded_after_s = degraded_after_s
 
     async def update(self, snapshot: dict[str, Any], ts_iso: str | None = None) -> None:
         async with self._lock:
-            self._snapshot = snapshot
             received = (snapshot.get("_hostcomm") or {}).get("received_monotonic", time.monotonic())
+            if isinstance(received, (int, float)) and received < self._invalidated_at:
+                return
+            self._snapshot = snapshot
             self._last_update_monotonic = (
                 min(received, time.monotonic())
                 if isinstance(received, (int, float)) and math.isfinite(received) and received >= 0
@@ -63,6 +66,7 @@ class StatusCache:
     def invalidate(self) -> None:
         """会话断开/数据积压时旧状态不能继续授权控制。"""
         self._last_update_monotonic = None
+        self._invalidated_at = time.monotonic()
 
     @property
     def last_update(self) -> str | None:

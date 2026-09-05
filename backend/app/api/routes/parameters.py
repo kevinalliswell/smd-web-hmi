@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, Request
-from pydantic import BaseModel
+from fastapi import APIRouter, Depends, Header, HTTPException, Request
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 
 from app.api.deps import DbDep, UserDep, get_current_user, get_parameter_service, require_role
+from app.api.operation_api import OPERATION_ERRORS, operation_http_error, request_operation_id
 from app.api.schemas import err, ok
 from app.api.validation import Page, PageSize
 from app.db.models import ParameterSnapshot
@@ -18,6 +19,7 @@ router = APIRouter(prefix="/api/parameters", tags=["parameters"])
 class SetParametersRequest(BaseModel):
     values: dict
     param_crc: str | None = None
+    operation_id: str | None = Field(default=None, min_length=1, max_length=128)
 
 
 @router.get("", dependencies=[Depends(get_current_user)])
@@ -35,7 +37,13 @@ async def get_parameters(request: Request):
 
 
 @router.put("", dependencies=[Depends(require_role("admin"))])
-async def put_parameters(body: SetParametersRequest, request: Request, user: UserDep, db: DbDep):
+async def put_parameters(
+    body: SetParametersRequest,
+    request: Request,
+    user: UserDep,
+    db: DbDep,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+):
     """下发参数：校验 CRC → 下发 → 回读确认 → 写快照。权限：Admin。"""
     service = get_parameter_service(request)
     client_ip = request.client.host if request.client else None
@@ -47,9 +55,10 @@ async def put_parameters(body: SetParametersRequest, request: Request, user: Use
             role=user.role,
             client_ip=client_ip,
             db_session=db,
+            operation_id=request_operation_id(body.operation_id, idempotency_key),
         )
-    except CommandError as exc:
-        raise HTTPException(status_code=exc.status_code, detail=err(exc.error_code, exc.message))
+    except OPERATION_ERRORS as exc:
+        raise operation_http_error(exc) from exc
     return ok(result)
 
 

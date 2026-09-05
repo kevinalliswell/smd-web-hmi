@@ -61,7 +61,7 @@ class _RecordingClient:
     def __init__(self):
         self.calls = []
 
-    async def send_command(self, command, params, *, operator_id, role, confirm_token=None):
+    async def send_command(self, command, params, *, operator_id, role, confirm_token=None, msg_id=None):
         self.calls.append(
             {
                 "command": command,

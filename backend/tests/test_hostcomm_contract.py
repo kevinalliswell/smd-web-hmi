@@ -83,6 +83,7 @@ async def test_callback_overload_is_bounded_and_disables_control():
 
     client = HostCommClient("127.0.0.1", 1, on_status=slow, callback_queue_size=2)
     client._connected = True
+    client._handshake_complete = True
     try:
         await client._dispatch(make_frame("status_snapshot", {}))
         await started.wait()
@@ -133,5 +134,17 @@ async def test_mismatching_command_result_is_never_accepted(mock_server, monkeyp
     try:
         with pytest.raises(HostCommError):
             await client.send_command("tare_balance", {}, operator_id="a", role="operator")
+    finally:
+        await client.close()
+
+
+async def test_data_before_validated_handshake_is_not_published():
+    received = []
+    client = HostCommClient("127.0.0.1", 1, on_status=received.append, on_event=received.append)
+    try:
+        await client._dispatch(make_frame("status_snapshot", {"state_machine": {"current_state": "Standby"}}))
+        await client._dispatch(make_frame("event", {"event_code": "measurement_complete"}))
+        await asyncio.sleep(0)
+        assert received == []
     finally:
         await client.close()
