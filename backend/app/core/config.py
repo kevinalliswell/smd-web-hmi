@@ -32,6 +32,7 @@ class Settings(BaseSettings):
     )
 
     # ---- 后端服务 ----
+    smd_maintenance_file: str = ""
     smd_host: str = "0.0.0.0"
     smd_port: int = 8000
     smd_db_path: str = "./data/smd.db"
@@ -164,6 +165,16 @@ class Settings(BaseSettings):
         d = self.db_path_resolved.parent
         d.mkdir(parents=True, exist_ok=True)
         return d
+
+    @property
+    def maintenance_file(self) -> Path:
+        """桌面维护门禁固定在 ProgramData，独立于可定制的数据库路径。"""
+        if not self.smd_maintenance_file:
+            return self.data_dir / "maintenance.json"
+        path = Path(self.smd_maintenance_file)
+        if not path.is_absolute():
+            raise RuntimeError("SMD_MAINTENANCE_FILE 必须是绝对路径")
+        return path.resolve()
 
     @property
     def reports_dir(self) -> Path:
