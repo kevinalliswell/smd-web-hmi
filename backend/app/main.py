@@ -140,7 +140,7 @@ async def _persist_snapshot(payload: dict) -> None:
             # test_id 在本地形成没有 test_session 外键语义的孤儿数据。
             test_id = active_test.active_test_id
             if test_id:
-                await logging_service.append_sample_point(session, test_id, payload)
+                await logging_service.append_sample_point(session, test_id, payload, commit=False)
                 await advance_test_session(session, test_id, payload)
     except Exception as exc:  # noqa: BLE001
         should_alarm = sampling_health.record_failure()
