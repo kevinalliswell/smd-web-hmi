@@ -20,24 +20,6 @@ from .upgrade import UpgradeTransaction
 from .windows_platform import WindowsPlatform
 
 
-def register_recovery(target: Path, install: Path):
-    subprocess.run(
-        [
-            "powershell.exe",
-            "-NoProfile",
-            "-ExecutionPolicy",
-            "Bypass",
-            "-File",
-            str(target / "configure-recovery.ps1"),
-            "-VersionDir",
-            str(target),
-            "-InstallDir",
-            str(install),
-        ],
-        check=True,
-    )
-
-
 def initialize(package: Path, install: Path, data: Path, platform: WindowsPlatform):
     manifest = verify_bundle(package)
     initial_path = data / "updates/install.json"
@@ -127,7 +109,7 @@ def initialize(package: Path, install: Path, data: Path, platform: WindowsPlatfo
         atomic_text(env_file, "\n".join(key + "=" + json.dumps(value) for key, value in env.items()) + "\n")
     atomic_json(data / "client.json", {"url": "http://127.0.0.1:8000"})
     subprocess.run(acl_command, check=True)
-    register_recovery(target, install)
+    platform.configure(target)
     platform.stop()
     platform.migrate(target)
     platform.start()

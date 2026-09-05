@@ -1,6 +1,7 @@
 """Windows SCM 适配：状态查询不依赖本地化 sc.exe 输出。"""
 
 import json
+import os
 import subprocess
 import time
 import urllib.request
@@ -104,6 +105,37 @@ class WindowsPlatform:
             ],
             check=True,
         )
+
+        self.configure_presentation(version_dir)
+
+    def configure_presentation(self, version_dir: Path):
+        """服务版本切换与回退一并恢复入口，不能依赖安装器最后几步才更新。"""
+        import winreg
+
+        import win32com.client
+
+        install = version_dir.parent.parent
+        access = winreg.KEY_WRITE | winreg.KEY_WOW64_64KEY
+        with winreg.CreateKeyEx(winreg.HKEY_LOCAL_MACHINE, r"Software\SmdHmi", 0, access) as key:
+            for name, value in {"InstallDir": str(install), "Version": version_dir.name}.items():
+                winreg.SetValueEx(key, name, 0, winreg.REG_SZ, value)
+        with winreg.CreateKeyEx(
+            winreg.HKEY_LOCAL_MACHINE, r"Software\Microsoft\Windows\CurrentVersion\Uninstall\SmdHmi", 0, access
+        ) as key:
+            for name, value in {
+                "DisplayName": "SMD HMI",
+                "DisplayVersion": version_dir.name,
+                "UninstallString": f'"{install / "Uninstall.exe"}"',
+            }.items():
+                winreg.SetValueEx(key, name, 0, winreg.REG_SZ, value)
+        menu = Path(os.environ["PROGRAMDATA"]) / "Microsoft/Windows/Start Menu/Programs/SMD HMI"
+        menu.mkdir(parents=True, exist_ok=True)
+        # WSH的CreateShortcut/TargetPath/Save契约见Microsoft Learn的WSH快捷方式说明。
+        shortcut = win32com.client.Dispatch("WScript.Shell").CreateShortcut(str(menu / "SMD HMI.lnk"))
+        shortcut.TargetPath = str(version_dir / "SmdDesktop/SmdDesktop.exe")
+        shortcut.WorkingDirectory = str(version_dir / "SmdDesktop")
+        shortcut.Description = "SMD 软熔滴落实验"
+        shortcut.Save()
 
     def migrate(self, version_dir: Path):
         subprocess.run([str(version_dir / "SmdService/SmdService.exe"), "--migrate"], check=True, timeout=300)
