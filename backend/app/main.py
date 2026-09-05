@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 import uuid
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, nullcontext
 
 import structlog
 from fastapi import FastAPI, HTTPException, Request
@@ -45,6 +45,7 @@ from app.hostcomm.client import HostCommClient, HostCommNotConnectedError, HostC
 from app.hostcomm.protocol import now_iso
 from app.services.background_jobs import background_jobs
 from app.services.cache import status_cache
+from app.services.gateway_lease import GatewayLease
 from app.services.maintenance_service import MaintenanceBlockedError, maintenance_manager
 from app.services.operations import OperationError, recover_interrupted_operations
 from app.services.sampling_health import sampling_health
@@ -168,9 +169,9 @@ async def _reconcile_test_runtime(device_snapshot: dict | None = None) -> None:
         logger.warning("test_session.reconcile_failed", error=str(exc))
 
 
-def _build_hostcomm_client(settings) -> HostCommClient:
+def _build_hostcomm_client(settings, *, device_host: str | None = None) -> HostCommClient:
     """根据配置构造 HostComm 客户端并接好回调（缓存 / WebSocket 广播）。"""
-    host = "127.0.0.1" if settings.hostcomm_mock else settings.hostcomm_host
+    host = "127.0.0.1" if settings.hostcomm_mock else (device_host or settings.hostcomm_host)
 
     last_device_identity = None
 
@@ -243,36 +244,41 @@ async def lifespan(app: FastAPI):
     settings.validate_startup(logger)
     logger.info("app.starting", version=__version__, mock=settings.hostcomm_mock)
 
-    # 开发/联调允许按 ORM 元数据建表；生产必须由安装/升级流程执行受控迁移。
-    if settings.hostcomm_mock:
-        await create_all()
-    else:
-        await assert_schema_current()
-    maintenance_manager.configure_upgrade(settings.maintenance_file)
-    await _seed_admin()
-    async with get_sessionmaker()() as session:
-        await recover_interrupted_operations(session)
-    await _reconcile_test_runtime()
-    if not settings.hostcomm_mock:
-        await maintenance_manager.start(settings)
-
-    client = _build_hostcomm_client(settings)
-    app.state.hostcomm_client = client
-    await client.start()  # 失败不阻断启动，转后台重连
-    if client.is_online and active_test.needs_device_reconcile:
+    lease = None if settings.hostcomm_mock else GatewayLease(settings.hostcomm_host, settings.hostcomm_port)
+    with nullcontext() if lease is None else lease:
+        client = None
         try:
-            await client.get_status()
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("test_session.initial_status_failed", error=str(exc))
+            # 开发/联调允许按 ORM 元数据建表；生产必须由安装/升级流程执行受控迁移。
+            if settings.hostcomm_mock:
+                await create_all()
+            else:
+                await assert_schema_current()
+            maintenance_manager.configure_upgrade(settings.maintenance_file)
+            await _seed_admin()
+            async with get_sessionmaker()() as session:
+                await recover_interrupted_operations(session)
+            await _reconcile_test_runtime()
+            if not settings.hostcomm_mock:
+                await maintenance_manager.start(settings)
 
-    try:
-        yield
-    finally:
-        await client.close()
-        await maintenance_manager.stop()
-        await background_jobs.shutdown()
-        await dispose_engine()
-        logger.info("app.stopped")
+            client = _build_hostcomm_client(settings, device_host=None if settings.hostcomm_mock else lease.host)
+            app.state.hostcomm_client = client
+            await client.start()  # 失败不阻断启动，转后台重连
+            if client.is_online and active_test.needs_device_reconcile:
+                try:
+                    await client.get_status()
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning("test_session.initial_status_failed", error=str(exc))
+            yield
+        finally:
+            try:
+                if client is not None:
+                    await client.close()
+            finally:
+                await maintenance_manager.stop()
+                await background_jobs.shutdown()
+                await dispose_engine()
+                logger.info("app.stopped")
 
 
 def create_app() -> FastAPI:
