@@ -91,6 +91,13 @@ class MetricAccumulator:
         after_boundary = (
             self.measurement_end_sample_id is not None and getattr(sample, "id", 0) > self.measurement_end_sample_id
         )
+        terminal_measurement = (
+            self.measurement_end_sample_id is not None and getattr(sample, "id", None) == self.measurement_end_sample_id
+        ) or (
+            "run_lifecycle_v1" in caps
+            and state.get("measurement_complete") is True
+            and (self.test_id is None or state.get("test_id") == self.test_id)
+        )
         disposal = normalize_state(state.get("current_state") or getattr(sample, "current_state", None)) in {
             "n2replace",
             "replace",
@@ -104,7 +111,9 @@ class MetricAccumulator:
             "complete",
             "completed",
         }
-        if disposal:
+        # A trusted measurement boundary includes this frame even when the board
+        # reports its new disposal state at the same time. Later frames stay closed.
+        if disposal and not terminal_measurement:
             self.measurement_finished = True
         if self.measurement_finished or after_boundary:
             r["excluded_sample_count"] += 1
@@ -112,11 +121,7 @@ class MetricAccumulator:
         if not metadata_ok:
             self.limitations.add("malformed_sample_metadata")
             self.detector_healthy = False
-        if (
-            "run_lifecycle_v1" in caps
-            and state.get("measurement_complete") is True
-            and (self.test_id is None or state.get("test_id") == self.test_id)
-        ):
+        if terminal_measurement:
             self.measurement_finished = True  # 包含测定终帧，排除其后的安全处置。
         furnace = number(sample.furnace_pv)
         temp = number(sample.burden_temp) if getattr(sample, "burden_temp_v", None) == 1 else None

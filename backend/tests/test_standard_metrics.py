@@ -191,3 +191,60 @@ def test_cooling_boundary_remains_closed_when_legacy_device_returns_to_standby()
     assert result["delta_p_max"] == 100
     assert result["ts"] is None
     assert result["excluded_sample_count"] == 2
+
+
+@pytest.mark.parametrize("boundary", ["persisted", "lifecycle", "both"])
+@pytest.mark.parametrize("current_state,phase", [("Hold", None), ("N2Replace", None), ("N2Replace", "safe_disposal")])
+@pytest.mark.parametrize("first_drip", [True, False])
+def test_terminal_measurement_frame_is_included_before_disposal(boundary, current_state, phase, first_drip):
+    terminal = point(1600, 1580, 20, 1000, first_drip=first_drip)
+    extra = json.loads(terminal.ext_json)
+    extra["state_machine"] = {"current_state": current_state, "test_id": "boundary-test"}
+    if phase is not None:
+        extra["state_machine"]["phase"] = phase
+    if boundary in {"lifecycle", "both"}:
+        extra["state_machine"]["measurement_complete"] = True
+        extra["_hostcomm"]["capabilities"].append("run_lifecycle_v1")
+    terminal.ext_json = json.dumps(extra)
+    cooling = point(1700, 1600, 40, 20000, first_drip=True)
+    extra["state_machine"]["current_state"] = "Cooling"
+    extra["measurement"]["first_drip"] = True
+    cooling.ext_json = json.dumps(extra)  # A latched measurement_complete does not reopen the window.
+    standby = point(1800, 1700, 45, 30000, first_drip=True)
+    standby.current_state = "Standby"
+    rows = [point(600, 590, 30, 100), point(1400, 1380, 28, 500), terminal, cooling, standby]
+    for index, row in enumerate(rows, 1):
+        row.id = index
+    result = metrics(
+        rows,
+        test_id="boundary-test",
+        measurement_end_sample_id=3 if boundary in {"persisted", "both"} else None,
+        measurement_complete=True,
+        detector_verified=True,
+        data_complete=True,
+    )
+    assert result["furnace_pv_max"] == 1600
+    assert result["burden_temp_max"] == 1580
+    assert result["delta_p_max"] == 1000
+    assert result["delta_p_max_temp"] == 1580
+    assert result["t40"] == 1580
+    assert result["td_drip_temp"] == 1580
+    assert result["td_source"] == ("first_drip_event" if first_drip else "completed_without_drip")
+    assert result["delta_h_mm"] == 8  # Uses the terminal displacement, not the previous or cooling frame.
+    assert result["drip_weight_total"] == (1 if first_drip else 0)
+    assert result["measurement_sample_count"] == 3
+    assert result["excluded_sample_count"] == 2
+
+
+@pytest.mark.parametrize("test_id,capability", [("other-test", True), ("boundary-test", False)])
+def test_disposal_frame_without_trusted_end_boundary_remains_excluded(test_id, capability):
+    terminal = point(1600, 1580, 20, 1000, first_drip=True)
+    extra = json.loads(terminal.ext_json)
+    extra["state_machine"] = {"current_state": "N2Replace", "test_id": test_id, "measurement_complete": True}
+    if capability:
+        extra["_hostcomm"]["capabilities"].append("run_lifecycle_v1")
+    terminal.ext_json = json.dumps(extra)
+    result = metrics([point(600, 590, 30, 100), terminal], test_id="boundary-test")
+    assert result["measurement_sample_count"] == 1
+    assert result["delta_p_max"] == 100
+    assert result["td_drip_temp"] is None
