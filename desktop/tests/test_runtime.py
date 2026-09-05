@@ -47,3 +47,16 @@ def test_lan_listener_requires_tls_pair(monkeypatch):
     monkeypatch.setenv("SMD_TLS_CERTFILE", "cert.pem")
     with pytest.raises(RuntimeError, match="TLS"):
         tls_options("0.0.0.0")
+
+
+def test_service_captures_structlog_print_stream(caplog):
+    import logging
+
+    from smd_desktop.log_stream import LogStream
+
+    stream = LogStream(logging.getLogger("test-service"))
+    with caplog.at_level(logging.INFO):
+        stream.write('{"event":"device.offline"}')
+        stream.write("\n")
+        stream.flush()
+    assert '{"event":"device.offline"}' in caplog.text

@@ -4,6 +4,7 @@ import logging
 import sys
 from logging.handlers import RotatingFileHandler
 
+from .log_stream import LogStream
 from .runtime import data_root, load_environment, tls_options, version_root
 from .single_instance import single_instance
 
@@ -62,6 +63,7 @@ def main() -> None:
                     logdir / "service.log", maxBytes=10_000_000, backupCount=10, encoding="utf-8"
                 )
                 logging.basicConfig(handlers=[handler], level=logging.INFO, force=True)
+                sys.stdout = sys.stderr = LogStream(logging.getLogger("backend.stdout"))
                 config = uvicorn.Config(
                     "app.main:app",
                     host=settings.smd_host,
