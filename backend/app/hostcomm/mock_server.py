@@ -334,6 +334,22 @@ class MockHostCommServer:
                 return
         if self.extended_contract and command == "stop_test":
             self.runtime.stop()
+        if self.extended_contract and command not in {"start_test", "stop_test", "set_parameters", "sync_time"}:
+            await self._send(
+                writer,
+                make_frame(
+                    "command_result",
+                    {
+                        "request_msg_id": req_id,
+                        "command": command,
+                        "result": "unsupported",
+                        "reason_code": "mock_action_not_implemented",
+                        "current_state": self._state,
+                    },
+                    prefix="mcu",
+                ),
+            )
+            return
         # accept 模式：根据命令推进状态机 / 保存参数
         if command == "start_test":
             self._test_id = payload.get("params", {}).get("test_id")
@@ -537,7 +553,15 @@ class MockHostCommServer:
             p["telemetry"] = {"boot_id": self._boot_id, "sequence": self._sequence}
             p["state_machine"].update(
                 {
-                    "phase": "safe_disposal" if runtime._stopping else "measuring",
+                    "phase": (
+                        "completed"
+                        if runtime.safe_complete
+                        else (
+                            "safe_disposal"
+                            if runtime.measurement_complete
+                            else "stopping" if runtime._stopping else "measuring"
+                        )
+                    ),
                     "measurement_complete": runtime.measurement_complete,
                     "safe_complete": runtime.safe_complete,
                     "recipe_digest": (runtime.recipe or {}).get("digest"),
@@ -545,7 +569,17 @@ class MockHostCommServer:
                     "fault_reason": runtime.fault_reason,
                 }
             )
-            p["temperature"].update({"furnace_pv_deg_c": runtime.furnace})
+            p["temperature"].update(
+                {
+                    "furnace_pv_deg_c": runtime.furnace,
+                    "furnace_sv_deg_c": (
+                        runtime.definition.stages[runtime.stage_index].furnace_target_c
+                        if runtime.definition and runtime.running and not runtime._stopping
+                        else 25
+                    ),
+                    "temp_ctrl_run_state": "run" if runtime.running and runtime.state != "N2Replace" else "stop",
+                }
+            )
             p["measurement"].update(
                 {
                     "burden_temp_deg_c": runtime.burden,

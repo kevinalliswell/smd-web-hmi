@@ -103,6 +103,7 @@ class MockRecipeRuntime:
             if self.burden < MOCK_SAFETY_PROFILE["safe_end_burden_c"]:
                 self.running = False
                 self.safe_complete = True
+                self.n2 = 0.0
                 self.state = "End"
             return
         value = {"furnace_c": self.furnace, "burden_c": self.burden, "elapsed_s": self.elapsed}[stage.exit.signal]
@@ -111,6 +112,7 @@ class MockRecipeRuntime:
             if self.stage_index == len(self.definition.stages) - 1:
                 self.running = False
                 self.safe_complete = True
+                self.n2 = 0.0
                 self.state = "End"
             else:
                 self.stage_index += 1

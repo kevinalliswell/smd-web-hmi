@@ -53,3 +53,19 @@ async def test_disconnected_simulator_keeps_running_and_sampling():
         assert second["temperature"]["furnace_pv_deg_c"] > first["temperature"]["furnace_pv_deg_c"]
     finally:
         await server.stop()
+
+
+async def test_extended_mock_does_not_accept_unimplemented_pause():
+    from tests.conftest import make_client
+
+    server = MockHostCommServer(port=0, extended_contract=True, status_interval=None)
+    await server.start()
+    client = await make_client(server)
+    await client.start()
+    try:
+        result = await client.send_command("pause_hold", {}, operator_id="test", role="operator")
+        assert result["result"] == "unsupported"
+        assert result["reason_code"] == "mock_action_not_implemented"
+    finally:
+        await client.close()
+        await server.stop()

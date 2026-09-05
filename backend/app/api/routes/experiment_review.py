@@ -6,7 +6,7 @@ import json
 import math
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy import select
 
 from app.api.deps import DbDep, UserDep, get_hostcomm_client, require_role
@@ -43,6 +43,11 @@ def _basis(row):
         value = None
     if not isinstance(value, dict):
         raise HTTPException(409, err("basis_invalid", "原记录结构损坏，请从备份核查，禁止覆盖"))
+    if any(key in value and not isinstance(value[key], dict) for key in ("sample_metadata", "report_context")):
+        raise HTTPException(409, err("basis_invalid", "旧条件记录结构损坏，请先核查备份"))
+    revision = value.get("metadata_revision", 0)
+    if type(revision) is not int or revision < 0:
+        raise HTTPException(409, err("basis_invalid", "旧条件记录版本损坏，请先核查备份"))
     return value
 
 
@@ -58,7 +63,11 @@ async def update_metadata(test_id: TestIdPath, body: MetadataRequest, user: User
             if value is not None:
                 incoming = value.model_dump(exclude_none=True, mode="json")
                 basis[key] = {**basis.get(key, {}), **incoming}
-        specimen = SpecimenMetadata.model_validate(basis.get("sample_metadata", {}))
+        try:
+            specimen = SpecimenMetadata.model_validate(basis.get("sample_metadata", {}))
+            ReportContext.model_validate(basis.get("report_context", {}))
+        except ValidationError as exc:
+            raise HTTPException(422, err("metadata_conflict", "合并后的实验条件不一致或数值无效")) from exc
         height = specimen.original_height
         if height is not None:
             if old_height is not None and not math.isclose(height, old_height, abs_tol=0.001):

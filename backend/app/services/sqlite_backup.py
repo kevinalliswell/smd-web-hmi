@@ -24,7 +24,8 @@ def backup_sqlite(source: Path, target: Path) -> None:
                 src.backup(dst)
                 if dst.execute("PRAGMA integrity_check").fetchone()[0] != "ok":
                     raise RuntimeError("备份数据库完整性检查失败")
-        with temporary.open("rb") as file:
+        # Windows _commit/fsync 要求可写文件句柄；rb 句柄会报 EBADF。
+        with temporary.open("r+b") as file:
             os.fsync(file.fileno())
         temporary.replace(target)
     finally:
