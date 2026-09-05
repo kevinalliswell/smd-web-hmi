@@ -18,7 +18,7 @@ def number(value: Any) -> float | None:
     try:
         result = float(value)
         return result if math.isfinite(result) else None
-    except (ValueError, TypeError):
+    except (ValueError, TypeError, OverflowError):
         return None
 
 
@@ -224,6 +224,8 @@ def evaluate_repeatability(metric: str, values: list[float]) -> dict[str, Any]:
         raise ValueError("仅接受 T10/T40/Ts/Td 的 2–4 次顺序测定")
     if any(number(value) is None for value in values):
         raise ValueError("重复性判定要求全部测定值有效且有限")
+    raw_values = values
+    values = [Decimal(str(value)) for value in values]
     a, b, c = tolerances[metric]
     delta = abs(values[0] - values[1])
     chosen = values[:2]
@@ -246,10 +248,10 @@ def evaluate_repeatability(metric: str, values: list[float]) -> dict[str, Any]:
         mean = int((sum(Decimal(str(v)) for v in chosen) / len(chosen)).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
     return {
         "metric": metric,
-        "values": values,
+        "values": raw_values,
         "result": mean,
         "additional_runs": max(0, needed),
-        "used_values": chosen if mean is not None else [],
+        "used_values": [float(value) for value in chosen] if mean is not None else [],
         "tolerances": {"A": a, "B": b, "C": c},
         "rules_version": ALGORITHM_VERSION,
     }

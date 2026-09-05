@@ -154,3 +154,29 @@ def test_no_drip_substitution_requires_observed_1580_and_detector_health():
     extra["measurement"]["first_drip_valid"] = False
     failed.ext_json = json.dumps(extra)
     assert metrics([point(600, 590, 30), failed], **kwargs)["td_drip_temp"] is None
+
+
+@pytest.mark.parametrize(
+    "values,expected,needed",
+    [
+        ([1000.1, 1010.1], 1005, 0),
+        ([1000.1, 1015.1, 1005.1], 1007, 0),
+        ([1000.1, 1016.1, 1020.1, 1005.1], 1010, 0),
+        ([1000, 1011, 1015, 1100], 1009, 0),
+        ([1000, 1011, 1020, 1005], 1009, 0),
+        ([1000, 1020, 1002], None, 1),
+        ([1000, 1020, 1002, 1004], 1007, 0),
+        ([1000, 1021, 1002], None, 1),
+    ],
+)
+def test_appendix_b_exact_decimal_boundaries_and_earliest_decision(values, expected, needed):
+    result = evaluate_repeatability("t10", values)
+    assert result["result"] == expected
+    assert result["additional_runs"] == needed
+
+
+def test_appendix_b_binary_float_error_does_not_force_an_extra_run():
+    assert abs(1024.13 - 1014.13) > 10  # IEEE-754 跨指数区间的具体反例。
+    result = evaluate_repeatability("t10", [1014.13, 1024.13])
+    assert result["result"] == 1019
+    assert result["additional_runs"] == 0
