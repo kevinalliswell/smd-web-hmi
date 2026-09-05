@@ -17,7 +17,7 @@ from typing import Any
 from app.core.logging import get_logger
 from app.hostcomm.client import HostCommNotConnectedError, HostCommTimeoutError
 from app.services import logging_service
-from app.services.command_service import CommandError, audit_action, check_parameter_crc, check_state
+from app.services.command_service import CommandError, audit_action, check_parameter_crc, check_permission, check_state
 from app.services.test_runtime import active_test
 
 logger = get_logger("service.parameter")
@@ -57,7 +57,8 @@ class ParameterService:
     ) -> dict[str, Any]:
         """下发参数并回读确认。任一步失败抛 CommandError，并写审计。"""
         # 1. 非运行态校验（安全红线 8）
-        current_state = self._cache.get_field("system.current_state")
+        check_permission("set_parameters", role)
+        current_state = self._cache.current_state
         check_state("set_parameters", current_state)
 
         # 2. 请求体 CRC 完整性校验（前端→后端传输完整性）

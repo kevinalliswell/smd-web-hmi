@@ -44,6 +44,10 @@ class _FakeCache:
     def __init__(self, state="Standby"):
         self._state = state
 
+    @property
+    def current_state(self):
+        return self.get_field("system.current_state")
+
     def get_field(self, path):
         if path == "system.current_state":
             return self._state

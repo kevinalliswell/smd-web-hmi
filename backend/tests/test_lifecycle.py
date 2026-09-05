@@ -50,6 +50,10 @@ class _FakeClient:
 
 
 class _FakeCache:
+    @property
+    def current_state(self):
+        return self.get_field("system.current_state")
+
     def get_field(self, path):
         return "Standby"  # 非运行态，允许 start
 

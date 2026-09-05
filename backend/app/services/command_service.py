@@ -23,7 +23,7 @@ from app.core.logging import get_logger
 from app.hostcomm.client import HostCommNotConnectedError, HostCommTimeoutError
 from app.hostcomm.protocol import now_iso
 from app.services import logging_service
-from app.services.state_policy import parameter_changes_allowed
+from app.services.state_policy import classify_state, parameter_changes_allowed
 from app.services.test_id import InvalidTestIdError, validate_test_id
 
 logger = get_logger("service.command")
@@ -108,6 +108,8 @@ def check_confirm_token(command: str, token: str | None) -> None:
 
 def check_state(command: str, current_state: str | None) -> None:
     """状态限制校验。set_parameters 仅在明确非运行态放行（T09）。"""
+    if command == "start_test" and classify_state(current_state) != "idle":
+        raise CommandError(400, "state_not_allowed", "启动需要新鲜的待机状态")
     if command == "set_parameters" and not parameter_changes_allowed(current_state):
         raise CommandError(400, "state_not_allowed", f"当前状态({current_state or 'unknown'})不允许下发参数")
 
@@ -192,8 +194,19 @@ class CommandService:
 
         # 1. 权限校验
         check_permission(command, role)
-        # 2. 状态校验
-        current_state = self._cache.get_field("system.current_state")
+        if command == "set_parameters":
+            from app.services.parameter_service import ParameterService
+
+            return await ParameterService(self._client, self._cache).set_parameters(
+                params.get("values", {}),
+                params.get("param_crc"),
+                operator_id=operator_id,
+                role=role,
+                client_ip=client_ip,
+                db_session=db_session,
+            )
+        # 2. 状态校验（StatusCache 对缺失/过期/冲突状态返回 None）
+        current_state = self._cache.current_state
         check_state(command, current_state)
         reserved_test_id = await self._reserve_start(command, params, db_session)
         try:
