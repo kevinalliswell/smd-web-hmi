@@ -122,6 +122,21 @@ jobs:
       - name: Freeze service, shell and updater; verify Fixed Runtime; compile NSIS
         shell: pwsh
         run: ./scripts/release/build-windows.ps1
+      - name: Install NSIS and verify the isolated LocalService backend
+        shell: pwsh
+        run: |
+          $Version = (& python scripts/release/metadata.py).Trim()
+          if ($LASTEXITCODE -ne 0) { throw 'Source version mismatch' }
+          ./scripts/release/smoke-windows.ps1 -Installer "artifacts/SmdHmi-$Version-windows-x64.exe" -Manifest artifacts/manifest.json -Evidence artifacts/windows-install-smoke.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: windows-package-diagnostics
+          path: |
+            artifacts/windows-install-smoke.json
+            artifacts/freeze-work/**/warn-*.txt
+          if-no-files-found: ignore
+          retention-days: 14
       - uses: actions/upload-artifact@v4
         with:
           name: windows-offline-installer
