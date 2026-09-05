@@ -1,57 +1,50 @@
-# Commercial Readiness Closure Plan
+# 全面优化路线图
 
-## Objective
+批准边界：Windows10/11 x64独立桌面安装包、本机和局域网Web、离线可用、人工离线升级；STM32固件协同修改，板端执行实时工艺和联锁；标准实验与受限阶段式非标实验。保留主线历史和既有标签。审查基线为`dev@855c84d`，不是旧main。
 
-Turn the latest `dev` baseline into a release candidate that is suitable for commercial deployment. The release branch targets `dev`; `main` remains untouched. The only planned acceptance item left to the owner is real Windows hardware/firmware verification.
+## 决策与交付方式
 
-## Release target
+保留Vue/FastAPI/SQLAlchemy/SQLite。每炉单一后台/网关/写入协调器，所有界面复用API。目标Python3.13与Node24；桌面为pywebview、固定WebView2、PyInstaller onedir、NSIS和Windows Service。程序/运行时按版本隔离，ProgramData保存数据，升级用持久事务和完整回滚。依据见[ADR索引](../docs/decisions/README.md)。
 
-- Working branch: `release/commercial-readiness`
-- Integration target: `dev`
-- Candidate version: `0.3.0-rc.1`
-- Final tag: created only after owner hardware sign-off
+需求由[国标映射](../docs/experiment-spec.md)与[架构/接口](../docs/上位机软件开发规格说明书.md)维护；实现进度只在[任务清单](todo.md)更新；证据格式见[验收规范](../docs/verification.md)。不在多份文档复制测试数和“全部完成”的阶段结论。
 
-## Phase 1 — Security and session integrity
+## 里程碑
 
-1. Add regression tests for redacted validation errors, security headers, production API-doc policy, and request correlation.
-2. Raise PBKDF2-HMAC-SHA256 work factor to the current project baseline and transparently rehash legacy passwords after successful login.
-3. Add a per-user token version migration; validate current account state on authenticated REST and WebSocket requests; revoke outstanding tokens on logout, password change/reset, role change, and deactivation.
-4. Replace WebSocket query-string JWT authentication with an initial authentication message, validate Origin, cap message size/rate, enforce idle timeout, and revalidate the account session.
-5. Move browser tokens from persistent local storage to session storage and wait for WebSocket authentication acknowledgement before reporting connectivity.
+| 阶段 | 主要交付物 | 依赖 | 退出条件 | 责任角色 |
+|---|---|---|---|---|
+| M0 文档基线 | 入口、纠错、国标映射、外部依赖、ADR、计划和待办 | 原PDF/代码审查 | 重要要求有来源；现状/目标/证据可分；本地链接检查通过 | 项目/软件/试验负责人 |
+| M1 仓库与质量 | 可恢复bundle、dev祖先整合、UI审查、主线策略、运行时/CI/类型基线 | M0 | 有效改动保留；CI通过；重复分支按证据清理 | 仓库/前端/发布负责人 |
+| M2 控制与数据 | 统一状态、参数闭环、操作事务、队列、报警、采集和生命周期恢复 | M0；契约项Q1—7/Q10 | 控制/断线/超时/重启/过载回归通过；未知结果不误报 | 后端/固件负责人 |
+| M3 实验能力 | 装样、H600、国标指标、重复性、标准及非标配方、可追溯报告 | M2；Q4/5/8/9/11/12/15 | 独立人工数据一致；已冻结契约模拟器通过；歧义明确隔离 | 试验/算法/前后端/固件负责人 |
+| M4 双端交付 | 桌面薄壳、服务、离线安装、HTTPS、事务升级与全环境回滚 | M1；维护/操作锁依赖M2 | 干净断网Windows双端安装、运行、升级/断电恢复通过 | Windows/发布/现场负责人 |
+| M5 真机发布 | 冻结接口、联锁、完整实验、24h及恢复验收、正式发布证据 | M2—M4；全部相关外部依赖 | 指定软硬件组合完成实测及责任人签字 | 固件/硬件/试验/发布负责人 |
 
-## Phase 2 — Business data and reporting
+M0后并行开展M1仓库整理、M2控制可靠性和M4打包验证。M3的纯算法可用人工黄金数据并行开发，设备启用必须等待能力/安全契约。阶段有缺口时标明“实现完成待验收”或“外部阻塞”，不得将整个项目标为完成。
 
-1. Persist original specimen height and start-test metadata in `TestSession`; collect them at test start and keep device command payloads protocol-safe.
-2. Make reports and analytics use stored specimen height, with an explicit compatibility override for legacy data.
-3. Move analytics aggregation to SQL and add indexes for test, alarm, audit, parameter snapshot, and report access paths.
-4. Implement honest HTML, PDF, and XLSX report exports, MIME-safe downloads, and format-selection tests/UI.
-5. Add pagination/bounds where operational lists can grow without limit.
+## 依赖和实施顺序
 
-## Phase 3 — Production operations
+```mermaid
+flowchart LR
+  M0[文档与契约基线] --> M1[仓库和质量]
+  M0 --> M2[控制与数据可靠性]
+  M1 --> M4[双端交付]
+  M2 --> M3[实验与报告]
+  M2 --> M4
+  M3 --> M5[真机发布]
+  M4 --> M5
+  Contract[固件/实验判定/安全资料] --> M2
+  Contract --> M3
+  Contract --> M5
+```
 
-1. Fail closed in production when the database schema is not at the Alembic head; expose meaningful liveness/readiness checks for database, schema, storage, host communication, and backup state.
-2. Add SQLite online backup with retention and export cleanup, including an operator-triggerable path and observable status.
-3. Complete mock-host `disconnect_after` fault injection and its deterministic tests.
-4. Use production JSON logs with request IDs while retaining readable development logs.
-5. Harden Windows install/upgrade/start scripts, add unattended health/package smoke checks and scheduled-task registration, and exercise the package path in CI.
+先完成可复现缺陷和故障路径，再扩展配方/桌面能力。每个任务交付可运行的纵向功能和测试，独立提交；共享数据库变更顺序执行，已发布迁移只追加。发生契约变化先同步类型/迁移/Mock，再集成调用方。
 
-## Phase 4 — Release closure
+## 发布与维护标准
 
-1. Synchronize backend/frontend versioning at `0.3.0-rc.1` and update the changelog.
-2. Refresh README, D4 readiness, release/maintenance guide, interface checklist, and a concise owner hardware sign-off checklist.
-3. Remove or explicitly retain audited dead compatibility modules after owner direction.
-4. Close every software-only readiness item; keep supplier protocol confirmation and physical-machine measurements explicitly marked as external acceptance work.
+沿用0.3.0候选序列，正式版前使用RC并列出未验证项。PR/tag共用必要检查；版本、包清单、tag与提交一致。每次发布记录数据库、协议、固件、硬件与运行时兼容组合；离线包包含组件清单、hash、来源验证和恢复说明。
 
-## Verification gates
+软件/模拟器/Windows/真机四层分别验收。持续运行至少24h、按冻结最高采样率；窗口关闭不丢采集，设备离线不妨碍历史查询，控制状态未知时不放行新的有副作用请求。日常维护关注数据完整性、备份恢复、队列/磁盘及离线运行时更新。
 
-- Backend: full tests, coverage at least 80%, Black, isort, Ruff/static checks where configured.
-- Frontend: lint, unit tests, production build, dependency audit.
-- Data: migrate an empty database to head and verify upgrade from the prior head.
-- Security: Python and npm dependency audits; auth/session regression suite.
-- Runtime: browser smoke, responsive/accessibility, console/network checks.
-- Packaging: Windows/offline package smoke and release workflow green.
-- Delivery: code review, pull request into `dev`, CI green, merge into `dev`; no `main` mutation and no final release tag before hardware sign-off.
+## 外部依赖与默认处理
 
-## Rollback strategy
-
-Each phase is committed independently. Schema changes are additive where possible; operational scripts create verified backups before mutation. The release branch can be abandoned without changing `dev`, and the final merge can be reverted phase-by-phase if a gate fails.
+[Q1—Q15](../docs/待确认事项与接口对齐清单.md)定义交付者和关闭依据。未提供真实Windows、STM32、电气图或标准歧义确认时，继续完成内部软件与模拟测试；对应硬件/符合性验收保持未完成。不能在Mock中增添字段后反向宣布固件契约已冻结，也不能把算法默认口径写成国标原文。
