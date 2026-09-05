@@ -47,9 +47,61 @@ class WindowsPlatform:
         try:
             self._service(lambda service: ws.ControlService(service, ws.SERVICE_CONTROL_STOP), ws.SERVICE_STOP)
         except pywintypes.error as exc:
-            if exc.winerror != 1062:  # ERROR_SERVICE_NOT_ACTIVE
+            pending = (
+                exc.winerror == 1061
+                and self._service(ws.QueryServiceStatus, ws.SERVICE_QUERY_STATUS)[1] == ws.SERVICE_STOP_PENDING
+            )
+            if exc.winerror != 1062 and not pending:  # ERROR_SERVICE_NOT_ACTIVE
                 raise
         self._wait(ws.SERVICE_STOPPED)
+
+    def remove_service(self):
+        """DeleteService只标记删除；确认记录消失后才能完成卸载。"""
+        import pywintypes
+        import win32service as ws
+
+        try:
+            self.stop()
+        except pywintypes.error as exc:
+            if exc.winerror == 1060:  # ERROR_SERVICE_DOES_NOT_EXIST
+                return
+            if exc.winerror != 1072:  # ERROR_SERVICE_MARKED_FOR_DELETE
+                raise
+        try:
+            self._service(ws.DeleteService, 0x00010000)  # DELETE access right
+        except pywintypes.error as exc:
+            if exc.winerror == 1060:
+                return
+            if exc.winerror != 1072:
+                raise
+        deadline = time.monotonic() + self.timeout
+        while time.monotonic() < deadline:
+            try:
+                self._service(ws.QueryServiceStatus, ws.SERVICE_QUERY_STATUS)
+            except pywintypes.error as exc:
+                if exc.winerror == 1060:
+                    return
+                if exc.winerror != 1072:
+                    raise
+            time.sleep(0.25)
+        raise RuntimeError("服务仍被标记删除或持有句柄，请关闭服务管理器后重试卸载")
+
+    def remove_recovery_task(self):
+        """用HRESULT区分任务已删除和权限/调度器故障，不解析本地化命令输出。"""
+        import pywintypes
+        import win32com.client
+
+        scheduler = win32com.client.Dispatch("Schedule.Service")
+        scheduler.Connect()
+        folder = scheduler.GetFolder("\\")
+        try:
+            folder.DeleteTask("SmdHmi-Recover", 0)
+        except pywintypes.com_error as exc:
+            codes = [exc.hresult]
+            if exc.excepinfo and exc.excepinfo[5] is not None:
+                codes.append(exc.excepinfo[5])
+            if not any(code & 0xFFFFFFFF == 0x80070002 for code in codes):  # ERROR_FILE_NOT_FOUND
+                raise
 
     def configure(self, version_dir: Path):
         import win32service as ws

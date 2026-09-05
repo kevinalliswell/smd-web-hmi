@@ -58,6 +58,7 @@ Section "SMD HMI" SEC_MAIN
   CreateShortCut "$SMPROGRAMS\SMD HMI\SMD HMI.lnk" "$INSTDIR\versions\${VERSION}\SmdDesktop\SmdDesktop.exe"
   WriteRegStr HKLM "Software\SmdHmi" "InstallDir" "$INSTDIR"
   WriteRegStr HKLM "Software\SmdHmi" "Version" "${VERSION}"
+  WriteRegDWORD HKLM "Software\SmdHmi" "UninstallBackendComplete" 0
   WriteUninstaller "$INSTDIR\Uninstall.exe"
   WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\SmdHmi" "DisplayName" "SMD HMI"
   WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\SmdHmi" "DisplayVersion" "${VERSION}"
@@ -68,17 +69,36 @@ SectionEnd
 Section "Uninstall"
   SetRegView 64
   SetShellVarContext all
-  ReadRegStr $1 HKLM "Software\SmdHmi" "Version"
-  ExecWait '"$INSTDIR\versions\$1\SmdUpdate\SmdUpdate.exe" --uninstall --install "$INSTDIR"' $0
-  ${If} $0 != 0
-    MessageBox MB_ICONSTOP "卸载未完成。请先在系统维护中准备当前版本，确认没有未闭合实验。"
-    SetErrorLevel $0
+  ReadRegDWORD $2 HKLM "Software\SmdHmi" "UninstallBackendComplete"
+  ${If} $2 != 1
+    ReadRegStr $1 HKLM "Software\SmdHmi" "Version"
+    ExecWait '"$INSTDIR\versions\$1\SmdUpdate\SmdUpdate.exe" --uninstall --install "$INSTDIR"' $0
+    ${If} $0 != 0
+      MessageBox MB_ICONSTOP "卸载未完成。请先在系统维护中准备当前版本，确认没有未闭合实验；中断后再次卸载可继续恢复。"
+      SetErrorLevel $0
+      Abort
+    ${EndIf}
+    # 保留完成标记，版本文件删除中断后不再依赖可能已删除的更新器。
+    ClearErrors
+    WriteRegDWORD HKLM "Software\SmdHmi" "UninstallBackendComplete" 1
+    ${If} ${Errors}
+      MessageBox MB_ICONSTOP "无法保存卸载恢复标记，保留程序文件，请修复注册表访问后重试。"
+      SetErrorLevel 1
+      Abort
+    ${EndIf}
+  ${EndIf}
+  ClearErrors
+  IfFileExists "$INSTDIR\versions\." 0 versions_removed
+  RMDir /r "$INSTDIR\versions"
+  ${If} ${Errors}
+    MessageBox MB_ICONSTOP "后台已安全卸载，程序文件仍被占用。请关闭桌面窗口后再次卸载；实验数据保持不变。"
+    SetErrorLevel 1
     Abort
   ${EndIf}
+  versions_removed:
   RMDir /r "$SMPROGRAMS\SMD HMI"
   DeleteRegKey HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\SmdHmi"
   DeleteRegKey HKLM "Software\SmdHmi"
-  RMDir /r "$INSTDIR\versions"
   Delete "$INSTDIR\Uninstall.exe"
   RMDir "$INSTDIR"
 SectionEnd

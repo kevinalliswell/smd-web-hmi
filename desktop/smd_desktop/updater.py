@@ -16,6 +16,7 @@ from .bundle import verify_bundle
 from .runtime import data_root
 from .single_instance import single_instance
 from .storage import atomic_json, atomic_text
+from .uninstall import UninstallTransaction
 from .upgrade import UpgradeTransaction
 from .windows_platform import WindowsPlatform
 
@@ -135,6 +136,12 @@ def run():
     with single_instance("SmdHmi.Updater", data / "updater.lock"):
         platform = WindowsPlatform(data)
         transaction = UpgradeTransaction(args.install, data, platform)
+        uninstall = UninstallTransaction(args.install, data, platform)
+        if uninstall.journal_path.exists():
+            uninstall.apply()  # 卸载不可交给升级恢复，否则会重新启动或配置已删除的服务。
+            if args.uninstall or args.recover:
+                return
+            raise RuntimeError("已完成卸载，保留数据重新安装须先核对现场配置")
         transaction.recover()
         if args.recover:
             initial = data / "updates/install.json"
@@ -145,17 +152,7 @@ def run():
                 platform.start()
             return
         if args.uninstall:
-            current = json.loads((data / "installation.json").read_text(encoding="utf-8"))
-            gate = json.loads((data / "maintenance.json").read_text(encoding="utf-8"))
-            if gate.get("target_version") != current["version"]:
-                raise RuntimeError("卸载前先在系统维护中准备当前版本，要求无未闭合实验")
-            platform.request("/api/system/maintenance/claim", token=gate["token"])
-            platform.stop()
-            subprocess.run(["schtasks.exe", "/Delete", "/TN", "SmdHmi-Recover", "/F"], check=True)
-            subprocess.run(["sc.exe", "delete", "SmdHmi"], check=True)
-            # 数据与备份保留，禁止卸载程序递归删除 ProgramData。
-            (data / "installation.json").replace(data / "uninstalled.json")
-            (data / "maintenance.json").unlink(missing_ok=True)
+            uninstall.apply()
             return
         if args.package is None:
             raise RuntimeError("缺少已验证离线包")
