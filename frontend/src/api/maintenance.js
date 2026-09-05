@@ -7,7 +7,10 @@ function publicState(response) {
 }
 
 export const fetchMaintenance = () => apiClient.get('/api/system/maintenance').then(publicState)
-export const prepareMaintenance = (targetVersion) => apiClient.post('/api/system/maintenance/prepare', {
-  target_version: targetVersion,
-}).then(publicState)
+export const prepareMaintenance = (targetVersion) =>
+  apiClient
+    .post('/api/system/maintenance/prepare', {
+      target_version: targetVersion,
+    })
+    .then(publicState)
 export const cancelMaintenance = () => apiClient.delete('/api/system/maintenance').then(publicState)

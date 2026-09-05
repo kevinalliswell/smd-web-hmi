@@ -6,6 +6,12 @@ export function apiErrorDetails(error) {
 export function apiErrorMessage(error, fallback = '请求失败') {
   const detail = apiErrorDetails(error)
   if (typeof detail === 'string') return detail
-  if (Array.isArray(detail)) return detail.map((item) => `${item.location || item.loc?.slice(1).join('.') || '输入'}：${item.message || item.msg || '输入无效'}`).join('；')
+  if (Array.isArray(detail))
+    return detail
+      .map(
+        (item) =>
+          `${item.location || item.loc?.slice(1).join('.') || '输入'}：${item.message || item.msg || '输入无效'}`,
+      )
+      .join('；')
   return detail?.message || error?.message || fallback
 }

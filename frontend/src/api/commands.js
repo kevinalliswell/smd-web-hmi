@@ -8,7 +8,11 @@ import { apiErrorDetails } from './errors'
 const STORAGE_KEY = 'smd_pending_operations'
 
 function pendingOperations() {
-  try { return JSON.parse(sessionStorage.getItem(STORAGE_KEY) || '{}') } catch { return {} }
+  try {
+    return JSON.parse(sessionStorage.getItem(STORAGE_KEY) || '{}')
+  } catch {
+    return {}
+  }
 }
 
 function savePending(entries) {
@@ -18,7 +22,12 @@ function savePending(entries) {
 
 function stable(value) {
   if (Array.isArray(value)) return value.map(stable)
-  if (value && typeof value === 'object') return Object.fromEntries(Object.keys(value).sort().map((key) => [key, stable(value[key])]))
+  if (value && typeof value === 'object')
+    return Object.fromEntries(
+      Object.keys(value)
+        .sort()
+        .map((key) => [key, stable(value[key])]),
+    )
   return value
 }
 
@@ -28,7 +37,9 @@ function operationKey(command, params) {
 
 function unknownOperation(operationId) {
   /** @type {CommandFailure} */
-  const error = new Error(`操作结果未知，请查询结果；不要重新创建相同操作。操作编号：${operationId}`)
+  const error = new Error(
+    `操作结果未知，请查询结果；不要重新创建相同操作。操作编号：${operationId}`,
+  )
   error.operationId = operationId
   error.outcomeUnknown = true
   return error
@@ -37,7 +48,8 @@ function unknownOperation(operationId) {
 /** @param {OperationResult} result */
 function finishOperation(result, key, operationId, command) {
   const status = result.operation_status || result.result
-  if (['set_parameters', 'activate_recipe'].includes(command) && status === 'accepted') throw unknownOperation(operationId)
+  if (['set_parameters', 'activate_recipe'].includes(command) && status === 'accepted')
+    throw unknownOperation(operationId)
   if (!['accepted', 'verified', 'rejected'].includes(status)) throw unknownOperation(operationId)
   const entries = pendingOperations()
   delete entries[key]
@@ -58,11 +70,20 @@ export function requestConfirmToken(command) {
 
 /** @param {string} operationId @returns {Promise<OperationResult>} */
 export async function fetchOperation(operationId) {
-  const result = (await apiClient.get(`/api/commands/operations/${encodeURIComponent(operationId)}`)).data.data
+  const result = (
+    await apiClient.get(`/api/commands/operations/${encodeURIComponent(operationId)}`)
+  ).data.data
   if (['accepted', 'verified', 'rejected'].includes(result.operation_status)) {
     const entries = pendingOperations()
     for (const [key, entry] of Object.entries(entries)) {
-      if (entry.operation_id === operationId && !(['set_parameters', 'activate_recipe'].includes(entry.command) && result.operation_status === 'accepted')) delete entries[key]
+      if (
+        entry.operation_id === operationId &&
+        !(
+          ['set_parameters', 'activate_recipe'].includes(entry.command) &&
+          result.operation_status === 'accepted'
+        )
+      )
+        delete entries[key]
     }
     savePending(entries)
   }
@@ -84,7 +105,9 @@ export async function sendOperation(command, params, transmit) {
   const operationId = existing?.operation_id || crypto.randomUUID()
   if (existing) {
     let known
-    try { known = await fetchOperation(operationId) } catch (error) {
+    try {
+      known = await fetchOperation(operationId)
+    } catch (error) {
       if (error.response?.status !== 404) throw unknownOperation(operationId)
     }
     if (known) return finishOperation(known, key, operationId, command)
@@ -97,7 +120,10 @@ export async function sendOperation(command, params, transmit) {
   } catch (error) {
     const status = error.response?.status
     const detail = apiErrorDetails(error)
-    if (error.code === 'CLIENT_VERSION_MISMATCH' || (status >= 400 && status < 500 && !detail?.operation_id)) {
+    if (
+      error.code === 'CLIENT_VERSION_MISMATCH' ||
+      (status >= 400 && status < 500 && !detail?.operation_id)
+    ) {
       const current = pendingOperations()
       delete current[key]
       savePending(current)
@@ -105,7 +131,9 @@ export async function sendOperation(command, params, transmit) {
     }
     try {
       response = { data: { data: await fetchOperation(operationId) } }
-    } catch { throw unknownOperation(operationId) }
+    } catch {
+      throw unknownOperation(operationId)
+    }
   }
   return finishOperation(response.data.data, key, operationId, command)
 }

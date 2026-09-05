@@ -9,8 +9,17 @@ export function observeBackendVersion(value) {
   if (value !== frontendVersion) appCompatibility.mismatch = true
 }
 export function blocksVersionedWrite(config) {
-  if (!appCompatibility.mismatch || ['get', 'head', 'options'].includes((config.method || 'get').toLowerCase())) return false
+  if (
+    !appCompatibility.mismatch ||
+    ['get', 'head', 'options'].includes((config.method || 'get').toLowerCase())
+  )
+    return false
   const path = (config.url || '').split('?')[0]
-  if (path === '/api/commands' || path === '/api/commands/confirm-intent') return config.data?.command !== 'stop_test'
-  return path.startsWith('/api/parameters') || path.startsWith('/api/control') || (path.startsWith('/api/recipes') && !path.endsWith('/validate'))
+  if (path === '/api/commands' || path === '/api/commands/confirm-intent')
+    return config.data?.command !== 'stop_test'
+  return (
+    path.startsWith('/api/parameters') ||
+    path.startsWith('/api/control') ||
+    (path.startsWith('/api/recipes') && !path.endsWith('/validate'))
+  )
 }

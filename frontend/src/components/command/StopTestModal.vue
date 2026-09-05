@@ -30,7 +30,8 @@ async function onConfirm() {
     emit('close')
   } catch (e) {
     unknownOperationId.value = e.outcomeUnknown ? e.operationId : null
-    error.value = e.response?.data?.detail?.message || e.response?.data?.message || e.message || '停止失败'
+    error.value =
+      e.response?.data?.detail?.message || e.response?.data?.message || e.message || '停止失败'
   } finally {
     submitting.value = false
   }
@@ -45,21 +46,40 @@ async function onConfirm() {
     busy-text="下发中…"
     danger
     :busy="submitting"
-      :confirm-disabled="Boolean(unknownOperationId)"
+    :confirm-disabled="Boolean(unknownOperationId)"
     :close-on-confirm="false"
     @confirm="onConfirm"
     @cancel="emit('close')"
   >
     <div class="co-warn">
-      受控停止将请求控制板进入安全处置/吹扫流程，不会绕过任何安全处置步骤。
-      请确认现场具备停止条件。
+      受控停止将请求控制板进入安全处置/吹扫流程，不会绕过任何安全处置步骤。 请确认现场具备停止条件。
     </div>
-    <div v-if="error" class="err">{{ error }}</div>
-      <OperationResult v-if="unknownOperationId" :operation-id="unknownOperationId" @resolved="onOperationResolved" />
+    <div
+      v-if="error"
+      class="err"
+    >
+      {{ error }}
+    </div>
+    <OperationResult
+      v-if="unknownOperationId"
+      :operation-id="unknownOperationId"
+      @resolved="onOperationResolved"
+    />
   </ConfirmDialog>
 </template>
 
 <style scoped>
-.co-warn { background: var(--red-dim); border: 1px solid var(--red); color: var(--danger-text); border-radius: 6px; padding: 10px; font-size: 12px; line-height: 1.6; }
-.err { color: var(--danger-text); font-size: 12px; }
+.co-warn {
+  background: var(--red-dim);
+  border: 1px solid var(--red);
+  color: var(--danger-text);
+  border-radius: 6px;
+  padding: 10px;
+  font-size: 12px;
+  line-height: 1.6;
+}
+.err {
+  color: var(--danger-text);
+  font-size: 12px;
+}
 </style>

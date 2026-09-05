@@ -29,7 +29,8 @@ async function onConfirm() {
     emit('close')
   } catch (e) {
     unknownOperationId.value = e.outcomeUnknown ? e.operationId : null
-    error.value = e.response?.data?.detail?.message || e.response?.data?.message || e.message || '去皮失败'
+    error.value =
+      e.response?.data?.detail?.message || e.response?.data?.message || e.message || '去皮失败'
   } finally {
     submitting.value = false
   }
@@ -44,17 +45,31 @@ async function onConfirm() {
     busy-text="下发中…"
     danger
     :busy="submitting"
-      :confirm-disabled="Boolean(unknownOperationId)"
+    :confirm-disabled="Boolean(unknownOperationId)"
     :close-on-confirm="false"
     @confirm="onConfirm"
     @cancel="emit('close')"
   >
-    <p class="muted">请确认承滴坩埚处于空载状态后再去皮。去皮请求将发送至控制板，由其在允许阶段执行。</p>
-    <div v-if="error" class="err">{{ error }}</div>
-      <OperationResult v-if="unknownOperationId" :operation-id="unknownOperationId" @resolved="onOperationResolved" />
+    <p class="muted">
+      请确认承滴坩埚处于空载状态后再去皮。去皮请求将发送至控制板，由其在允许阶段执行。
+    </p>
+    <div
+      v-if="error"
+      class="err"
+    >
+      {{ error }}
+    </div>
+    <OperationResult
+      v-if="unknownOperationId"
+      :operation-id="unknownOperationId"
+      @resolved="onOperationResolved"
+    />
   </ConfirmDialog>
 </template>
 
 <style scoped>
-.err { color: var(--danger-text); font-size: 12px; }
+.err {
+  color: var(--danger-text);
+  font-size: 12px;
+}
 </style>
