@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { fetchTests, fetchTestSamples } from '@/api/tests'
 import { compareTests } from '@/api/analytics'
+import RepeatabilityPanel from '@/components/analytics/RepeatabilityPanel.vue'
 import OverlayChart from '@/components/charts/OverlayChart.vue'
 
 const tests = ref([])
@@ -110,6 +111,7 @@ onMounted(async () => {
 
       <!-- 结果 -->
       <div class="results">
+        <RepeatabilityPanel :test-ids="[...selected]" @reorder="selected = new Set($event)" />
         <div class="card">
           <div class="card-head">
             <div class="card-title">叠加曲线</div>
@@ -153,7 +155,7 @@ onMounted(async () => {
 .page-title { font-size: 18px; font-weight: 700; }
 .banner { background: var(--red-dim); border: 1px solid var(--red); color: var(--danger-text); border-radius: 6px; padding: 8px 12px; font-size: 12px; }
 .layout { display: grid; grid-template-columns: 260px 1fr; gap: 16px; align-items: start; }
-.results { display: flex; flex-direction: column; gap: 16px; }
+.results { min-width: 0; display: flex; flex-direction: column; gap: 16px; }
 .card-title { font-weight: 700; margin-bottom: 10px; }
 .card-head { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
 .card-head .card-title { margin-bottom: 0; }

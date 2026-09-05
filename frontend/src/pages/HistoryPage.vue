@@ -12,10 +12,12 @@ import { generateReport, reportDownloadUrl } from '@/api/reports'
 import { exportLogs, logDownloadUrl } from '@/api/logs'
 import { downloadFile } from '@/utils/download'
 import { formatDateTime } from '@/utils/dateTime'
+import ExperimentMetadataEditor from '@/components/history/ExperimentMetadataEditor.vue'
+import IncompleteReviewPanel from '@/components/history/IncompleteReviewPanel.vue'
 import HistoryChart from '@/components/charts/HistoryChart.vue'
 import AlarmTable from '@/components/alarms/AlarmTable.vue'
 
-const { canOperate } = useRole()
+const { canOperate, canConfigure } = useRole()
 
 const tests = ref([])
 const page = ref(1)
@@ -28,22 +30,28 @@ const processing = ref(false)
 const banner = ref(null)
 
 async function loadTests() {
-  tests.value = (await fetchTests(page.value, 20)) || []
+  try { tests.value = (await fetchTests(page.value, 20)) || [] }
+  catch (error) { banner.value = { type: 'err', text: '试验列表加载失败：' + error.message } }
 }
 
+let detailGeneration = 0
 async function openTest(t) {
+  const current = ++detailGeneration
   loading.value = true
   banner.value = null
   try {
-    selected.value = await fetchTestDetail(t.test_id)
-    const s = await fetchTestSamples(t.test_id, 1000)
-    samples.value = s?.points || []
-    events.value = (await fetchTestEvents(t.test_id)) || []
-    alarms.value = (await fetchTestAlarms(t.test_id)) || []
+    const [detail, sampleData, eventData, alarmData] = await Promise.all([
+      fetchTestDetail(t.test_id), fetchTestSamples(t.test_id, 1000), fetchTestEvents(t.test_id), fetchTestAlarms(t.test_id),
+    ])
+    if (current !== detailGeneration) return
+    selected.value = detail
+    samples.value = sampleData?.points || []
+    events.value = eventData || []
+    alarms.value = alarmData || []
   } catch (e) {
-    banner.value = { type: 'err', text: '加载失败：' + (e.response?.data?.message || e.message) }
+    if (current === detailGeneration) banner.value = { type: 'err', text: '加载失败：' + (e.response?.data?.message || e.message) }
   } finally {
-    loading.value = false
+    if (current === detailGeneration) loading.value = false
   }
 }
 
@@ -114,7 +122,7 @@ onMounted(loadTests)
               :class="{ sel: selected && selected.test_id === t.test_id }"
               @click="openTest(t)"
             >
-              <td class="mono">{{ t.test_id }}</td>
+              <td><button class="test-link mono" @click.stop="openTest(t)">{{ t.test_id }}</button></td>
               <td>{{ t.operator_id }}</td>
               <td class="small mono">{{ formatDateTime(t.start_time) }}</td>
               <td>
@@ -132,7 +140,8 @@ onMounted(loadTests)
       </div>
 
       <!-- 详情 -->
-      <div class="detail">
+      <div class="detail" :aria-busy="loading">
+        <p v-if="loading" role="status" class="muted">正在读取实验记录…</p>
         <div v-if="!selected" class="card muted">从左侧选择一个试验查看详情与曲线回放。</div>
         <template v-else>
           <div class="card">
@@ -149,11 +158,18 @@ onMounted(loadTests)
               <div><span class="k">开始</span>{{ formatDateTime(selected.start_time) }}</div>
               <div><span class="k">结束</span>{{ selected.end_time ? formatDateTime(selected.end_time) : '进行中' }}</div>
               <div><span class="k">结束原因</span>{{ selected.end_reason || '—' }}</div>
+              <div><span class="k">阶段</span>{{ selected.phase || '未知' }}</div>
+              <div><span class="k">实验模式</span>{{ selected.mode === 'standard' ? '标准' : selected.mode === 'custom' ? '非标' : '未知' }}</div>
+              <div><span class="k">数据完整性</span>{{ selected.data_integrity || '未知' }}</div>
+              <div><span class="k">测定完成</span>{{ selected.measurement_completed_at ? formatDateTime(selected.measurement_completed_at) : '未确认' }}</div>
+              <div><span class="k">配方版本</span>{{ selected.recipe_snapshot?.version || '未知' }}</div>
               <div><span class="k">采样点</span>{{ selected.sample_count }}</div>
               <div><span class="k">报警数</span>{{ selected.alarm_count }}</div>
             </div>
           </div>
 
+          <ExperimentMetadataEditor :read-only="!canOperate()" :key="selected.test_id" :test="selected" @updated="openTest(selected)" />
+          <IncompleteReviewPanel v-if="canConfigure()" :key="selected.test_id" :test="selected" @updated="openTest(selected); loadTests()" />
           <div class="card">
             <div class="card-title">曲线回放</div>
             <HistoryChart :points="samples" />
@@ -194,7 +210,8 @@ onMounted(loadTests)
 .banner.err { background: var(--red-dim); border: 1px solid var(--red); color: var(--danger-text); }
 .banner.info { background: var(--accent-dim); border: 1px solid var(--accent); color: var(--accent); }
 .layout { display: grid; grid-template-columns: 360px 1fr; gap: 16px; align-items: start; }
-.detail { display: flex; flex-direction: column; gap: 16px; }
+.test-link { padding: 0; border: 0; color: var(--accent); background: transparent; text-align: left; overflow-wrap: anywhere; }
+.detail { min-width: 0; display: flex; flex-direction: column; gap: 16px; }
 .card-title { font-weight: 700; margin-bottom: 10px; }
 .card-head { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
 .card-head .card-title { margin-bottom: 0; }
