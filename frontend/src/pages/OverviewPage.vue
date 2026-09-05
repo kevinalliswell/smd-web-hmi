@@ -9,6 +9,7 @@ import StatusBadge from '@/components/shared/StatusBadge.vue'
 import RealtimeChart from '@/components/charts/RealtimeChart.vue'
 import StartTestModal from '@/components/command/StartTestModal.vue'
 import StopTestModal from '@/components/command/StopTestModal.vue'
+import ControlOwnershipPanel from '@/components/system/ControlOwnershipPanel.vue'
 
 const device = useDeviceStore()
 const { snapshot, currentState, isRunning, canStartTest, canStopTest } = storeToRefs(device)
@@ -116,6 +117,8 @@ onMounted(async () => {
         <p v-else class="ops-hint muted">当前角色（仅查看）无操作权限。</p>
       </div>
     </div>
+
+    <ControlOwnershipPanel v-if="canOperate()" />
 
     <StartTestModal v-if="showStart" @close="showStart = false" />
     <StopTestModal v-if="showStop" @close="showStop = false" />
