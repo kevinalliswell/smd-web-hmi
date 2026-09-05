@@ -4,13 +4,13 @@
 
 ## 项目状态
 
-当前处于开发与联调阶段。`dev@855c84d / 0.3.0-rc.1` 是整改前基线，本轮候选版本已推进到 `0.3.0-rc.2`（尚未创建发布标签），不能代表整套设备已通过国标、Windows 或真机验收。已有功能与缺口见[验收证据基线](docs/verification.md)，后续进度统一记录在[任务清单](tasks/todo.md)。
+当前处于开发与联调阶段。`dev@855c84d / 0.3.0-rc.1` 是整改前基线，本轮候选版本已推进到 `0.3.0-rc.2`（尚未创建发布标签）。M0文档与M1仓库/质量基线的有界工作已完成，不能代表整套设备已通过国标、干净断网Windows10/11现场或真机验收。已有功能与缺口见[验收证据基线](docs/verification.md)，后续进度统一记录在[任务清单](tasks/todo.md)。
 
 | 项目 | 本轮软件实现 | 待验证边界 |
 |---|---|---|
-| 后台 | Python 3.13、FastAPI、SQLAlchemy、SQLite，单后台 | Windows 服务实测及现场24h |
+| 后台 | Python 3.13、FastAPI、SQLAlchemy、SQLite，单后台 | Windows10/11现场服务及24h |
 | 前端 | Vue 3、Vite、Pinia、Chart.js，Node24与API类型检查 | 双端现场交互、LAN证书信任 |
-| Windows | 固定WebView2薄壳、PyInstaller、NSIS、Windows Service、事务升级 | WindowsCI构建待结果；干净断网Win10/11未验收 |
+| Windows | 固定WebView2薄壳、PyInstaller、NSIS、Windows Service、事务升级 | [PR65 Windows CI安装与服务证据](docs/verification/2026-09-06-software.md#最终集成软件验证)；干净断网Win10/11未验收 |
 | 试验 | 标准/非标版本配方、测定/冷却归档、质量指标与重复性 | 候选Mock已实现；固件冻结、国标符合性和M5未验收 |
 
 详细设计、规范来源和维护入口见 [docs/README.md](docs/README.md)。工程协作规则见 [AGENTS.md](AGENTS.md)。
