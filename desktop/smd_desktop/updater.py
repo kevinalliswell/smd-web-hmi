@@ -12,6 +12,7 @@ import sys
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
+from . import windows_powershell
 from .bundle import verify_bundle
 from .runtime import data_root
 from .single_instance import single_instance
@@ -80,8 +81,6 @@ def initialize(package: Path, install: Path, data: Path, platform: WindowsPlatfo
         ws.CloseServiceHandle(manager)
     subprocess.run(["sc.exe", "sidtype", "SmdHmi", "unrestricted"], check=True)
     acl_command = [
-        "powershell.exe",
-        "-NoProfile",
         "-ExecutionPolicy",
         "Bypass",
         "-File",
@@ -91,7 +90,7 @@ def initialize(package: Path, install: Path, data: Path, platform: WindowsPlatfo
         "-InstallDir",
         str(install),
     ]
-    subprocess.run(acl_command, check=True)  # 写任何口令之前收紧 ACL。
+    windows_powershell.run(acl_command, check=True)  # 写任何口令之前收紧 ACL。
     atomic_json(initial_path, {"version": manifest["version"], "target": str(target)})
     password = data / "config/bootstrap-admin-password.txt"
     if not password.exists():
@@ -109,7 +108,7 @@ def initialize(package: Path, install: Path, data: Path, platform: WindowsPlatfo
         }
         atomic_text(env_file, "\n".join(key + "=" + json.dumps(value) for key, value in env.items()) + "\n")
     atomic_json(data / "client.json", {"url": "http://127.0.0.1:8000"})
-    subprocess.run(acl_command, check=True)
+    windows_powershell.run(acl_command, check=True)
     platform.configure(target)
     platform.stop()
     platform.migrate(target)

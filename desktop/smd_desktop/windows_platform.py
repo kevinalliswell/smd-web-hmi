@@ -7,6 +7,8 @@ import time
 import urllib.request
 from pathlib import Path
 
+from . import windows_powershell
+
 
 class WindowsPlatform:
     SERVICE = "SmdHmi"
@@ -126,10 +128,8 @@ class WindowsPlatform:
             ws.SERVICE_CHANGE_CONFIG,
         )
 
-        subprocess.run(
+        windows_powershell.run(
             [
-                "powershell.exe",
-                "-NoProfile",
                 "-ExecutionPolicy",
                 "Bypass",
                 "-File",
@@ -142,10 +142,8 @@ class WindowsPlatform:
             check=True,
         )
 
-        subprocess.run(
+        windows_powershell.run(
             [
-                "powershell.exe",
-                "-NoProfile",
                 "-ExecutionPolicy",
                 "Bypass",
                 "-File",

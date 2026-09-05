@@ -2,10 +2,10 @@
 
 import json
 import os
-import subprocess
 from pathlib import Path
 
 import pytest
+from smd_desktop import windows_powershell
 
 SCRIPT = Path(__file__).resolve().parents[2] / "deploy/windows/configure-acl.ps1"
 PACKAGE_SIDS = {"S-1-15-2-1", "S-1-15-2-2"}
@@ -14,6 +14,12 @@ $ErrorActionPreference = 'Stop'
 $tokens = $null; $errors = $null
 $ast = [System.Management.Automation.Language.Parser]::ParseFile($env:SMD_TEST_ACL_SCRIPT, [ref]$tokens, [ref]$errors)
 if ($errors.Count) { throw ($errors | Out-String) }
+$initializers = @()
+foreach ($statement in $ast.EndBlock.Statements) {
+    if ($statement -is [System.Management.Automation.Language.FunctionDefinitionAst]) { break }
+    $initializers += $statement.Extent.Text
+}
+. ([scriptblock]::Create(($initializers -join "`n")))
 foreach ($name in @('Invoke-Icacls', 'Grant-WebView2RuntimeAccess')) {
     $function = $ast.FindAll({param($node) $node -is [System.Management.Automation.Language.FunctionDefinitionAst]}, $false) | Where-Object Name -eq $name
     if (-not $function) { throw "Required ACL function missing: $name" }
@@ -23,8 +29,8 @@ foreach ($name in @('Invoke-Icacls', 'Grant-WebView2RuntimeAccess')) {
 
 
 def execute(script, install, **environment):
-    return subprocess.run(
-        ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", LOAD_FUNCTIONS + script],
+    return windows_powershell.run(
+        ["-Command", LOAD_FUNCTIONS + script],
         env={**os.environ, "SMD_TEST_ACL_SCRIPT": str(SCRIPT), "SMD_TEST_ACL_INSTALL": str(install), **environment},
         capture_output=True,
         text=True,

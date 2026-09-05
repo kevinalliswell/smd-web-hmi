@@ -1,5 +1,7 @@
 param([Parameter(Mandatory=$true)][string]$VersionDir, [Parameter(Mandatory=$true)][string]$InstallDir)
 $ErrorActionPreference = 'Stop'
+$env:PSModulePath = $PSHOME + '\Modules'
+Import-Module ($PSHOME + '\Modules\ScheduledTasks\ScheduledTasks.psd1') -ErrorAction Stop
 $Action = New-ScheduledTaskAction -Execute (Join-Path $VersionDir 'SmdUpdate/SmdUpdate.exe') -Argument ('--recover --install "' + $InstallDir + '"')
 $Trigger = New-ScheduledTaskTrigger -AtStartup
 $Principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest

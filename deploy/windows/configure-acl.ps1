@@ -1,5 +1,9 @@
 param([Parameter(Mandatory=$true)][string]$DataDir, [Parameter(Mandatory=$true)][string]$InstallDir)
 $ErrorActionPreference = 'Stop'
+# PS7 -> Python/installer -> Windows PS5 inherits PS7 module paths unchanged.
+# Restrict even direct -File invocation to the modules shipped with this host.
+$env:PSModulePath = $PSHOME + '\Modules'
+Import-Module ($PSHOME + '\Modules\Microsoft.PowerShell.Security\Microsoft.PowerShell.Security.psd1') -ErrorAction Stop
 function Invoke-Icacls([string[]]$Arguments) {
     & icacls.exe @Arguments | Out-Null
     if ($LASTEXITCODE -ne 0) { throw 'ACL configuration failed' }
