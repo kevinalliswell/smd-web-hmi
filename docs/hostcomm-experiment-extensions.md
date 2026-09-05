@@ -38,6 +38,8 @@
 
 `safety_profile` 字段为 `version`、`temperature_max_c`、`ramp_max_c_min`、`n2_max_l_min`、`co_max_l_min`、`co_min_furnace_c`、`safe_end_burden_c`（≤200）、`max_stages`、可选 `rules_reference`。调用者不能通过参数覆盖该对象。最后一段必须撤 CO、通正流量 N2，并以 `burden_c lt` 不高于安全上限的条件结束。实际温度联锁必须由板端持续判断，上位机的静态配方校验不能替代它。
 
+省略 `furnace_target_c` 的真实板端语义尚待 Q15 确认。当前 Mock 在此情况下不推进模拟炉温，不表示继续执行前段目标。语义冻结前，上位机采取保守静态限制：记录最近明确声明的炉温目标；低目标的限制跨后续省略目标的阶段保留，不能仅凭该阶段 `furnace_c gte` 出口解除。须明确声明不低于 CO 门限的目标，并由炉温达标出口重新建立下界，才允许后续阶段申请 CO；升温段自身仍须满足入段温度许可。该记录是软件校验约束，不代表已知的固件有效设定值。
+
 摘要算法：对 `RecipeDefinition.model_dump()` 的完整定义使用 UTF-8、`ensure_ascii=False`、排序键、无额外空格的 JSON 计算 SHA-256。跨语言浮点序列化必须由双方黄金向量冻结；该摘要与参数 CRC 是不同对象。版本不可覆盖；标准候选模板变更阶段后必须存为 custom 并返回 `deviations`。
 
 激活复用 `set_parameters` 参数事务，将保存的四字段 bundle 合并到实际参数；核对参数 CRC、回读内容和设备安全范围后才返回 `readback_ok`。启动前再次回读并核对所选版本，`command.payload.params` 为：

@@ -159,6 +159,7 @@ def validate_for_device(recipe: RecipeDefinition, profile: dict | None, capabili
     if recipe.mode == "standard" and not limits.rules_reference:
         errors.append("standard_rules_not_confirmed")
     minimum_furnace = 0
+    last_declared_target = None
     for i, stage in enumerate(recipe.stages):
         prefix = f"stage_{i + 1}:"
         for value, maximum, code in [
@@ -184,9 +185,12 @@ def validate_for_device(recipe: RecipeDefinition, profile: dict | None, capabili
             # following stage. An upper-bound exit cannot carry an old proof.
             minimum_furnace = stage.exit.value if stage.exit.comparison == "gte" else 0
         if stage.furnace_target_c is not None:
-            # Any stage kind may lower its target. A higher setpoint alone does
-            # not prove reheating, and a lower one limits even a furnace exit.
-            minimum_furnace = min(minimum_furnace, stage.furnace_target_c)
+            last_declared_target = stage.furnace_target_c
+        if last_declared_target is not None:
+            # Conservatively retain the last declared target across omissions;
+            # this is a validation limit, not a claim about firmware setpoints.
+            # A higher target alone still does not prove actual reheating.
+            minimum_furnace = min(minimum_furnace, last_declared_target)
     final = recipe.stages[-1]
     if (
         final.kind != "cool"

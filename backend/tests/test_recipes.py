@@ -180,3 +180,21 @@ def test_low_target_is_not_overridden_by_already_satisfied_hot_exit():
     result = validate_for_device(recipe, profile(), ["recipe_v1"])
     assert not result["executable"]
     assert "stage_3:co_before_required_temperature" in result["errors"]
+
+
+def test_omitted_target_does_not_discard_last_declared_low_target():
+    recipe = recipe_with_temperature_transition(
+        temperature_transition(target=400),
+        reheat=temperature_transition(kind="gas", target=None, signal="furnace_c", value=500),
+    )
+    result = validate_for_device(recipe, profile(), ["recipe_v1"])
+    assert not result["executable"]
+    assert "stage_4:co_before_required_temperature" in result["errors"]
+
+
+def test_declared_high_target_and_furnace_exit_release_previous_low_target_limit():
+    recipe = recipe_with_temperature_transition(
+        temperature_transition(target=400),
+        reheat=temperature_transition(kind="ramp", target=600, signal="furnace_c", value=500),
+    )
+    assert validate_for_device(recipe, profile(), ["recipe_v1"])["executable"]
