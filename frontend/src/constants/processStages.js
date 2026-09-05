@@ -4,9 +4,9 @@
 //   docs 工艺流程图 子图 E「自动试验运行程序」
 //   试验SOP §5 启动许可 / §7 气密性 / §8 N2保护 / §9 切气 / §10 升温记录 / §11 结束置换
 //
-// 说明：STM32 经 status_snapshot.state_machine.current_state 上报的状态字符串
-// 命名未在协议中冻结，故每个阶段提供 aliases 做容错匹配；如与真实固件枚举不一致，
-// 仅需在此处校正本表即可，UI 自动跟随。
+// 说明：本表仅负责步骤条显示与文案映射。启动/停止/改参等安全判定统一由后端
+// state_policy 分类，并随 status_snapshot.system.operation_state / can_* 字段下发；
+// 前端不得根据本表自行放行受控操作。
 
 export const PROCESS_STAGES = [
   {

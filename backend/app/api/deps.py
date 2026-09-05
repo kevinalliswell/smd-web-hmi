@@ -6,10 +6,12 @@ from typing import Annotated
 
 import jwt
 from fastapi import Depends, Header, HTTPException, Request
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.security import decode_access_token
 from app.db.database import get_db
+from app.db.models import UserAccount
 from app.services.cache import status_cache
 from app.services.command_service import CommandService
 
@@ -17,21 +19,31 @@ from app.services.command_service import CommandService
 ROLE_LEVEL = {"observer": 0, "operator": 1, "admin": 2, "maintainer": 3}
 
 
+_PASSWORD_CHANGE_ALLOWED_PATHS = {
+    "/api/auth/logout",
+    "/api/auth/me",
+    "/api/users/change-password",
+}
+
+
 class CurrentUser:
     """当前登录用户（从 JWT 解析）。"""
 
-    def __init__(self, username: str, role: str) -> None:
+    def __init__(self, username: str, role: str, *, must_change_password: bool = False) -> None:
         self.username = username
         self.role = role
+        self.must_change_password = must_change_password
 
     def has_role(self, minimum: str) -> bool:
         return ROLE_LEVEL.get(self.role, -1) >= ROLE_LEVEL.get(minimum, 99)
 
 
 async def get_current_user(
+    request: Request,
+    db: Annotated[AsyncSession, Depends(get_db)],
     authorization: Annotated[str | None, Header()] = None,
 ) -> CurrentUser:
-    """从 ``Authorization: Bearer <token>`` 解析当前用户。"""
+    """解析 token，并与数据库中的当前账户状态对账。"""
     if not authorization or not authorization.lower().startswith("bearer "):
         raise HTTPException(status_code=401, detail={"error_code": "no_token", "message": "缺少认证令牌"})
     token = authorization.split(" ", 1)[1].strip()
@@ -39,7 +51,29 @@ async def get_current_user(
         payload = decode_access_token(token)
     except jwt.PyJWTError:
         raise HTTPException(status_code=401, detail={"error_code": "invalid_token", "message": "令牌无效或已过期"})
-    return CurrentUser(username=payload.get("sub", ""), role=payload.get("role", "observer"))
+    username = payload.get("sub")
+    role = payload.get("role")
+    account = None
+    if isinstance(username, str) and username and role in ROLE_LEVEL:
+        account = await db.scalar(select(UserAccount).where(UserAccount.username == username))
+    if (
+        account is None
+        or not account.is_active
+        or account.role != role
+        or account.token_version != payload.get("ver", 0)
+    ):
+        raise HTTPException(status_code=401, detail={"error_code": "invalid_token", "message": "令牌已失效"})
+    user = CurrentUser(
+        username=account.username,
+        role=account.role,
+        must_change_password=bool(account.must_change_password),
+    )
+    if user.must_change_password and request.url.path not in _PASSWORD_CHANGE_ALLOWED_PATHS:
+        raise HTTPException(
+            status_code=403,
+            detail={"error_code": "password_change_required", "message": "必须先修改初始密码"},
+        )
+    return user
 
 
 def require_role(minimum: str):

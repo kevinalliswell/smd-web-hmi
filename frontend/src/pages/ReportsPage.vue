@@ -5,6 +5,7 @@ import { fetchTests } from '@/api/tests'
 import { fetchReports, generateReport, reportDownloadUrl } from '@/api/reports'
 import { exportLogs, logDownloadUrl } from '@/api/logs'
 import { downloadFile } from '@/utils/download'
+import { formatDateTime } from '@/utils/dateTime'
 
 const { canOperate } = useRole()
 
@@ -12,6 +13,7 @@ const tests = ref([])
 const reports = ref([])
 const selectedTest = ref('')
 const heightMm = ref('')
+const reportFormat = ref('pdf')
 const banner = ref(null) // {type, text}
 const busy = ref(false)
 
@@ -34,10 +36,11 @@ async function onGenerate() {
   busy.value = true
   banner.value = null
   try {
+    banner.value = { type: 'info', text: '报告任务已提交，正在后台生成…' }
     const options = {}
     const h = Number(heightMm.value)
     if (heightMm.value !== '' && !Number.isNaN(h)) options.original_height_mm = h
-    const r = await generateReport(selectedTest.value, options)
+    const r = await generateReport(selectedTest.value, reportFormat.value, options)
     banner.value = { type: 'ok', text: `报告已生成（#${r.id}，${r.file_size_bytes} 字节）` }
     await loadAll()
   } catch (e) {
@@ -52,6 +55,7 @@ async function onExportLogs() {
   busy.value = true
   banner.value = null
   try {
+    banner.value = { type: 'info', text: '日志导出任务已提交，正在后台处理…' }
     const r = await exportLogs(selectedTest.value)
     await downloadFile(logDownloadUrl(r.task_id), `${selectedTest.value}-logs.zip`)
     banner.value = { type: 'ok', text: `日志已导出（${r.entries.join(', ')}）` }
@@ -64,7 +68,7 @@ async function onExportLogs() {
 
 async function onDownloadReport(rep) {
   try {
-    await downloadFile(reportDownloadUrl(rep.id), `${rep.test_id}-report.html`)
+    await downloadFile(reportDownloadUrl(rep.id), `${rep.test_id}-report.${rep.format}`)
   } catch (e) {
     banner.value = { type: 'err', text: '下载失败：' + (e.response?.data?.message || e.message) }
   }
@@ -76,7 +80,7 @@ onMounted(loadAll)
 <template>
   <div class="page">
     <div class="page-head">
-      <div class="page-title">报告生成 / 日志导出</div>
+      <h1 class="page-title">报告生成 / 日志导出</h1>
       <div class="spacer" />
       <button @click="loadAll">刷新</button>
     </div>
@@ -86,15 +90,21 @@ onMounted(loadAll)
     <div class="card gen">
       <div class="card-title">生成</div>
       <div class="form">
-        <label>试验</label>
-        <select v-model="selectedTest">
+        <label for="report-test">试验</label>
+        <select id="report-test" v-model="selectedTest">
           <option v-for="t in tests" :key="t.test_id" :value="t.test_id">
             {{ t.test_id }}（{{ t.operator_id }}{{ t.end_time ? '' : ' · 进行中' }}）
           </option>
           <option v-if="!tests.length" value="">无可用试验</option>
         </select>
-        <label>原始料层高度 H (mm)</label>
-        <input v-model="heightMm" placeholder="可选，用于 T10/T40/ΔH" style="width: 180px" />
+        <label for="report-height">原始料层高度 H (mm)</label>
+        <input id="report-height" v-model="heightMm" class="height-input" placeholder="仅旧试验可选覆盖" />
+        <label for="report-format">报告格式</label>
+        <select id="report-format" v-model="reportFormat">
+          <option value="pdf">PDF（归档/打印）</option>
+          <option value="xlsx">XLSX（数据分析）</option>
+          <option value="html">HTML（浏览器查看）</option>
+        </select>
       </div>
       <div v-if="canOperate()" class="actions">
         <button class="primary" :disabled="busy || !selectedTest" @click="onGenerate">生成报告</button>
@@ -114,7 +124,7 @@ onMounted(loadAll)
           <tr v-for="r in reports" :key="r.id">
             <td>{{ r.id }}</td>
             <td class="mono">{{ r.test_id }}</td>
-            <td class="small mono">{{ r.generated_at }}</td>
+            <td class="small mono">{{ formatDateTime(r.generated_at) }}</td>
             <td>{{ r.operator_id }}</td>
             <td>{{ r.format }}</td>
             <td class="small">{{ r.file_size_bytes }} B</td>
@@ -132,16 +142,19 @@ onMounted(loadAll)
 .page-title { font-size: 18px; font-weight: 700; }
 .spacer { flex: 1; }
 .banner { border-radius: 6px; padding: 8px 12px; font-size: 12px; }
-.banner.ok { background: var(--green-dim); border: 1px solid var(--green); color: #86efac; }
-.banner.err { background: var(--red-dim); border: 1px solid var(--red); color: #fca5a5; }
+.banner.ok { background: var(--green-dim); border: 1px solid var(--green); color: var(--success-text); }
+.banner.err { background: var(--red-dim); border: 1px solid var(--red); color: var(--danger-text); }
+.banner.info { background: var(--accent-dim); border: 1px solid var(--accent); color: var(--accent); }
 .card-title { font-weight: 700; margin-bottom: 10px; }
 .form { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
 .form label { color: var(--text-sec); font-size: 12px; }
-.actions { display: flex; gap: 10px; }
+.height-input { width: 180px; }
+.actions { display: flex; gap: 10px; flex-wrap: wrap; }
 .rep-table { width: 100%; border-collapse: collapse; font-size: 12px; }
 .rep-table th, .rep-table td { text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--border); }
 .rep-table th { color: var(--text-sec); font-weight: 600; font-size: 11px; }
 .small { font-size: 11px; color: var(--text-sec); }
 .empty { text-align: center; padding: 18px; }
 .dl { padding: 3px 12px; font-size: 12px; }
+@media (max-width: 560px) { .form > * { width: 100%; } .actions { flex-direction: column; } }
 </style>

@@ -1,14 +1,15 @@
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
-import { login as apiLogin } from '@/api/auth'
+import { login as apiLogin, logout as apiLogout } from '@/api/auth'
 
 const ROLE_LEVEL = { observer: 0, operator: 1, admin: 2, maintainer: 3 }
 
 export const useAuthStore = defineStore('auth', () => {
-  const token = ref(localStorage.getItem('smd_token') || '')
-  const username = ref(localStorage.getItem('smd_username') || '')
-  const role = ref(localStorage.getItem('smd_role') || '')
-  const displayName = ref(localStorage.getItem('smd_display') || '')
+  const token = ref(sessionStorage.getItem('smd_token') || '')
+  const username = ref(sessionStorage.getItem('smd_username') || '')
+  const role = ref(sessionStorage.getItem('smd_role') || '')
+  const displayName = ref(sessionStorage.getItem('smd_display') || '')
+  const mustChangePassword = ref(sessionStorage.getItem('smd_must_change_password') === '1')
 
   const isLoggedIn = computed(() => !!token.value)
   const canOperate = computed(() => hasRole('operator'))
@@ -25,26 +26,31 @@ export const useAuthStore = defineStore('auth', () => {
     username.value = usernameInput
     role.value = data.role
     displayName.value = data.display_name || usernameInput
-    localStorage.setItem('smd_token', token.value)
-    localStorage.setItem('smd_username', username.value)
-    localStorage.setItem('smd_role', role.value)
-    localStorage.setItem('smd_display', displayName.value)
+    mustChangePassword.value = Boolean(data.must_change_password)
+    sessionStorage.setItem('smd_token', token.value)
+    sessionStorage.setItem('smd_username', username.value)
+    sessionStorage.setItem('smd_role', role.value)
+    sessionStorage.setItem('smd_display', displayName.value)
+    sessionStorage.setItem('smd_must_change_password', mustChangePassword.value ? '1' : '0')
     return data
   }
 
-  function logout() {
+  function logout({ revoke = true } = {}) {
+    const revokeRequest = revoke && token.value ? apiLogout().catch(() => undefined) : Promise.resolve()
     token.value = ''
     username.value = ''
     role.value = ''
     displayName.value = ''
-    ;['smd_token', 'smd_username', 'smd_role', 'smd_display'].forEach((k) =>
-      localStorage.removeItem(k),
+    mustChangePassword.value = false
+    ;['smd_token', 'smd_username', 'smd_role', 'smd_display', 'smd_must_change_password'].forEach((k) =>
+      sessionStorage.removeItem(k),
     )
+    return revokeRequest
   }
 
   function checkToken() {
     // 简易：仅校验本地是否存在 token（过期由后端 401 拦截处理）
-    token.value = localStorage.getItem('smd_token') || ''
+    token.value = sessionStorage.getItem('smd_token') || ''
   }
 
   return {
@@ -52,6 +58,7 @@ export const useAuthStore = defineStore('auth', () => {
     username,
     role,
     displayName,
+    mustChangePassword,
     isLoggedIn,
     canOperate,
     canAdmin,

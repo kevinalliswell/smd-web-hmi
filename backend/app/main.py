@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import re
+import uuid
 from contextlib import asynccontextmanager
 
+import structlog
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
@@ -19,33 +22,81 @@ from app.api.ws_manager import ws_manager
 from app.core.config import get_settings
 from app.core.logging import configure_logging, get_logger
 from app.core.security import hash_password
-from app.db.database import create_all, dispose_engine, get_sessionmaker
+from app.db.database import assert_schema_current, create_all, dispose_engine, get_sessionmaker
 from app.db.models import UserAccount
-from app.hostcomm.client import HostCommClient
+from app.hostcomm.client import HostCommClient, HostCommNotConnectedError, HostCommTimeoutError
 from app.hostcomm.protocol import now_iso
+from app.services.background_jobs import background_jobs
 from app.services.cache import status_cache
+from app.services.maintenance_service import maintenance_manager
+from app.services.sampling_health import sampling_health
+from app.services.state_policy import enrich_status_snapshot
+from app.services.test_runtime import active_test
+from app.services.test_session_service import reconcile_test_sessions
 
 logger = get_logger("main")
 
+SAMPLING_ALARM_CODE = "HMI-DATA-PERSISTENCE"
+
+
+async def _broadcast_sampling_alarm(*, active: bool, test_id: str | None = None) -> None:
+    """数据库不可写时仍通过内存 WebSocket 通道暴露数据完整性风险。"""
+    if active:
+        await ws_manager.broadcast(
+            "alarm_new",
+            {
+                "alarm_id": SAMPLING_ALARM_CODE,
+                "alarm_code": SAMPLING_ALARM_CODE,
+                "level": 2,
+                "text": "上位机连续写库失败，试验采样数据可能出现缺口",
+                "occur_time": now_iso(),
+                "latched": False,
+                "test_id": test_id,
+                "source": "hmi",
+            },
+        )
+        return
+    await ws_manager.broadcast(
+        "alarm_clear",
+        {
+            "alarm_id": SAMPLING_ALARM_CODE,
+            "alarm_code": SAMPLING_ALARM_CODE,
+            "clear_time": now_iso(),
+        },
+    )
+
 
 async def _seed_admin() -> None:
-    """首次启动插入默认 admin/admin 账户（提示修改密码）。"""
+    """首次启动创建管理员；生产环境必须由安装器提供一次性口令。"""
     sessionmaker = get_sessionmaker()
     async with sessionmaker() as session:
         result = await session.execute(select(UserAccount).where(UserAccount.username == "admin"))
         if result.scalar_one_or_none() is None:
+            settings = get_settings()
+            password = getattr(settings, "bootstrap_admin_password", "") or getattr(
+                settings, "smd_bootstrap_admin_password", ""
+            )
+            if not password and settings.hostcomm_mock:
+                password = "admin"
+            if not password:
+                raise RuntimeError(
+                    "首次生产启动必须配置 SMD_BOOTSTRAP_ADMIN_PASSWORD 或 SMD_BOOTSTRAP_ADMIN_PASSWORD_FILE"
+                )
+            if not settings.hostcomm_mock and len(password) < 12:
+                raise RuntimeError("首次管理员口令至少需要 12 个字符")
             session.add(
                 UserAccount(
                     username="admin",
-                    hashed_pw=hash_password("admin"),
+                    hashed_pw=hash_password(password),
                     role="admin",
                     display_name="系统管理员",
                     is_active=1,
+                    must_change_password=1,
                     created_at=now_iso(),
                 )
             )
             await session.commit()
-            logger.warning("seed.admin_created", note="默认密码 admin/admin，请尽快修改")
+            logger.warning("seed.admin_created", note="已创建一次性管理员账户，首次登录必须修改密码")
 
 
 async def _persist_snapshot(payload: dict) -> None:
@@ -54,17 +105,47 @@ async def _persist_snapshot(payload: dict) -> None:
     写库失败不得影响实时推送，异常仅记录。
     """
     from app.services import logging_service
-    from app.services.test_runtime import active_test
 
+    test_id = active_test.active_test_id
     try:
+        settings = get_settings()
         sessionmaker = get_sessionmaker()
         async with sessionmaker() as session:
-            await logging_service.append_device_status(session, payload)
-            test_id = active_test.active_test_id or (payload.get("state_machine", {}) or {}).get("test_id")
+            await logging_service.append_device_status(
+                session,
+                payload,
+                retention_hours=settings.smd_device_status_retention_hours,
+                cleanup_interval_seconds=settings.smd_device_status_cleanup_interval_seconds,
+            )
+            # 仅已建档或已完成重启对账的会话允许写采样，避免设备上报的未知
+            # test_id 在本地形成没有 test_session 外键语义的孤儿数据。
+            test_id = active_test.active_test_id
             if test_id:
                 await logging_service.append_sample_point(session, test_id, payload)
     except Exception as exc:  # noqa: BLE001
-        logger.warning("persist.snapshot_failed", error=str(exc))
+        should_alarm = sampling_health.record_failure()
+        logger.warning(
+            "persist.snapshot_failed",
+            error=str(exc),
+            consecutive_failures=sampling_health.consecutive_write_failures,
+            test_id=test_id,
+        )
+        if should_alarm:
+            await _broadcast_sampling_alarm(active=True, test_id=test_id)
+    else:
+        if sampling_health.record_success():
+            await _broadcast_sampling_alarm(active=False)
+
+
+async def _reconcile_test_runtime(device_snapshot: dict | None = None) -> None:
+    """从数据库恢复运行态；首次设备快照到达后完成最终对账。"""
+    try:
+        sessionmaker = get_sessionmaker()
+        async with sessionmaker() as session:
+            result = await reconcile_test_sessions(session, device_snapshot)
+        logger.info("test_session.reconciled", **result)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("test_session.reconcile_failed", error=str(exc))
 
 
 def _build_hostcomm_client(settings) -> HostCommClient:
@@ -72,6 +153,9 @@ def _build_hostcomm_client(settings) -> HostCommClient:
     host = "127.0.0.1" if settings.hostcomm_mock else settings.hostcomm_host
 
     async def on_status(payload: dict) -> None:
+        payload = enrich_status_snapshot(payload)
+        if active_test.needs_device_reconcile:
+            await _reconcile_test_runtime(payload)
         await status_cache.update(payload, ts_iso=now_iso())
         await ws_manager.broadcast("status_update", payload)
         await _persist_snapshot(payload)
@@ -101,6 +185,7 @@ def _build_hostcomm_client(settings) -> HostCommClient:
         timeout_count=settings.hostcomm_timeout_count,
         command_timeout=settings.hostcomm_command_timeout,
         client_id=settings.client_id,
+        client_version=__version__,
         on_status=on_status,
         on_event=on_event,
         on_comm_status=on_comm_status,
@@ -111,36 +196,90 @@ def _build_hostcomm_client(settings) -> HostCommClient:
 async def lifespan(app: FastAPI):
     """应用生命周期：建表、播种、启动 HostComm。"""
     settings = get_settings()
-    configure_logging()
+    configure_logging(production=not settings.hostcomm_mock)
+    settings.validate_startup(logger)
     logger.info("app.starting", version=__version__, mock=settings.hostcomm_mock)
 
-    # 开发/联调：按 ORM 元数据建表（生产用 alembic upgrade head）
-    await create_all()
+    # 开发/联调允许按 ORM 元数据建表；生产必须由安装/升级流程执行受控迁移。
+    if settings.hostcomm_mock:
+        await create_all()
+    else:
+        await assert_schema_current()
     await _seed_admin()
+    await _reconcile_test_runtime()
+    if not settings.hostcomm_mock:
+        await maintenance_manager.start(settings)
 
     client = _build_hostcomm_client(settings)
     app.state.hostcomm_client = client
     await client.start()  # 失败不阻断启动，转后台重连
+    if client.is_online and active_test.needs_device_reconcile:
+        try:
+            await client.get_status()
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("test_session.initial_status_failed", error=str(exc))
 
     try:
         yield
     finally:
         await client.close()
+        await maintenance_manager.stop()
+        await background_jobs.shutdown()
         await dispose_engine()
         logger.info("app.stopped")
 
 
 def create_app() -> FastAPI:
-    app = FastAPI(title="smd-web-hmi 后端", version=__version__, lifespan=lifespan)
-
-    # 本地工控机：允许同网段浏览器访问
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=["*"],
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
+    settings = get_settings()
+    docs_enabled = settings.hostcomm_mock
+    app = FastAPI(
+        title="smd-web-hmi 后端",
+        version=__version__,
+        lifespan=lifespan,
+        docs_url="/docs" if docs_enabled else None,
+        redoc_url="/redoc" if docs_enabled else None,
+        openapi_url="/openapi.json" if docs_enabled else None,
     )
+
+    request_id_pattern = re.compile(r"^[A-Za-z0-9._:-]{1,64}$")
+
+    @app.middleware("http")
+    async def _security_boundary(request: Request, call_next):
+        supplied_request_id = request.headers.get("X-Request-ID", "")
+        request_id = supplied_request_id if request_id_pattern.fullmatch(supplied_request_id) else uuid.uuid4().hex
+        structlog.contextvars.bind_contextvars(request_id=request_id)
+        try:
+            response = await call_next(request)
+        finally:
+            structlog.contextvars.clear_contextvars()
+        response.headers["X-Request-ID"] = request_id
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["Referrer-Policy"] = "no-referrer"
+        response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'self'; base-uri 'self'; frame-ancestors 'none'; object-src 'none'; "
+            "img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; "
+            "connect-src 'self' ws: wss:"
+        )
+        if request.url.path.startswith("/api/"):
+            response.headers["Cache-Control"] = "no-store"
+        if request.url.scheme == "https":
+            response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+        return response
+
+    # 生产同源部署默认不开放 CORS；跨域调试须显式列出来源。
+    # Mock 开发模式允许通配，但 JWT 不使用 Cookie，始终禁用跨域凭证。
+    cors_origins = settings.cors_origins
+    if cors_origins:
+        wildcard = cors_origins == ["*"]
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=cors_origins,
+            allow_credentials=False,
+            allow_methods=["*"] if wildcard else ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+            allow_headers=["*"] if wildcard else ["Authorization", "Content-Type"],
+        )
 
     # REST 路由
     for module in (
@@ -175,7 +314,23 @@ def create_app() -> FastAPI:
 
     @app.exception_handler(RequestValidationError)
     async def _validation_exc_handler(request: Request, exc: RequestValidationError):
-        return JSONResponse(status_code=422, content=err("validation_error", str(exc.errors())))
+        safe_errors = [
+            {
+                "location": ".".join(str(part) for part in item.get("loc", ())),
+                "message": item.get("msg", "输入无效"),
+                "type": item.get("type", "validation_error"),
+            }
+            for item in exc.errors()
+        ]
+        return JSONResponse(status_code=422, content=err("validation_error", str(safe_errors)))
+
+    @app.exception_handler(HostCommTimeoutError)
+    async def _hostcomm_timeout_handler(request: Request, exc: HostCommTimeoutError):
+        return JSONResponse(status_code=504, content=err("device_comm_timeout", str(exc)))
+
+    @app.exception_handler(HostCommNotConnectedError)
+    async def _hostcomm_offline_handler(request: Request, exc: HostCommNotConnectedError):
+        return JSONResponse(status_code=503, content=err("device_comm_fault", str(exc)))
 
     @app.get("/health", tags=["system"])
     async def health():  # noqa: D401
@@ -185,7 +340,7 @@ def create_app() -> FastAPI:
     # 生产形态：托管前端构建产物（vite build 输出），同源伺服免 CORS。
     # 未配置且默认位置无产物时不注册任何路由（开发模式走 Vite dev server）。
     # 注意：SPA 回退是 catch-all 路由，必须在所有 API 路由之后注册。
-    dist_dir = get_settings().frontend_dist_dir
+    dist_dir = settings.frontend_dist_dir
     if dist_dir is not None:
         if (dist_dir / "assets").is_dir():
             app.mount("/assets", StaticFiles(directory=dist_dir / "assets"), name="assets")

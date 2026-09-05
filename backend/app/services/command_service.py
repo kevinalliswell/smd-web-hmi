@@ -12,13 +12,21 @@
 
 from __future__ import annotations
 
+import asyncio
 import binascii
 import json
 import time
 import uuid
 from dataclasses import dataclass, field
 
+from app.core.logging import get_logger
+from app.hostcomm.client import HostCommNotConnectedError, HostCommTimeoutError
 from app.hostcomm.protocol import now_iso
+from app.services import logging_service
+from app.services.state_policy import parameter_changes_allowed
+from app.services.test_id import InvalidTestIdError, validate_test_id
+
+logger = get_logger("service.command")
 
 # ---- 命令权限矩阵（命令 → 允许角色集合）规格 6.2 -------------------------
 _ROLES_OPERATOR_UP = {"operator", "admin", "maintainer"}
@@ -41,8 +49,10 @@ COMMAND_PERMISSIONS: dict[str, set[str]] = {
 # CO 相关命令：必须二次确认（规格 6.3）
 CO_COMMANDS = {"start_test", "stop_test"}
 
-# set_parameters 仅允许在非运行态下发
-RUNNING_STATES = {"Precheck", "Heating", "Holding", "Reducing", "Cooling", "Purge"}
+# CommandService 按请求构造，因此待启动占位必须是进程级，防止两个并发请求在
+# 任一会话落库前同时通过撞号检查并下发到控制板。
+_start_reservation_lock = asyncio.Lock()
+_pending_start_test_id: str | None = None
 
 
 @dataclass
@@ -97,9 +107,9 @@ def check_confirm_token(command: str, token: str | None) -> None:
 
 
 def check_state(command: str, current_state: str | None) -> None:
-    """状态限制校验。set_parameters 运行中拒绝（T09）。"""
-    if command == "set_parameters" and current_state in RUNNING_STATES:
-        raise CommandError(400, "state_not_allowed", f"运行态({current_state})不允许下发参数")
+    """状态限制校验。set_parameters 仅在明确非运行态放行（T09）。"""
+    if command == "set_parameters" and not parameter_changes_allowed(current_state):
+        raise CommandError(400, "state_not_allowed", f"当前状态({current_state or 'unknown'})不允许下发参数")
 
 
 def check_parameter_crc(command: str, params: dict) -> None:
@@ -185,22 +195,109 @@ class CommandService:
         # 2. 状态校验
         current_state = self._cache.get_field("system.current_state")
         check_state(command, current_state)
-        # 3. CO 命令二次确认
-        check_confirm_token(command, confirm_token)
-        # 4. set_parameters CRC 校验
-        check_parameter_crc(command, params)
+        reserved_test_id = await self._reserve_start(command, params, db_session)
+        try:
+            # 3. CO 命令二次确认
+            check_confirm_token(command, confirm_token)
+            # 4. set_parameters CRC 校验
+            check_parameter_crc(command, params)
 
-        result_payload: dict
+            result_payload = await self._send_with_audit(
+                command,
+                params,
+                operator_id=operator_id,
+                role=role,
+                confirm_token=confirm_token,
+                client_ip=client_ip,
+                db_session=db_session,
+            )
+
+            # 命令被控制板受理后，处理试验会话生命周期（建/收会话）
+            if result_payload.get("result") == "accepted":
+                await self._handle_lifecycle(
+                    db_session,
+                    command,
+                    params,
+                    operator_id,
+                    role,
+                    client_ip,
+                    result_payload,
+                )
+            return result_payload
+        finally:
+            if reserved_test_id is not None:
+                await self._release_start(reserved_test_id)
+
+    async def _reserve_start(self, command: str, params: dict, db_session) -> str | None:
+        if command != "start_test":
+            return None
+        raw_test_id = params.get("test_id")
+        if raw_test_id is None or (isinstance(raw_test_id, str) and not raw_test_id.strip()):
+            raise CommandError(400, "test_id_required", "启动试验必须提供试验编号")
+        try:
+            test_id = validate_test_id(raw_test_id)
+        except InvalidTestIdError as exc:
+            raise CommandError(400, "invalid_test_id", str(exc)) from exc
+        if db_session is None:
+            raise CommandError(503, "database_unavailable", "无法校验试验编号")
+
+        global _pending_start_test_id
+        async with _start_reservation_lock:
+            if _pending_start_test_id is not None:
+                raise CommandError(409, "test_start_in_progress", "另一个试验启动请求正在处理")
+
+            from sqlalchemy import select
+
+            from app.db.models import TestSession
+
+            exists = await db_session.scalar(select(TestSession.id).where(TestSession.test_id == test_id))
+            if exists is not None:
+                raise CommandError(409, "test_id_exists", f"试验编号已存在: {test_id}")
+            open_session = await db_session.scalar(
+                select(TestSession.test_id).where(TestSession.end_time.is_(None)).order_by(TestSession.id.desc())
+            )
+            if open_session is not None:
+                raise CommandError(409, "test_session_active", f"试验 {open_session} 尚未闭合")
+
+            params["test_id"] = test_id
+            _pending_start_test_id = test_id
+            return test_id
+
+    async def _release_start(self, test_id: str) -> None:
+        global _pending_start_test_id
+        async with _start_reservation_lock:
+            if _pending_start_test_id == test_id:
+                _pending_start_test_id = None
+
+    async def _send_with_audit(
+        self,
+        command: str,
+        params: dict,
+        *,
+        operator_id: str,
+        role: str,
+        confirm_token: str | None,
+        client_ip: str | None,
+        db_session,
+    ) -> dict:
         result_label = "error"
         reason_code = None
         try:
             if self._client is None or not getattr(self._client, "is_online", False):
                 raise CommandError(503, "device_comm_fault", "HostComm 未连接")
+            device_params = {"test_id": params["test_id"]} if command == "start_test" else params
             result_payload = await self._client.send_command(
-                command, params, operator_id=operator_id, role=role, confirm_token=confirm_token
+                command, device_params, operator_id=operator_id, role=role, confirm_token=confirm_token
             )
             result_label = result_payload.get("result", "error")
             reason_code = result_payload.get("reason_code")
+            return result_payload
+        except HostCommTimeoutError:
+            reason_code = "device_comm_timeout"
+            raise
+        except HostCommNotConnectedError:
+            reason_code = "device_comm_fault"
+            raise
         finally:
             await self._write_audit(
                 db_session,
@@ -213,13 +310,15 @@ class CommandService:
                 client_ip=client_ip,
             )
 
-        # 命令被控制板受理后，处理试验会话生命周期（建/收会话）
-        if result_label == "accepted":
-            await self._handle_lifecycle(db_session, command, params, operator_id, result_payload)
-        return result_payload
-
     async def _handle_lifecycle(
-        self, db_session, command: str, params: dict, operator_id: str, result_payload: dict
+        self,
+        db_session,
+        command: str,
+        params: dict,
+        operator_id: str,
+        role: str,
+        client_ip: str | None,
+        result_payload: dict,
     ) -> None:
         """start_test → 建 test_session 并标记进行中；stop_test → 收尾。"""
         if db_session is None:
@@ -233,27 +332,88 @@ class CommandService:
             test_id = params.get("test_id")
             if not test_id:
                 return
-            exists = await db_session.scalar(select(TestSession).where(TestSession.test_id == test_id))
-            if exists is None:
-                db_session.add(
-                    TestSession(
-                        test_id=test_id,
-                        operator_id=operator_id,
-                        start_time=now_iso(),
-                    )
+            db_session.add(
+                TestSession(
+                    test_id=test_id,
+                    operator_id=operator_id,
+                    start_time=now_iso(),
+                    original_height_mm=params.get("original_height_mm"),
+                    sample_label=params.get("sample_label") or None,
+                    notes=params.get("notes") or None,
                 )
-                await db_session.commit()
+            )
+            await db_session.commit()
             active_test.start(test_id)
+            await self._capture_start_parameters(
+                db_session,
+                test_id=test_id,
+                operator_id=operator_id,
+                role=role,
+                client_ip=client_ip,
+            )
 
         elif command == "stop_test":
             test_id = active_test.stop()
+            row = None
             if test_id:
                 row = await db_session.scalar(select(TestSession).where(TestSession.test_id == test_id))
-                if row is not None and row.end_time is None:
-                    row.end_time = now_iso()
-                    row.end_reason = "operator_stop"
-                    row.state_at_end = result_payload.get("current_state")
-                    await db_session.commit()
+            if row is None or row.end_time is not None:
+                row = await db_session.scalar(
+                    select(TestSession).where(TestSession.end_time.is_(None)).order_by(TestSession.id.desc())
+                )
+            if row is not None and row.end_time is None:
+                row.end_time = now_iso()
+                row.end_reason = "operator_stop"
+                row.state_at_end = result_payload.get("current_state")
+                await db_session.commit()
+
+    async def _capture_start_parameters(
+        self,
+        db_session,
+        *,
+        test_id: str,
+        operator_id: str,
+        role: str,
+        client_ip: str | None,
+    ) -> None:
+        """试验已实际启动后立即归档参数；失败只审计，不伪装成启动失败。"""
+        reason_code = "parameter_snapshot_failed"
+        try:
+            readback = await self._client.get_parameters()
+            await logging_service.append_parameter_snapshot(
+                db_session,
+                readback,
+                test_id=test_id,
+                operator_id=operator_id,
+                source="test_start",
+            )
+            return
+        except HostCommTimeoutError:
+            reason_code = "device_comm_timeout"
+        except HostCommNotConnectedError:
+            reason_code = "device_comm_fault"
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("parameter_snapshot.capture_failed", test_id=test_id, error=str(exc))
+
+        try:
+            await db_session.rollback()
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("parameter_snapshot.rollback_failed", test_id=test_id, error=str(exc))
+            return
+        try:
+            await audit_action(
+                db_session,
+                operator_id=operator_id,
+                role=role,
+                action_type="capture_start_parameters",
+                params={"test_id": test_id},
+                result="error",
+                reason_code=reason_code,
+                test_id=test_id,
+                client_ip=client_ip,
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("parameter_snapshot.audit_failed", test_id=test_id, error=str(exc))
 
     async def _write_audit(
         self,

@@ -1,5 +1,6 @@
-/* 工业暗色主题 —— 取自 UI 原型 (熔滴炉Web上位机界面原型.html) */
-:root {
+/* Industrial UI tokens. Dark remains the default; light is an equal, persisted theme. */
+:root,
+:root[data-theme='dark'] {
   --bg-base: #0e1118;
   --bg-card: #161b27;
   --bg-card2: #1b2130;
@@ -7,20 +8,59 @@
   --border: #2a3150;
   --border-hi: #3a4570;
   --text-pri: #e2e8f0;
-  --text-sec: #8892aa;
-  --text-muted: #4a5570;
+  --text-sec: #a0aac0;
+  --text-muted: #76839e;
   --accent: #38bdf8;
-  --accent-dim: #1e4060;
+  --accent-dim: #153b55;
   --green: #22c55e;
-  --green-dim: #14532d;
+  --green-dim: #123d24;
   --yellow: #f59e0b;
-  --yellow-dim: #451a03;
+  --yellow-dim: #432307;
   --red: #ef4444;
-  --red-dim: #450a0a;
+  --red-dim: #481313;
   --orange: #f97316;
   --purple: #a78bfa;
+  --success-text: #86efac;
+  --warning-text: #fde68a;
+  --danger-text: #fca5a5;
+  --on-orange: #1a1208;
+  --overlay: rgba(2, 6, 23, 0.72);
+  --shadow-lg: 0 18px 45px rgba(0, 0, 0, 0.38);
+  --chart-grid: #2a3150;
+  --chart-tick: #a0aac0;
   --nav-w: 220px;
   --header-h: 52px;
+  --footer-h: 28px;
+}
+
+:root[data-theme='light'] {
+  --bg-base: #f3f6fa;
+  --bg-card: #ffffff;
+  --bg-card2: #f4f7fb;
+  --bg-hover: #e8eef6;
+  --border: #d5ddea;
+  --border-hi: #aab8ca;
+  --text-pri: #172033;
+  --text-sec: #526078;
+  --text-muted: #68758c;
+  --accent: #0369a1;
+  --accent-dim: #e0f2fe;
+  --green: #15803d;
+  --green-dim: #dcfce7;
+  --yellow: #b45309;
+  --yellow-dim: #fef3c7;
+  --red: #dc2626;
+  --red-dim: #fee2e2;
+  --orange: #c2410c;
+  --purple: #7c3aed;
+  --success-text: #166534;
+  --warning-text: #92400e;
+  --danger-text: #b91c1c;
+  --on-orange: #ffffff;
+  --overlay: rgba(15, 23, 42, 0.42);
+  --shadow-lg: 0 18px 45px rgba(30, 41, 59, 0.22);
+  --chart-grid: #d5ddea;
+  --chart-tick: #526078;
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -33,6 +73,7 @@ html, body, #app {
   font-size: 13px;
 }
 
+body { min-width: 320px; }
 a { color: var(--accent); text-decoration: none; }
 
 button {
@@ -44,15 +85,16 @@ button {
   border-radius: 5px;
   padding: 7px 14px;
   font-size: 13px;
-  transition: all .15s;
+  transition: background-color .15s, border-color .15s, color .15s;
 }
 button:hover:not(:disabled) { background: var(--bg-hover); border-color: var(--accent); }
 button:disabled { opacity: .45; cursor: not-allowed; }
-
 button.primary { background: var(--accent-dim); border-color: var(--accent); color: var(--accent); }
-button.danger { background: var(--red-dim); border-color: var(--red); color: #fca5a5; }
+button.danger { background: var(--red-dim); border-color: var(--red); color: var(--danger-text); }
 
-input, select {
+input, select, textarea {
+  max-width: 100%;
+  min-width: 0;
   font-family: inherit;
   background: var(--bg-base);
   border: 1px solid var(--border);
@@ -61,9 +103,16 @@ input, select {
   padding: 8px 10px;
   font-size: 13px;
 }
-input:focus, select:focus { outline: none; border-color: var(--accent); }
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+input:focus, select:focus, textarea:focus { border-color: var(--accent); }
 
 .card {
+  min-width: 0;
+  overflow-x: auto;
   background: var(--bg-card);
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -80,3 +129,27 @@ input:focus, select:focus { outline: none; border-color: var(--accent); }
 
 .muted { color: var(--text-sec); }
 .mono { font-family: 'Courier New', monospace; }
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+@media (max-width: 480px) {
+  .card { padding: 12px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    scroll-behavior: auto !important;
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+  }
+}

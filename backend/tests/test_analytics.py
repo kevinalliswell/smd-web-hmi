@@ -8,7 +8,14 @@ from app.db.models import SamplePoint, TestSession
 
 async def _seed(db):
     for tid, base in (("TEST-A", 0), ("TEST-B", 1000)):
-        db.add(TestSession(test_id=tid, operator_id="adm", start_time="2026-06-10T00:00:00"))
+        db.add(
+            TestSession(
+                test_id=tid,
+                operator_id="adm",
+                start_time="2026-06-10T00:00:00",
+                original_height_mm=10.0,
+            )
+        )
         for i in range(6):
             db.add(
                 SamplePoint(
@@ -39,3 +46,16 @@ async def test_compare_skips_missing(db_session):
     await _seed(db_session)
     res = await analytics_route.compare(db_session, test_ids="TEST-A,NOPE")
     assert [d["test_id"] for d in res["data"]] == ["TEST-A"]
+
+
+async def test_compare_uses_sql_metrics_and_stored_height(monkeypatch, db_session):
+    await _seed(db_session)
+
+    def fail_if_loaded(*args, **kwargs):
+        raise AssertionError("analytics must not load all sample rows into Python")
+
+    monkeypatch.setattr(analytics_route.report_service, "compute_metrics", fail_if_loaded)
+    res = await analytics_route.compare(db_session, test_ids="TEST-A")
+
+    assert res["data"][0]["metrics"]["original_height_mm"] == 10.0
+    assert res["data"][0]["sample_count"] == 6

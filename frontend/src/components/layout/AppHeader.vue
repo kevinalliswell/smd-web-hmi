@@ -5,6 +5,10 @@ import { storeToRefs } from 'pinia'
 import { useAuthStore } from '@/stores/auth'
 import { useDeviceStore } from '@/stores/device'
 import { useAlarmsStore } from '@/stores/alarms'
+import ThemeToggle from '@/components/shared/ThemeToggle.vue'
+
+defineProps({ navigationOpen: { type: Boolean, default: false } })
+defineEmits(['toggle-navigation'])
 
 const router = useRouter()
 const auth = useAuthStore()
@@ -28,14 +32,31 @@ function onLogout() {
 
 <template>
   <header id="header">
+    <button
+      class="nav-toggle"
+      type="button"
+      aria-controls="primary-navigation"
+      :aria-expanded="String(navigationOpen)"
+      :aria-label="navigationOpen ? '关闭主导航' : '打开主导航'"
+      @click="$emit('toggle-navigation')"
+    >
+      <span aria-hidden="true">☰</span>
+    </button>
     <div class="brand">熔滴炉 <span class="muted">Web 上位机</span></div>
     <div class="hd-sep" />
     <div class="hd-badge"><span class="dot" :class="commDot" />{{ commLabel }}</div>
     <div class="hd-badge">状态：<b style="color: var(--accent)">{{ currentState }}</b></div>
     <div class="spacer" />
-    <div class="hd-bell" @click="router.push({ name: 'alarms' })">
+    <button
+      class="hd-bell"
+      type="button"
+      aria-label="查看报警事件"
+      title="查看报警事件"
+      @click="router.push({ name: 'alarms' })"
+    >
       🔔<span v-if="unackedCount" class="alarm-count">{{ unackedCount }}</span>
-    </div>
+    </button>
+    <ThemeToggle />
     <div class="hd-sep" />
     <div class="hd-user">{{ auth.displayName || auth.username }} · {{ auth.role }}</div>
     <button @click="onLogout">登出</button>
@@ -48,6 +69,7 @@ function onLogout() {
   background: var(--bg-card); border-bottom: 1px solid var(--border);
   padding: 0 16px; gap: 12px; flex-shrink: 0;
 }
+.nav-toggle { display: none; width: 34px; height: 34px; padding: 0; font-size: 18px; }
 .brand { font-weight: 700; font-size: 15px; }
 .hd-sep { width: 1px; height: 24px; background: var(--border); }
 .hd-badge {
@@ -55,10 +77,31 @@ function onLogout() {
   border-radius: 4px; background: var(--bg-card2); border: 1px solid var(--border);
 }
 .spacer { flex: 1; }
-.hd-bell { position: relative; cursor: pointer; font-size: 16px; padding: 4px; }
+.hd-bell { position: relative; width: 34px; height: 34px; padding: 0; font-size: 16px; }
 .alarm-count {
   position: absolute; top: -2px; right: -2px; background: var(--red); color: #fff;
   font-size: 10px; font-weight: 700; border-radius: 8px; padding: 1px 4px;
 }
 .hd-user { color: var(--text-sec); }
+
+@media (max-width: 1100px) {
+  .hd-user { display: none; }
+}
+
+@media (max-width: 900px) {
+  #header { padding: 0 12px; gap: 8px; }
+  .nav-toggle { display: grid; place-items: center; }
+  .hd-badge { padding-inline: 8px; }
+  .hd-sep { display: none; }
+}
+
+@media (max-width: 680px) {
+  .hd-badge { display: none; }
+}
+
+@media (max-width: 460px) {
+  #header { padding: 0 8px; }
+  .brand .muted { display: none; }
+  .brand { font-size: 14px; }
+}
 </style>

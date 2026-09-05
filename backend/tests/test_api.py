@@ -2,13 +2,17 @@
 
 from __future__ import annotations
 
+import asyncio
+import json
 import time
 
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-from app.api.ws_manager import ws_manager
+from app.api.deps import CurrentUser, get_current_user
+from app.api.ws_manager import ConnectionContext, ConnectionManager, ws_manager
 from app.core.security import create_access_token
+from app.hostcomm.client import HostCommNotConnectedError, HostCommTimeoutError
 from app.main import create_app
 from app.services.cache import status_cache
 
@@ -24,6 +28,7 @@ async def test_t13_status_structure():
     )
     token, _ = create_access_token("tester", "observer")
     app = create_app()
+    app.dependency_overrides[get_current_user] = lambda: CurrentUser("tester", "observer")
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
         resp = await ac.get("/api/status", headers={"Authorization": f"Bearer {token}"})
@@ -31,6 +36,9 @@ async def test_t13_status_structure():
     data = resp.json()["data"]
     assert "comm_quality" in data
     assert data["system"]["current_state"] == "Standby"
+    assert data["system"]["operation_state"] == "idle"
+    assert data["system"]["can_start_test"] is True
+    assert data["system"]["can_stop_test"] is False
 
 
 # ---------------------------------------------------- T13b 未认证 401
@@ -71,7 +79,11 @@ async def test_t15_ws_status_update_push():
             self.sent.append(message)
 
     ws = FakeWS()
-    await ws_manager.connect(ws)
+    await ws_manager.connect(
+        ws,
+        ConnectionContext(username="test", role="observer"),
+        max_connections_per_user=1,
+    )
     try:
         t0 = time.monotonic()
         await ws_manager.broadcast("status_update", {"system": {"current_state": "Standby"}})
@@ -81,3 +93,54 @@ async def test_t15_ws_status_update_push():
         assert ws.sent[-1]["data"]["system"]["current_state"] == "Standby"
     finally:
         await ws_manager.disconnect(ws)
+
+
+async def test_broadcast_times_out_slow_client_without_blocking_others():
+    """单个慢客户端不得串行拖住实时广播，并在超时后从连接池移除。"""
+
+    class SlowWS:
+        async def accept(self):
+            pass
+
+        async def send_json(self, message):
+            await asyncio.Event().wait()
+
+    class FastWS:
+        def __init__(self):
+            self.sent = []
+
+        async def accept(self):
+            pass
+
+        async def send_json(self, message):
+            self.sent.append(message)
+
+    manager = ConnectionManager(send_timeout=0.01)
+    slow, fast = SlowWS(), FastWS()
+    context = ConnectionContext(username="test", role="observer")
+    await manager.connect(slow, context, max_connections_per_user=2)
+    await manager.connect(fast, context, max_connections_per_user=2)
+
+    started = time.monotonic()
+    await manager.broadcast("status_update", {"value": 1})
+
+    assert time.monotonic() - started < 0.1
+    assert fast.sent[-1]["data"] == {"value": 1}
+    assert manager.count == 1
+
+
+@pytest.mark.parametrize(
+    ("exception", "expected_status", "expected_code"),
+    [
+        (HostCommTimeoutError("timeout"), 504, "device_comm_timeout"),
+        (HostCommNotConnectedError("offline"), 503, "device_comm_fault"),
+    ],
+)
+async def test_hostcomm_errors_have_stable_http_mapping(exception, expected_status, expected_code):
+    """HostComm 原生异常必须映射为稳定的 REST 错误契约，而不是裸 500。"""
+    app = create_app()
+    handler = app.exception_handlers[type(exception)]
+    response = await handler(None, exception)
+
+    assert response.status_code == expected_status
+    assert json.loads(response.body)["error_code"] == expected_code

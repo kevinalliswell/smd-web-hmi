@@ -29,13 +29,13 @@ const TIPS = [
   ['天平去皮', '承滴坩埚空载时，在 tare_allowed 状态下点击“天平去皮”'],
   ['确认报警', '报警事件页 → L3 置顶红色高亮 → Operator+ 点击“确认”（发 ack_alarm）'],
   ['参数下发', '参数配置页（Admin）→ 编辑 → 差异对比二次确认 → 下发（非运行态，CRC + 回读确认）'],
-  ['报告/导出', '报告页或历史页 → 生成 HTML 报告 / 导出日志 zip（含曲线/事件/报警/参数 CSV）'],
+  ['报告/导出', '报告页或历史页 → 生成 PDF / XLSX / HTML 报告，或导出日志 zip（含曲线/事件/报警/参数 CSV）'],
 ]
 </script>
 
 <template>
   <div class="page">
-    <div class="page-title">帮助</div>
+    <h1 class="page-title">帮助</h1>
 
     <div class="grid">
       <div class="card danger">
@@ -96,7 +96,7 @@ const TIPS = [
     </div>
 
     <div class="card about muted">
-      smd-web-hmi 熔滴炉 Web 上位机 · 前端 v{{ appVersion }} · GB/T 34211 · D3 接口联调（v0.3-d3）。
+      smd-web-hmi 熔滴炉 Web 上位机 · v{{ appVersion }} · GB/T 34211 · 商用候选版。
       详细规格见 docs/；接口对齐待办见 docs/待确认事项与接口对齐清单。
     </div>
   </div>
@@ -108,7 +108,7 @@ const TIPS = [
 .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start; }
 .card-title { font-weight: 700; margin-bottom: 10px; }
 .card.danger { border-color: var(--red); }
-.card.danger .card-title { color: #fca5a5; }
+.card.danger .card-title { color: var(--danger-text); }
 ul { margin: 0; padding-left: 18px; line-height: 1.9; font-size: 13px; }
 .t { width: 100%; border-collapse: collapse; font-size: 13px; }
 .t th, .t td { text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
@@ -119,7 +119,7 @@ ul { margin: 0; padding-left: 18px; line-height: 1.9; font-size: 13px; }
 .flow li { display: grid; grid-template-columns: 28px 150px 1fr; align-items: center; gap: 10px; }
 .seq { width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; background: var(--accent-dim); color: var(--accent); font-weight: 700; font-size: 12px; }
 .name { font-weight: 600; }
-.co { display: inline-block; margin-left: 6px; font-size: 9px; font-weight: 700; background: var(--orange); color: #1a1208; border-radius: 3px; padding: 0 4px; }
+.co { display: inline-block; margin-left: 6px; font-size: 9px; font-weight: 700; background: var(--orange); color: var(--on-orange); border-radius: 3px; padding: 0 4px; }
 .desc { font-size: 12px; line-height: 1.5; }
 .about { font-size: 12px; line-height: 1.6; }
 @media (max-width: 1000px) { .grid { grid-template-columns: 1fr; } .flow li { grid-template-columns: 28px 1fr; } .flow .desc { grid-column: 2; } }

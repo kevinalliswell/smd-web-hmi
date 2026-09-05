@@ -14,18 +14,20 @@ import jwt
 
 from app.core.config import get_settings
 
-_PBKDF2_ROUNDS = 200_000
+_PBKDF2_ROUNDS = 600_000
 _PBKDF2_ALGO = "sha256"
 
 
 # ---------------------------------------------------------------- 密码哈希
 
 
-def hash_password(password: str) -> str:
+def hash_password(password: str, *, rounds: int = _PBKDF2_ROUNDS) -> str:
     """返回 ``pbkdf2_sha256$rounds$salt_hex$hash_hex`` 格式的密码哈希。"""
+    if rounds < 1:
+        raise ValueError("PBKDF2 rounds must be positive")
     salt = secrets.token_bytes(16)
-    dk = hashlib.pbkdf2_hmac(_PBKDF2_ALGO, password.encode("utf-8"), salt, _PBKDF2_ROUNDS)
-    return f"pbkdf2_{_PBKDF2_ALGO}${_PBKDF2_ROUNDS}${salt.hex()}${dk.hex()}"
+    dk = hashlib.pbkdf2_hmac(_PBKDF2_ALGO, password.encode("utf-8"), salt, rounds)
+    return f"pbkdf2_{_PBKDF2_ALGO}${rounds}${salt.hex()}${dk.hex()}"
 
 
 def verify_password(password: str, hashed: str) -> bool:
@@ -44,14 +46,35 @@ def verify_password(password: str, hashed: str) -> bool:
     return hmac.compare_digest(dk, expected)
 
 
+def password_hash_needs_upgrade(hashed: str) -> bool:
+    """返回密码哈希是否需要在下次成功登录时升级。"""
+    try:
+        scheme, rounds_s, _salt_hex, _hash_hex = hashed.split("$")
+        return scheme != f"pbkdf2_{_PBKDF2_ALGO}" or int(rounds_s) < _PBKDF2_ROUNDS
+    except (ValueError, AttributeError):
+        return True
+
+
 # ---------------------------------------------------------------- JWT
 
 
-def create_access_token(username: str, role: str) -> tuple[str, datetime]:
+def create_access_token(
+    username: str,
+    role: str,
+    *,
+    must_change_password: bool = False,
+    token_version: int = 0,
+) -> tuple[str, datetime]:
     """签发 JWT，返回 (token, 过期时间)。"""
     settings = get_settings()
     expire = datetime.now(timezone.utc) + timedelta(minutes=settings.smd_jwt_expire_minutes)
-    payload = {"sub": username, "role": role, "exp": expire}
+    payload = {
+        "sub": username,
+        "role": role,
+        "must_change_password": must_change_password,
+        "ver": token_version,
+        "exp": expire,
+    }
     token = jwt.encode(payload, settings.jwt_secret, algorithm=settings.smd_jwt_algorithm)
     return token, expire
 

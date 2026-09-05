@@ -6,6 +6,7 @@ import pytest
 from sqlalchemy import func, select
 
 from app.db.models import OperatorAction
+from app.hostcomm.client import HostCommTimeoutError
 from app.services.command_service import (
     CommandError,
     CommandService,
@@ -21,12 +22,15 @@ from app.services.command_service import (
 class _FakeClient:
     is_online = True
 
-    def __init__(self, result="accepted"):
+    def __init__(self, result="accepted", error=None):
         self._result = result
+        self._error = error
         self.sent: list[tuple] = []
 
     async def send_command(self, command, params, *, operator_id, role, confirm_token=None):
         self.sent.append((command, params))
+        if self._error is not None:
+            raise self._error
         return {
             "request_msg_id": "x",
             "command": command,
@@ -83,6 +87,22 @@ def test_t09_set_parameters_running_rejected():
     check_state("set_parameters", "Standby")
 
 
+@pytest.mark.parametrize(
+    "state",
+    ["GasSwitch", "reducing", "HOLDING", "Leak-Check", "End", "Fault/Purge", "mystery-state", None],
+)
+def test_t09_set_parameters_rejects_active_or_unknown_states(state):
+    """固件别名、大小写变体、未知/缺失状态均不得绕过参数下发防线。"""
+    with pytest.raises(CommandError) as ei:
+        check_state("set_parameters", state)
+    assert ei.value.error_code == "state_not_allowed"
+
+
+@pytest.mark.parametrize("state", ["Standby", "idle", "Complete", "Fault"])
+def test_t09_set_parameters_allows_explicit_non_running_states(state):
+    check_state("set_parameters", state)
+
+
 # ---------------------------------------------------- T10 操作日志写库
 async def test_t10_operator_action_logged(db_session):
     """T10：命令执行后 operator_action 表有记录。"""
@@ -100,6 +120,44 @@ async def test_t10_operator_action_logged(db_session):
     assert row.action_type == "tare_balance"
     assert row.operator_id == "op001"
     assert row.result == "accepted"
+
+
+async def test_command_timeout_has_explicit_audit_reason(db_session):
+    """命令通信超时应保留原异常，并写入稳定的审计原因码。"""
+    service = CommandService(_FakeClient(error=HostCommTimeoutError("timeout")), _FakeCache("Standby"))
+
+    with pytest.raises(HostCommTimeoutError):
+        await service.execute(
+            "tare_balance",
+            {},
+            operator_id="op001",
+            role="operator",
+            db_session=db_session,
+        )
+
+    row = (await db_session.execute(select(OperatorAction))).scalar_one()
+    assert row.result == "error"
+    assert row.reason_code == "device_comm_timeout"
+
+
+@pytest.mark.parametrize("test_id", ["../startup", r"..\startup", "bad:name", "bad*name", "x" * 65])
+async def test_start_rejects_unsafe_test_id_before_device_command(db_session, test_id):
+    client = _FakeClient()
+    service = CommandService(client, _FakeCache("Standby"))
+
+    with pytest.raises(CommandError) as exc:
+        await service.execute(
+            "start_test",
+            {"test_id": test_id},
+            operator_id="op001",
+            role="operator",
+            confirm_token=confirm_tokens.issue(),
+            db_session=db_session,
+        )
+
+    assert exc.value.status_code == 400
+    assert exc.value.error_code == "invalid_test_id"
+    assert client.sent == []
 
 
 # ---------------------------------------------------- T12 set_parameters CRC

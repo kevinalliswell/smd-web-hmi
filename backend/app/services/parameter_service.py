@@ -15,8 +15,10 @@ import json
 from typing import Any
 
 from app.core.logging import get_logger
-from app.hostcomm.protocol import now_iso
+from app.hostcomm.client import HostCommNotConnectedError, HostCommTimeoutError
+from app.services import logging_service
 from app.services.command_service import CommandError, audit_action, check_parameter_crc, check_state
+from app.services.test_runtime import active_test
 
 logger = get_logger("service.parameter")
 
@@ -76,12 +78,23 @@ class ParameterService:
             raise CommandError(503, "device_comm_fault", "HostComm 未连接")
 
         # 4. 下发命令
-        result = await self._client.send_command(
-            "set_parameters",
-            {"values": values, "param_crc": param_crc},
-            operator_id=operator_id,
-            role=role,
-        )
+        try:
+            result = await self._client.send_command(
+                "set_parameters",
+                {"values": values, "param_crc": param_crc},
+                operator_id=operator_id,
+                role=role,
+            )
+        except (HostCommTimeoutError, HostCommNotConnectedError) as exc:
+            await self._audit_comm_failure(
+                exc,
+                values=values,
+                operator_id=operator_id,
+                role=role,
+                client_ip=client_ip,
+                db_session=db_session,
+            )
+            raise
         result_label = result.get("result", "error")
         reason_code = result.get("reason_code")
 
@@ -104,7 +117,18 @@ class ParameterService:
             )
 
         # 5. 回读确认
-        readback = await self._client.get_parameters()
+        try:
+            readback = await self._client.get_parameters()
+        except (HostCommTimeoutError, HostCommNotConnectedError) as exc:
+            await self._audit_comm_failure(
+                exc,
+                values=values,
+                operator_id=operator_id,
+                role=role,
+                client_ip=client_ip,
+                db_session=db_session,
+            )
+            raise
         rb_values = readback.get("params") or readback.get("values") or {}
         if not _values_equal(values, rb_values):
             await audit_action(
@@ -121,20 +145,13 @@ class ParameterService:
 
         # 6. 写参数快照（只追加）
         if db_session is not None:
-            from app.db.models import ParameterSnapshot
-
-            db_session.add(
-                ParameterSnapshot(
-                    ts=now_iso(),
-                    operator_id=operator_id,
-                    source="set_by_hmi",
-                    fw_version=readback.get("fw_version"),
-                    profile_version=readback.get("device_profile_version"),
-                    param_crc=readback.get("parameter_crc"),
-                    params_json=_normalize(rb_values),
-                )
+            await logging_service.append_parameter_snapshot(
+                db_session,
+                readback,
+                test_id=active_test.active_test_id,
+                operator_id=operator_id,
+                source="set_by_hmi",
             )
-            await db_session.commit()
 
         return {
             "result": "accepted",
@@ -142,3 +159,25 @@ class ParameterService:
             "parameter_crc": readback.get("parameter_crc"),
             "params": rb_values,
         }
+
+    async def _audit_comm_failure(
+        self,
+        exc: HostCommTimeoutError | HostCommNotConnectedError,
+        *,
+        values: dict[str, Any],
+        operator_id: str,
+        role: str,
+        client_ip: str | None,
+        db_session,
+    ) -> None:
+        reason_code = "device_comm_timeout" if isinstance(exc, HostCommTimeoutError) else "device_comm_fault"
+        await audit_action(
+            db_session,
+            operator_id=operator_id,
+            role=role,
+            action_type="set_parameters",
+            params={"values": values},
+            result="error",
+            reason_code=reason_code,
+            client_ip=client_ip,
+        )

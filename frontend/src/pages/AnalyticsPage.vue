@@ -87,7 +87,7 @@ onMounted(async () => {
 
 <template>
   <div class="page">
-    <div class="page-title">数据分析 · 多试验对比</div>
+    <h1 class="page-title">数据分析 · 多试验对比</h1>
     <div v-if="banner" class="banner">{{ banner }}</div>
 
     <div class="layout">
@@ -101,8 +101,8 @@ onMounted(async () => {
         <div v-if="!tests.length" class="muted">暂无试验</div>
         <div class="picker-foot">
           <div class="f">
-            <label>H (mm)</label>
-            <input v-model="heightMm" placeholder="可选" style="width: 90px" />
+            <label for="analytics-height">H (mm)</label>
+            <input id="analytics-height" v-model="heightMm" class="height-input" placeholder="可选" />
           </div>
           <button class="primary" :disabled="loading || !selected.size" @click="runCompare">对比</button>
         </div>
@@ -114,7 +114,7 @@ onMounted(async () => {
           <div class="card-head">
             <div class="card-title">叠加曲线</div>
             <div class="spacer" />
-            <select v-model="channel" @change="onChannelChange">
+            <select v-model="channel" aria-label="对比通道" @change="onChannelChange">
               <option v-for="c in CHANNELS" :key="c.key" :value="c.key">{{ c.label }}</option>
             </select>
           </div>
@@ -151,7 +151,7 @@ onMounted(async () => {
 <style scoped>
 .page { display: flex; flex-direction: column; gap: 16px; }
 .page-title { font-size: 18px; font-weight: 700; }
-.banner { background: var(--red-dim); border: 1px solid var(--red); color: #fca5a5; border-radius: 6px; padding: 8px 12px; font-size: 12px; }
+.banner { background: var(--red-dim); border: 1px solid var(--red); color: var(--danger-text); border-radius: 6px; padding: 8px 12px; font-size: 12px; }
 .layout { display: grid; grid-template-columns: 260px 1fr; gap: 16px; align-items: start; }
 .results { display: flex; flex-direction: column; gap: 16px; }
 .card-title { font-weight: 700; margin-bottom: 10px; }
@@ -163,10 +163,12 @@ onMounted(async () => {
 .picker-foot { display: flex; align-items: center; gap: 10px; margin-top: 12px; }
 .f { display: flex; align-items: center; gap: 6px; }
 .f label { color: var(--text-sec); font-size: 12px; }
+.height-input { width: 90px; }
 .cmp { width: 100%; border-collapse: collapse; font-size: 12px; }
 .cmp th, .cmp td { text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--border); }
 .cmp th { color: var(--text-sec); font-weight: 600; font-size: 11px; }
 .mlabel { color: var(--text-sec); }
 .meta-row td { border-top: 2px solid var(--border-hi); }
 @media (max-width: 1100px) { .layout { grid-template-columns: 1fr; } }
+@media (max-width: 560px) { .picker-foot { align-items: stretch; flex-direction: column; } .f { justify-content: space-between; } }
 </style>

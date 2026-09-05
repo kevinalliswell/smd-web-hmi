@@ -59,20 +59,20 @@ onMounted(async () => {
 
 <template>
   <div class="page">
-    <div class="page-title">趋势曲线</div>
+    <h1 class="page-title">趋势曲线</h1>
 
     <div class="card filters">
       <div class="f">
-        <label>起</label>
-        <input v-model="fromTs" type="datetime-local" />
+        <label for="trend-from">起</label>
+        <input id="trend-from" v-model="fromTs" type="datetime-local" />
       </div>
       <div class="f">
-        <label>止</label>
-        <input v-model="toTs" type="datetime-local" />
+        <label for="trend-to">止</label>
+        <input id="trend-to" v-model="toTs" type="datetime-local" />
       </div>
       <div class="f">
-        <label>试验</label>
-        <select v-model="testId">
+        <label for="trend-test">试验</label>
+        <select id="trend-test" v-model="testId">
           <option value="">（全部）</option>
           <option v-for="t in tests" :key="t.test_id" :value="t.test_id">{{ t.test_id }}</option>
         </select>
@@ -105,4 +105,5 @@ onMounted(async () => {
 .channels { display: flex; gap: 16px; flex-wrap: wrap; }
 .chk { display: flex; align-items: center; gap: 6px; font-size: 12px; cursor: pointer; }
 .banner { background: var(--accent-dim); border: 1px solid var(--accent); color: var(--accent); border-radius: 6px; padding: 8px 12px; font-size: 12px; }
+@media (max-width: 560px) { .filters, .f { align-items: stretch; flex-direction: column; } .channels { gap: 10px 14px; } }
 </style>

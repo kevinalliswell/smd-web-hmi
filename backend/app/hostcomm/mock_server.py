@@ -18,6 +18,7 @@ import copy
 import json
 import math
 import random
+import re
 import time
 from typing import Any
 
@@ -64,10 +65,13 @@ def _crc_hex(values: dict[str, Any]) -> str:
 _STATE_SEQUENCE = [
     "Standby",
     "Precheck",
+    "LeakCheck",
+    "N2Purge",
+    "GasSwitch",
     "Heating",
-    "Holding",
-    "Reducing",
-    "Cooling",
+    "Hold1580",
+    "N2Replace",
+    "End",
     "Standby",
 ]
 
@@ -84,6 +88,7 @@ class MockHostCommServer:
         inject_bad_json: bool = False,
         status_interval: float | None = 1.0,
         demo_alarms: bool = False,
+        disconnect_after: float | None = None,
         fw_version: str = "FW-MOCK-20260609-01",
     ) -> None:
         self.host = host
@@ -92,6 +97,9 @@ class MockHostCommServer:
         self.inject_bad_json = inject_bad_json
         self.status_interval = status_interval
         self.demo_alarms = demo_alarms
+        if disconnect_after is not None and disconnect_after <= 0:
+            raise ValueError("disconnect_after must be positive")
+        self.disconnect_after = disconnect_after
         self.fw_version = fw_version
 
         self._server: asyncio.AbstractServer | None = None
@@ -140,6 +148,7 @@ class MockHostCommServer:
         parser = FrameParser()
         push_task: asyncio.Task | None = None
         alarm_task: asyncio.Task | None = None
+        disconnect_task: asyncio.Task | None = None
         try:
             while True:
                 data = await reader.read(4096)
@@ -153,12 +162,14 @@ class MockHostCommServer:
                     # hello 之后启动演示报警循环（若开启）
                     if frame.get("type") == "hello" and self.demo_alarms and alarm_task is None:
                         alarm_task = asyncio.create_task(self._demo_alarm_loop(writer))
+                    if frame.get("type") == "hello" and self.disconnect_after and disconnect_task is None:
+                        disconnect_task = asyncio.create_task(self._disconnect_later(writer))
         except (asyncio.CancelledError, ConnectionResetError):
             pass
         except Exception as exc:  # noqa: BLE001
             logger.warning("mock.handler_error", error=str(exc))
         finally:
-            for t in (push_task, alarm_task):
+            for t in (push_task, alarm_task, disconnect_task):
                 if t is not None:
                     t.cancel()
             self._clients.discard(writer)
@@ -167,6 +178,15 @@ class MockHostCommServer:
             except Exception:  # noqa: BLE001
                 pass
             logger.info("mock.client_disconnected", peer=peer)
+
+    async def _disconnect_later(self, writer: asyncio.StreamWriter) -> None:
+        """在指定时间后真实断开连接，用于客户端重连/告警演练。"""
+        await asyncio.sleep(self.disconnect_after or 0)
+        writer.close()
+        try:
+            await writer.wait_closed()
+        except (ConnectionResetError, BrokenPipeError):
+            pass
 
     async def _send(self, writer: asyncio.StreamWriter, frame: dict[str, Any]) -> None:
         writer.write(FrameParser.encode(frame))
@@ -248,9 +268,9 @@ class MockHostCommServer:
             self._test_id = payload.get("params", {}).get("test_id")
             self._state = "Precheck"
         elif command == "stop_test":
-            self._state = "Cooling"
+            self._state = "N2Replace"
         elif command == "pause_hold":
-            self._state = "Holding"
+            self._state = "Hold"
         elif command == "set_parameters":
             # 保存下发的参数，使后续 get_parameters 回读一致（模拟 STM32 保存+回读）
             values = payload.get("params", {}).get("values")
@@ -360,7 +380,7 @@ class MockHostCommServer:
     def _status_snapshot(self) -> dict[str, Any]:
         t = time.monotonic() - self._t0
         wobble = math.sin(t / 5.0)
-        pv = 25.0 + (1200.0 if self._state in ("Heating", "Holding", "Reducing") else 0.0)
+        pv = 25.0 + (1200.0 if self._state in ("GasSwitch", "Heating", "Hold1580", "Hold") else 0.0)
         pv += wobble * 2.0 + random.uniform(-0.3, 0.3)
         return make_frame(
             "status_snapshot",
@@ -487,7 +507,7 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--fault",
         default=None,
-        help="故障注入，例如 disconnect_after=10s（当前仅解析，占位）",
+        help="故障注入，例如 disconnect_after=10s 或 disconnect_after=2m",
     )
     parser.add_argument("--status-interval", type=float, default=1.0)
     parser.add_argument("--demo-alarms", action="store_true", help="周期性注入演示报警（联调/演示用）")
@@ -502,6 +522,18 @@ _MODE_MAP = {
 }
 
 
+def _parse_disconnect_after(value: str | None) -> float | None:
+    if value is None:
+        return None
+    match = re.fullmatch(r"disconnect_after=(\d+(?:\.\d+)?)([sm]?)", value.strip())
+    if not match:
+        raise ValueError("--fault 仅支持 disconnect_after=<正数>[s|m]")
+    seconds = float(match.group(1)) * (60 if match.group(2) == "m" else 1)
+    if seconds <= 0:
+        raise ValueError("disconnect_after 必须大于 0")
+    return seconds
+
+
 async def _amain(argv: list[str] | None = None) -> None:
     args = _parse_args(argv)
     configure_logging()
@@ -511,6 +543,7 @@ async def _amain(argv: list[str] | None = None) -> None:
         command_mode=_MODE_MAP.get(args.mode, "accept"),
         status_interval=args.status_interval,
         demo_alarms=args.demo_alarms,
+        disconnect_after=_parse_disconnect_after(args.fault),
     )
     await server.start()
     logger.info("mock.listening", host=args.host, port=server.port, mode=args.mode)

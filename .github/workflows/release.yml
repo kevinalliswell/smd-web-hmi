@@ -28,11 +28,11 @@ jobs:
         with:
           python-version: "3.11"
           cache: pip
-          cache-dependency-path: backend/requirements-dev.txt
+          cache-dependency-path: backend/requirements-dev.lock
 
       - name: 后端依赖
         working-directory: backend
-        run: pip install -r requirements-dev.txt
+        run: pip install --require-hashes -r requirements-dev.lock
 
       - name: 安全红线（最先运行）
         working-directory: backend
@@ -40,7 +40,7 @@ jobs:
 
       - name: 后端全量测试
         working-directory: backend
-        run: pytest -q
+        run: pytest -q --cov=app --cov-report=term --cov-fail-under=80
 
       - uses: actions/setup-node@v4
         with:
@@ -52,6 +52,7 @@ jobs:
         working-directory: frontend
         run: |
           npm ci
+          npm run lint
           npm run test
 
   # 必须在 Windows 上解析依赖：pip 的环境标记（sys_platform 等）按"运行平台"求值，
@@ -69,7 +70,7 @@ jobs:
 
       # 工控机 Python 3.11 x64；--only-binary 确保全部为 wheel，可在离线机直接安装
       - name: pip download（cp311 / win_amd64）
-        run: pip download -r backend/requirements.txt -d wheels --only-binary=":all:"
+        run: pip download --require-hashes -r backend/requirements.lock -d wheels --only-binary=":all:"
 
       - uses: actions/upload-artifact@v4
         with:
@@ -123,7 +124,8 @@ jobs:
           cp -r frontend/dist "${STAGE}/app/frontend_dist"
           mv stage/wheels "${STAGE}/wheels"
           cp -r deploy/windows/. "${STAGE}/"
-          cp .env.example CHANGELOG.md "${STAGE}/"
+          cp .env.example CHANGELOG.md README.md "${STAGE}/"
+          python deploy/windows/verify_bundle.py "${STAGE}"
           (cd stage && zip -qr "${NAME}.zip" "${NAME}" && sha256sum "${NAME}.zip" > SHA256SUMS.txt)
           echo "zip=stage/${NAME}.zip" >> "$GITHUB_OUTPUT"
 

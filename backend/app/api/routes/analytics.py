@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.api.deps import DbDep, get_current_user
 from app.api.schemas import ok
@@ -22,17 +22,16 @@ async def compare(db: DbDep, test_ids: str = "", original_height_mm: float | Non
         test = await db.scalar(select(TestSession).where(TestSession.test_id == tid))
         if test is None:
             continue
-        samples = list(
-            (await db.execute(select(SamplePoint).where(SamplePoint.test_id == tid).order_by(SamplePoint.ts))).scalars()
-        )
-        metrics = report_service.compute_metrics(samples, original_height_mm)
+        sample_count = await db.scalar(select(func.count()).select_from(SamplePoint).where(SamplePoint.test_id == tid))
+        height = test.original_height_mm if test.original_height_mm is not None else original_height_mm
+        metrics = await report_service.compute_metrics_from_database(db, tid, height)
         out.append(
             {
                 "test_id": tid,
                 "operator_id": test.operator_id,
                 "start_time": test.start_time,
                 "end_time": test.end_time,
-                "sample_count": len(samples),
+                "sample_count": int(sample_count or 0),
                 "metrics": metrics,
             }
         )

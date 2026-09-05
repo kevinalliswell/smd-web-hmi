@@ -1,17 +1,24 @@
 <script setup>
 import { onMounted, reactive, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import { useRole } from '@/composables/useRole'
 import { useAuthStore } from '@/stores/auth'
 import { fetchHealth, fetchSystemInfo, syncTime } from '@/api/system'
 import { fetchUsers, createUser, updateUser, changePassword } from '@/api/users'
+import PasswordResetDialog from '@/components/users/PasswordResetDialog.vue'
 
 const { canConfigure } = useRole()
 const auth = useAuthStore()
+const router = useRouter()
 
 const banner = ref(null)
 const health = ref(null)
 const info = ref(null)
 const users = ref([])
+const resetTarget = ref(null)
+const resetOpen = ref(false)
+const resetLoading = ref(false)
+const resetError = ref('')
 
 const ROLES = ['observer', 'operator', 'admin', 'maintainer']
 const newUser = reactive({ username: '', password: '', role: 'observer', display_name: '' })
@@ -68,14 +75,25 @@ async function onToggleActive(u) {
   }
 }
 
-async function onResetPassword(u) {
-  const np = window.prompt(`为 ${u.username} 设置新密码：`)
-  if (!np) return
+function openResetPassword(u) {
+  resetTarget.value = u
+  resetError.value = ''
+  resetOpen.value = true
+}
+
+async function onResetPassword(newPassword) {
+  if (!resetTarget.value) return
+  resetLoading.value = true
+  resetError.value = ''
   try {
-    await updateUser(u.id, { new_password: np })
-    notify('ok', `${u.username} 密码已重置`)
+    await updateUser(resetTarget.value.id, { new_password: newPassword })
+    notify('ok', `${resetTarget.value.username} 密码已重置`)
+    resetOpen.value = false
+    resetTarget.value = null
   } catch (e) {
-    notify('err', '重置失败：' + (e.response?.data?.message || e.message))
+    resetError.value = e.response?.data?.message || e.message || '重置失败'
+  } finally {
+    resetLoading.value = false
   }
 }
 
@@ -83,9 +101,8 @@ async function onChangeOwnPassword() {
   if (!pwd.old_password || !pwd.new_password) return
   try {
     await changePassword(pwd.old_password, pwd.new_password)
-    notify('ok', '密码已更新')
-    pwd.old_password = ''
-    pwd.new_password = ''
+    auth.logout({ revoke: false })
+    await router.replace({ name: 'login', query: { passwordChanged: '1' } })
   } catch (e) {
     notify('err', '修改失败：' + (e.response?.data?.message || e.message))
   }
@@ -105,7 +122,7 @@ onMounted(loadAll)
 
 <template>
   <div class="page">
-    <div class="page-title">系统设置</div>
+    <h1 class="page-title">系统设置</h1>
     <div v-if="banner" class="banner" :class="banner.type">{{ banner.text }}</div>
 
     <!-- 系统信息 -->
@@ -155,7 +172,7 @@ onMounted(loadAll)
             </td>
             <td class="ops">
               <button @click="onToggleActive(u)">{{ u.is_active ? '停用' : '启用' }}</button>
-              <button @click="onResetPassword(u)">重置密码</button>
+              <button @click="openResetPassword(u)">重置密码</button>
             </td>
           </tr>
         </tbody>
@@ -176,6 +193,14 @@ onMounted(loadAll)
     </div>
 
     <p v-else class="muted">用户管理与校时需要 Admin 及以上角色。</p>
+
+    <PasswordResetDialog
+      v-model="resetOpen"
+      :username="resetTarget?.username || ''"
+      :loading="resetLoading"
+      :error="resetError"
+      @submit="onResetPassword"
+    />
   </div>
 </template>
 
@@ -183,8 +208,8 @@ onMounted(loadAll)
 .page { display: flex; flex-direction: column; gap: 16px; }
 .page-title { font-size: 18px; font-weight: 700; }
 .banner { border-radius: 6px; padding: 8px 12px; font-size: 12px; }
-.banner.ok { background: var(--green-dim); border: 1px solid var(--green); color: #86efac; }
-.banner.err { background: var(--red-dim); border: 1px solid var(--red); color: #fca5a5; }
+.banner.ok { background: var(--green-dim); border: 1px solid var(--green); color: var(--success-text); }
+.banner.err { background: var(--red-dim); border: 1px solid var(--red); color: var(--danger-text); }
 .card-title { font-weight: 700; margin-bottom: 10px; }
 .sub-title { font-weight: 600; margin: 12px 0 8px; color: var(--text-sec); font-size: 12px; }
 .kv { border-collapse: collapse; font-size: 13px; }
@@ -201,4 +226,5 @@ onMounted(loadAll)
 .on { color: var(--green); }
 .off { color: var(--text-muted); }
 .new-user { margin-top: 8px; }
+@media (max-width: 560px) { .form { align-items: stretch; flex-direction: column; } .ops { flex-wrap: wrap; } }
 </style>

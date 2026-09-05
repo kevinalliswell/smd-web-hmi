@@ -1,11 +1,16 @@
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
+import { login as apiLogin } from '@/api/auth'
 import { useAuthStore } from '@/stores/auth'
+
+vi.mock('@/api/auth', () => ({ login: vi.fn(), logout: vi.fn().mockResolvedValue(undefined) }))
 
 describe('auth store 角色层级', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
     localStorage.clear()
+    sessionStorage.clear()
+    vi.clearAllMocks()
   })
 
   it('未登录时无任何权限', () => {
@@ -31,5 +36,23 @@ describe('auth store 角色层级', () => {
     auth.role = 'maintainer'
     expect(auth.hasRole('admin')).toBe(true)
     expect(auth.hasRole('maintainer')).toBe(true)
+  })
+
+  it('登录后持久化默认口令强制修改标记', async () => {
+    apiLogin.mockResolvedValue({
+      token: 'token',
+      role: 'admin',
+      display_name: '系统管理员',
+      must_change_password: true,
+    })
+    const auth = useAuthStore()
+
+    await auth.login('admin', 'admin')
+
+    expect(auth.mustChangePassword).toBe(true)
+    expect(sessionStorage.getItem('smd_must_change_password')).toBe('1')
+    expect(localStorage.getItem('smd_token')).toBeNull()
+    auth.logout()
+    expect(sessionStorage.getItem('smd_must_change_password')).toBeNull()
   })
 })

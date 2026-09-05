@@ -2,13 +2,16 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Request
-from sqlalchemy import select
+from fastapi import APIRouter, Depends, HTTPException, Request
 
 from app.api.deps import DbDep, get_current_user, get_hostcomm_client
-from app.api.schemas import ok
-from app.db.models import SamplePoint
+from app.api.schemas import err, ok
+from app.api.validation import MaxPoints, TestId
+from app.core.time import normalize_utc_iso
 from app.services.cache import status_cache
+from app.services.sampling_health import sampling_health
+from app.services.state_policy import enrich_status_snapshot
+from app.services.trend_service import query_downsampled_points
 
 router = APIRouter(prefix="/api", tags=["status"])
 
@@ -21,9 +24,10 @@ async def get_status(request: Request):
     snapshot = await status_cache.get_snapshot()
     quality = status_cache.comm_quality(link_online)
 
-    payload = dict(snapshot)
+    payload = enrich_status_snapshot(snapshot)
     payload["comm_quality"] = quality
     payload["last_update"] = status_cache.last_update
+    payload["data_persistence"] = sampling_health.snapshot()
     return ok(payload)
 
 
@@ -32,44 +36,23 @@ async def get_trends(
     db: DbDep,
     from_ts: str | None = None,
     to_ts: str | None = None,
-    test_id: str | None = None,
-    max_points: int = 2000,
+    test_id: TestId | None = None,
+    max_points: MaxPoints = 2000,
 ):
     """跨试验的历史趋势查询（按时间窗 + 等距降采样）。权限：Observer+。
 
-    时间参数为 ISO 8601 字符串（同一部署时区下字符串可比）。
+    时间参数为 ISO 8601 字符串，进入查询前统一换算为 UTC。
     """
-    stmt = select(SamplePoint)
-    if from_ts:
-        stmt = stmt.where(SamplePoint.ts >= from_ts)
-    if to_ts:
-        stmt = stmt.where(SamplePoint.ts <= to_ts)
-    if test_id:
-        stmt = stmt.where(SamplePoint.test_id == test_id)
-    stmt = stmt.order_by(SamplePoint.ts)
-
-    rows = (await db.execute(stmt)).scalars().all()
-    total = len(rows)
-    stride = max(1, (total + max_points - 1) // max_points) if max_points > 0 else 1
-    sampled = rows[::stride]
-    return ok(
-        {
-            "total": total,
-            "stride": stride,
-            "points": [
-                {
-                    "ts": s.ts,
-                    "test_id": s.test_id,
-                    "furnace_pv": s.furnace_pv,
-                    "burden_temp": s.burden_temp,
-                    "delta_p": s.delta_p,
-                    "displacement": s.displacement,
-                    "drip_weight": s.drip_weight,
-                    "n2_pv": s.n2_pv,
-                    "co_pv": s.co_pv,
-                    "current_state": s.current_state,
-                }
-                for s in sampled
-            ],
-        }
+    try:
+        normalized_from = normalize_utc_iso(from_ts) if from_ts else None
+        normalized_to = normalize_utc_iso(to_ts) if to_ts else None
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=err("invalid_timestamp", str(exc))) from exc
+    result = await query_downsampled_points(
+        db,
+        from_ts=normalized_from,
+        to_ts=normalized_to,
+        test_id=test_id,
+        max_points=max_points,
     )
+    return ok(result)

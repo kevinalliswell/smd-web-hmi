@@ -2,19 +2,32 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
+
 import pytest
 from sqlalchemy import func, select
 
-from app.db.models import DeviceStatus, SamplePoint, TestSession
+from app import main as main_module
+from app.db.models import DeviceStatus, OperatorAction, ParameterSnapshot, SamplePoint, TestSession
+from app.hostcomm.client import HostCommTimeoutError
 from app.services import logging_service
-from app.services.command_service import CommandService, confirm_tokens
+from app.services.command_service import CommandError, CommandService, confirm_tokens
+from app.services.sampling_health import sampling_health
 from app.services.test_runtime import active_test
+from app.services.test_session_service import reconcile_test_sessions
 
 
 class _FakeClient:
     is_online = True
 
+    def __init__(self, parameter_error=None):
+        self.commands = []
+        self.command_params = []
+        self.parameter_error = parameter_error
+
     async def send_command(self, command, params, *, operator_id, role, confirm_token=None):
+        self.commands.append(command)
+        self.command_params.append(params)
         # start/stop 受控停止均推进到一个具体状态
         state = "Precheck" if command == "start_test" else "Cooling"
         return {
@@ -23,6 +36,16 @@ class _FakeClient:
             "result": "accepted",
             "reason_code": "ok",
             "current_state": state,
+        }
+
+    async def get_parameters(self):
+        if self.parameter_error is not None:
+            raise self.parameter_error
+        return {
+            "fw_version": "FW-START",
+            "device_profile_version": "DP-START",
+            "parameter_crc": "crc-start",
+            "params": {"process": {"end_temp_deg_c": 1580}},
         }
 
 
@@ -55,7 +78,12 @@ async def test_start_test_creates_session(db_session):
     token = confirm_tokens.issue()
     await service.execute(
         "start_test",
-        {"test_id": "TEST-20260610-001"},
+        {
+            "test_id": "TEST-20260610-001",
+            "original_height_mm": 25.5,
+            "sample_label": "SAMPLE-A",
+            "notes": "commercial closure",
+        },
         operator_id="op001",
         role="operator",
         confirm_token=token,
@@ -65,7 +93,65 @@ async def test_start_test_creates_session(db_session):
     row = await db_session.scalar(select(TestSession).where(TestSession.test_id == "TEST-20260610-001"))
     assert row is not None
     assert row.operator_id == "op001"
+    assert row.original_height_mm == 25.5
+    assert row.sample_label == "SAMPLE-A"
+    assert row.notes == "commercial closure"
     assert row.end_time is None
+    assert service._client.command_params[0] == {"test_id": "TEST-20260610-001"}
+    snapshot = (await db_session.execute(select(ParameterSnapshot))).scalar_one()
+    assert snapshot.test_id == "TEST-20260610-001"
+    assert snapshot.source == "test_start"
+    assert snapshot.fw_version == "FW-START"
+
+
+async def test_start_parameter_readback_failure_is_audited_without_masking_accepted_start(db_session):
+    """控制板已启动时，参数回读失败不能把 API 伪装成启动失败。"""
+    service = CommandService(_FakeClient(parameter_error=HostCommTimeoutError("timeout")), _FakeCache())
+
+    result = await service.execute(
+        "start_test",
+        {"test_id": "TEST-PARAM-TIMEOUT"},
+        operator_id="op001",
+        role="operator",
+        confirm_token=confirm_tokens.issue(),
+        db_session=db_session,
+    )
+
+    assert result["result"] == "accepted"
+    assert await db_session.scalar(select(func.count()).select_from(ParameterSnapshot)) == 0
+    actions = (await db_session.execute(select(OperatorAction).order_by(OperatorAction.id))).scalars().all()
+    assert [(row.action_type, row.result, row.reason_code) for row in actions] == [
+        ("start_test", "accepted", "ok"),
+        ("capture_start_parameters", "error", "device_comm_timeout"),
+    ]
+
+
+async def test_start_test_rejects_existing_id_before_device_command(db_session):
+    db_session.add(
+        TestSession(
+            test_id="TEST-20260610-001",
+            operator_id="old-op",
+            start_time="2026-06-10T01:00:00Z",
+            end_time="2026-06-10T02:00:00Z",
+        )
+    )
+    await db_session.commit()
+    client = _FakeClient()
+    service = CommandService(client, _FakeCache())
+
+    with pytest.raises(CommandError) as exc:
+        await service.execute(
+            "start_test",
+            {"test_id": "TEST-20260610-001"},
+            operator_id="op002",
+            role="operator",
+            confirm_token=confirm_tokens.issue(),
+            db_session=db_session,
+        )
+
+    assert exc.value.status_code == 409
+    assert exc.value.error_code == "test_id_exists"
+    assert client.commands == []
 
 
 # ---------------------------------------------------- 进行中写入 sample_point
@@ -110,10 +196,161 @@ async def test_stop_test_closes_session(db_session):
     assert row.state_at_end == "Cooling"
 
 
+async def test_stop_test_closes_latest_open_session_after_runtime_loss(db_session):
+    row = TestSession(
+        test_id="TEST-20260610-003",
+        operator_id="op001",
+        start_time="2026-06-10T03:00:00Z",
+    )
+    db_session.add(row)
+    await db_session.commit()
+    active_test.stop()  # 模拟后端重启导致内存单例丢失
+
+    service = CommandService(_FakeClient(), _FakeCache())
+    await service.execute(
+        "stop_test",
+        {},
+        operator_id="op001",
+        role="operator",
+        confirm_token=confirm_tokens.issue(),
+        db_session=db_session,
+    )
+
+    await db_session.refresh(row)
+    assert row.end_time is not None
+    assert row.end_reason == "operator_stop"
+
+
+async def test_reconcile_restores_matching_running_session(db_session):
+    row = TestSession(
+        test_id="TEST-20260610-004",
+        operator_id="op001",
+        start_time="2026-06-10T04:00:00Z",
+    )
+    db_session.add(row)
+    await db_session.commit()
+
+    result = await reconcile_test_sessions(
+        db_session,
+        {"state_machine": {"test_id": row.test_id, "current_state": "GasSwitch"}},
+    )
+
+    await db_session.refresh(row)
+    assert result["restored_test_id"] == row.test_id
+    assert active_test.active_test_id == row.test_id
+    assert row.end_time is None
+
+
+async def test_reconcile_closes_stale_session_when_device_is_idle(db_session):
+    row = TestSession(
+        test_id="TEST-20260610-005",
+        operator_id="op001",
+        start_time="2026-06-10T05:00:00Z",
+    )
+    db_session.add(row)
+    await db_session.commit()
+
+    result = await reconcile_test_sessions(
+        db_session,
+        {"state_machine": {"test_id": None, "current_state": "Standby"}},
+    )
+
+    await db_session.refresh(row)
+    assert result["closed"] == 1
+    assert active_test.active_test_id is None
+    assert row.end_time is not None
+    assert row.end_reason == "backend_restart"
+
+
 # ---------------------------------------------------- device_status 滚动裁剪
 async def test_device_status_prune(db_session):
-    """device_status 写入后裁剪到保留窗口（唯一允许 DELETE 的表）。"""
-    for i in range(5):
-        await logging_service.append_device_status(db_session, _snapshot(pv=i), keep=3)
-    count = await db_session.scalar(select(func.count()).select_from(DeviceStatus))
-    assert count == 3
+    """按时间而非 id 裁剪，并限制清理执行频率。"""
+    now = [datetime(2026, 8, 30, 12, 0, tzinfo=timezone.utc)]
+    monotonic = [100.0]
+    pruner = logging_service.DeviceStatusPruner(
+        clock=lambda: monotonic[0],
+        utc_clock=lambda: now[0],
+    )
+    recent = DeviceStatus(ts=(now[0] - timedelta(hours=1)).isoformat(), status_json="{}")
+    old_with_newer_id = DeviceStatus(ts=(now[0] - timedelta(hours=25)).isoformat(), status_json="{}")
+    db_session.add_all([recent, old_with_newer_id])
+    await db_session.commit()
+
+    await logging_service.append_device_status(
+        db_session,
+        _snapshot(pv=1),
+        retention_hours=24,
+        cleanup_interval_seconds=300,
+        pruner=pruner,
+    )
+    assert await db_session.get(DeviceStatus, recent.id) is not None
+    assert await db_session.get(DeviceStatus, old_with_newer_id.id) is None
+
+    old_during_cooldown = DeviceStatus(ts=(now[0] - timedelta(hours=26)).isoformat(), status_json="{}")
+    db_session.add(old_during_cooldown)
+    await db_session.commit()
+    await logging_service.append_device_status(
+        db_session,
+        _snapshot(pv=2),
+        retention_hours=24,
+        cleanup_interval_seconds=300,
+        pruner=pruner,
+    )
+    assert await db_session.get(DeviceStatus, old_during_cooldown.id) is not None
+
+    monotonic[0] += 301
+    await logging_service.append_device_status(
+        db_session,
+        _snapshot(pv=3),
+        retention_hours=24,
+        cleanup_interval_seconds=300,
+        pruner=pruner,
+    )
+    assert await db_session.get(DeviceStatus, old_during_cooldown.id) is None
+    assert await db_session.scalar(select(func.count()).select_from(DeviceStatus)) == 4
+
+
+async def test_snapshot_write_failures_raise_and_clear_visible_alarm(monkeypatch):
+    """连续写库失败达到阈值后广播报警，下一次成功写入后广播清除。"""
+
+    class FakeSessionContext:
+        async def __aenter__(self):
+            return object()
+
+        async def __aexit__(self, exc_type, exc, traceback):
+            return False
+
+    broadcasts: list[tuple[str, dict]] = []
+
+    async def broadcast(msg_type, data):
+        broadcasts.append((msg_type, data))
+
+    async def fail_write(session, payload, **kwargs):
+        raise RuntimeError("database is locked")
+
+    async def successful_write(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr(main_module, "get_sessionmaker", lambda: FakeSessionContext)
+    monkeypatch.setattr(main_module.ws_manager, "broadcast", broadcast)
+    monkeypatch.setattr(logging_service, "append_device_status", fail_write)
+    sampling_health.reset()
+    active_test.start("TEST-LOCK")
+
+    try:
+        for _ in range(3):
+            await main_module._persist_snapshot(_snapshot())
+
+        assert [item[0] for item in broadcasts] == ["alarm_new"]
+        assert broadcasts[0][1]["alarm_code"] == "HMI-DATA-PERSISTENCE"
+        assert broadcasts[0][1]["test_id"] == "TEST-LOCK"
+
+        monkeypatch.setattr(logging_service, "append_device_status", successful_write)
+        monkeypatch.setattr(logging_service, "append_sample_point", successful_write)
+        await main_module._persist_snapshot(_snapshot())
+
+        assert [item[0] for item in broadcasts] == ["alarm_new", "alarm_clear"]
+        assert broadcasts[-1][1]["alarm_id"] == "HMI-DATA-PERSISTENCE"
+    finally:
+        active_test.stop()
+        sampling_health.reset()

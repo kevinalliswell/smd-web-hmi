@@ -25,10 +25,10 @@ jobs:
         with:
           python-version: "3.11"
           cache: pip
-          cache-dependency-path: backend/requirements-dev.txt
+          cache-dependency-path: backend/requirements-dev.lock
 
       - name: Install deps
-        run: pip install -r requirements-dev.txt
+        run: pip install --require-hashes -r requirements-dev.lock
 
       # 配置见 backend/pyproject.toml（行长 120，迁移目录除外）
       - name: black --check
@@ -62,10 +62,10 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
           cache: pip
-          cache-dependency-path: backend/requirements-dev.txt
+          cache-dependency-path: backend/requirements-dev.lock
 
       - name: Install deps
-        run: pip install -r requirements-dev.txt
+        run: pip install --require-hashes -r requirements-dev.lock
 
       # 安全红线必须最先运行（CLAUDE.md 第 2 / 7 节）
       - name: Safety red-line (MUST pass first)
@@ -74,12 +74,21 @@ jobs:
       - name: Alembic upgrade head（空库 → 最新 schema）
         run: alembic upgrade head
 
-      # 覆盖率门槛 70% 为防倒退基线；D3 目标为核心路径 ≥80%（见 docs/发布与维护指南.md）
+      # 商用候选分支按全后端 80% 门槛阻断回退。
       - name: Full backend suite + coverage gate
-        run: pytest -q --cov=app --cov-report=term --cov-fail-under=70
+        run: pytest -q --cov=app --cov-report=term --cov-fail-under=80
+
+      - name: Windows deployment script syntax
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Get-ChildItem ../deploy/windows/*.ps1 | ForEach-Object {
+            [void][scriptblock]::Create((Get-Content $_.FullName -Raw))
+          }
+          python -m py_compile ../deploy/windows/backup_database.py ../deploy/windows/verify_bundle.py
 
   frontend:
-    name: 前端 (vitest + build)
+    name: 前端 (eslint + vitest + build)
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -96,6 +105,9 @@ jobs:
       - name: Install deps
         run: npm ci
 
+      - name: ESLint
+        run: npm run lint
+
       - name: Unit tests
         run: npm run test
 
@@ -109,11 +121,10 @@ jobs:
           path: frontend/dist
           retention-days: 14
 
-  # 依赖漏洞审计：非阻塞（continue-on-error），完整机制见 issue #12
+  # 依赖漏洞审计：高危漏洞阻断合并，完整机制见 issue #12
   audit:
-    name: 依赖审计（非阻塞）
+    name: 依赖审计
     runs-on: ubuntu-latest
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
 
@@ -122,7 +133,7 @@ jobs:
           python-version: "3.11"
 
       - name: pip-audit（后端运行依赖）
-        run: pipx run pip-audit -r backend/requirements.txt
+        run: pipx run pip-audit -r backend/requirements.lock
 
       - uses: actions/setup-node@v4
         with:

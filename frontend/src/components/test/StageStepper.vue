@@ -47,8 +47,8 @@ function statusOf(i) {
 <style scoped>
 .stepper { display: flex; flex-direction: column; gap: 10px; }
 .special { padding: 8px 12px; border-radius: 6px; font-weight: 600; }
-.special.danger { background: var(--red-dim); border: 1px solid var(--red); color: #fca5a5; }
-.special.warn { background: var(--yellow-dim); border: 1px solid var(--yellow); color: #fde68a; }
+.special.danger { background: var(--red-dim); border: 1px solid var(--red); color: var(--danger-text); }
+.special.warn { background: var(--yellow-dim); border: 1px solid var(--yellow); color: var(--warning-text); }
 .steps {
   display: flex; list-style: none; gap: 4px; padding: 0; margin: 0;
   overflow-x: auto; counter-reset: step;
@@ -69,7 +69,7 @@ function statusOf(i) {
 .label { font-size: 11px; color: var(--text-sec); line-height: 1.3; }
 .co-tag {
   display: inline-block; margin-left: 3px; font-size: 9px; font-weight: 700;
-  background: var(--orange); color: #1a1208; border-radius: 3px; padding: 0 3px;
+  background: var(--orange); color: var(--on-orange); border-radius: 3px; padding: 0 3px;
 }
 .step.done .node { border-color: var(--green); color: var(--green); }
 .step.active .node { border-color: var(--accent); background: var(--accent-dim); color: var(--accent); box-shadow: 0 0 8px var(--accent); }
