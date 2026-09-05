@@ -132,3 +132,12 @@ jobs:
             artifacts/SHA256SUMS.txt
           if-no-files-found: error
           retention-days: 14
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-release-metadata
+          path: |
+            artifacts/manifest.json
+            artifacts/sbom.cdx.json
+            artifacts/SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 90

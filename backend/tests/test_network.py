@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pytest
 
 from app.core.network import tls_options
@@ -26,7 +28,7 @@ def test_source_server_uses_dotenv_tls_settings(tmp_path, monkeypatch):
     cert.write_text("fixture")
     key.write_text("fixture")
     env = tmp_path / ".env"
-    env.write_text(f'SMD_HOST=0.0.0.0\nSMD_TLS_CERTFILE="{cert}"\nSMD_TLS_KEYFILE="{key}"\n')
+    env.write_text(f'SMD_HOST=0.0.0.0\nSMD_TLS_CERTFILE="{cert.as_posix()}"\nSMD_TLS_KEYFILE="{key.as_posix()}"\n')
     for name in ("SMD_HOST", "SMD_TLS_CERTFILE", "SMD_TLS_KEYFILE"):
         monkeypatch.delenv(name, raising=False)
     settings = Settings(_env_file=env)
@@ -34,7 +36,7 @@ def test_source_server_uses_dotenv_tls_settings(tmp_path, monkeypatch):
     calls = []
     monkeypatch.setattr(server.uvicorn, "run", lambda *args, **kwargs: calls.append(kwargs))
     server.main()
-    assert calls[0]["ssl_certfile"] == str(cert)
-    assert calls[0]["ssl_keyfile"] == str(key)
+    assert Path(calls[0]["ssl_certfile"]) == cert
+    assert Path(calls[0]["ssl_keyfile"]) == key
     assert calls[0]["host"] == "0.0.0.0"
     assert calls[0]["workers"] == 1
