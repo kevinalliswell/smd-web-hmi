@@ -20,9 +20,11 @@ import math
 import random
 import re
 import time
+import uuid
 from typing import Any
 
 from app.core.logging import configure_logging, get_logger
+from app.hostcomm.mock_recipe_runtime import EXTENDED_CAPABILITIES, MOCK_SAFETY_PROFILE, MockRecipeRuntime
 from app.hostcomm.protocol import FrameParser, make_frame, now_iso
 
 logger = get_logger("hostcomm.mock")
@@ -90,6 +92,8 @@ class MockHostCommServer:
         demo_alarms: bool = False,
         disconnect_after: float | None = None,
         fw_version: str = "FW-MOCK-20260609-01",
+        extended_contract: bool = False,
+        time_scale: float = 1.0,
     ) -> None:
         self.host = host
         self._requested_port = port
@@ -101,6 +105,15 @@ class MockHostCommServer:
             raise ValueError("disconnect_after must be positive")
         self.disconnect_after = disconnect_after
         self.fw_version = fw_version
+        if not math.isfinite(time_scale) or not 0 < time_scale <= 10000:
+            raise ValueError("time_scale必须在(0,10000]内")
+        self.extended_contract = extended_contract
+        self.time_scale = time_scale
+        self.runtime = MockRecipeRuntime()
+        self._runtime_task = None
+        self._boot_id = uuid.uuid4().hex
+        self._sequence = 0
+        self._ready_clients = set()
 
         self._server: asyncio.AbstractServer | None = None
         self._state = "Standby"
@@ -119,6 +132,8 @@ class MockHostCommServer:
 
     async def start(self) -> None:
         self._server = await asyncio.start_server(self._handle, self.host, self._requested_port)
+        if self.extended_contract:
+            self._runtime_task = asyncio.create_task(self._runtime_loop())
         logger.info("mock.started", host=self.host, port=self.port, mode=self.command_mode)
 
     async def serve_forever(self) -> None:
@@ -128,7 +143,30 @@ class MockHostCommServer:
         async with self._server:
             await self._server.serve_forever()
 
+    async def _runtime_loop(self):
+        try:
+            since_sample = 0.0
+            while True:
+                await asyncio.sleep(0.1)
+                self.runtime.advance(0.1 * self.time_scale)
+                if self.runtime.recipe is not None:
+                    self._state = self.runtime.state
+                since_sample += 0.1
+                if since_sample >= (self.status_interval or 1.0):
+                    since_sample = 0.0
+                    frame = self._status_snapshot()  # 断线期间板端采样序号仍增长。
+                    for writer in list(self._ready_clients):
+                        try:
+                            await asyncio.wait_for(self._send(writer, frame), timeout=0.1)
+                        except (TimeoutError, ConnectionError):
+                            writer.close()
+        except asyncio.CancelledError:
+            pass
+
     async def stop(self) -> None:
+        if self._runtime_task:
+            self._runtime_task.cancel()
+            await self._runtime_task
         for w in list(self._clients):
             try:
                 w.close()
@@ -157,7 +195,12 @@ class MockHostCommServer:
                 for frame in parser.feed(data):
                     await self._on_frame(frame, writer)
                     # hello 之后启动周期状态推送（若开启）
-                    if frame.get("type") == "hello" and self.status_interval and push_task is None:
+                    if (
+                        frame.get("type") == "hello"
+                        and self.status_interval
+                        and push_task is None
+                        and not self.extended_contract
+                    ):
                         push_task = asyncio.create_task(self._push_loop(writer))
                     # hello 之后启动演示报警循环（若开启）
                     if frame.get("type") == "hello" and self.demo_alarms and alarm_task is None:
@@ -173,6 +216,7 @@ class MockHostCommServer:
                 if t is not None:
                     t.cancel()
             self._clients.discard(writer)
+            self._ready_clients.discard(writer)
             try:
                 writer.close()
             except Exception:  # noqa: BLE001
@@ -198,6 +242,7 @@ class MockHostCommServer:
 
         if msg_type == "hello":
             await self._send(writer, self._hello_ack())
+            self._ready_clients.add(writer)
             if self.inject_bad_json:
                 # 直接写入一行非法 JSON，验证客户端容错（不走 encode）
                 writer.write(b"{ this is not valid json \n")
@@ -263,6 +308,32 @@ class MockHostCommServer:
             )
             return
 
+        if self.extended_contract and command == "start_test":
+            try:
+                recipe = self._param_values.get("recipe") or {}
+                expected = payload.get("params", {}).get("expected_recipe")
+                identity = {k: recipe.get(k) for k in ("recipe_id", "version", "digest")}
+                if expected != identity:
+                    raise ValueError("启动配方版本与板端不一致")
+                self.runtime.start(recipe)
+            except (ValueError, KeyError, TypeError):
+                await self._send(
+                    writer,
+                    make_frame(
+                        "command_result",
+                        {
+                            "request_msg_id": req_id,
+                            "command": command,
+                            "result": "invalid_param",
+                            "reason_code": "recipe_not_validated",
+                            "current_state": self._state,
+                        },
+                        prefix="mcu",
+                    ),
+                )
+                return
+        if self.extended_contract and command == "stop_test":
+            self.runtime.stop()
         # accept 模式：根据命令推进状态机 / 保存参数
         if command == "start_test":
             self._test_id = payload.get("params", {}).get("test_id")
@@ -361,7 +432,8 @@ class MockHostCommServer:
                     "log_export",
                     "sync_time",
                     "event_push",
-                ],
+                ]
+                + (EXTENDED_CAPABILITIES if self.extended_contract else []),
             },
             prefix="mcu",
         )
@@ -382,7 +454,7 @@ class MockHostCommServer:
         wobble = math.sin(t / 5.0)
         pv = 25.0 + (1200.0 if self._state in ("GasSwitch", "Heating", "Hold1580", "Hold") else 0.0)
         pv += wobble * 2.0 + random.uniform(-0.3, 0.3)
-        return make_frame(
+        frame = make_frame(
             "status_snapshot",
             {
                 "system": {
@@ -458,6 +530,42 @@ class MockHostCommServer:
             prefix="mcu",
         )
 
+        if self.extended_contract:
+            p = frame["payload"]
+            runtime = self.runtime
+            self._sequence += 1
+            p["telemetry"] = {"boot_id": self._boot_id, "sequence": self._sequence}
+            p["state_machine"].update(
+                {
+                    "phase": "safe_disposal" if runtime._stopping else "measuring",
+                    "measurement_complete": runtime.measurement_complete,
+                    "safe_complete": runtime.safe_complete,
+                    "recipe_digest": (runtime.recipe or {}).get("digest"),
+                    "stage_index": runtime.stage_index,
+                    "fault_reason": runtime.fault_reason,
+                }
+            )
+            p["temperature"].update({"furnace_pv_deg_c": runtime.furnace})
+            p["measurement"].update(
+                {
+                    "burden_temp_deg_c": runtime.burden,
+                    "first_drip": runtime.first_drip,
+                    "first_drip_valid": True,
+                    "drip_weight_valid": True,
+                    "displacement_mm": 10 - max(0, runtime.burden - 595) / 1000 * 6,
+                    "delta_p_pa": max(0, runtime.burden - 800) * 2,
+                }
+            )
+            p["gas"].update(
+                {
+                    "n2_sp_l_min": runtime.n2,
+                    "n2_pv_l_min": runtime.n2,
+                    "co_sp_l_min": runtime.co,
+                    "co_pv_l_min": runtime.co,
+                }
+            )
+        return frame
+
     def _parameters_snapshot(self) -> dict[str, Any]:
         return make_frame(
             "parameters_snapshot",
@@ -466,6 +574,7 @@ class MockHostCommServer:
                 "device_profile_version": "DP-MOCK-V1.0",
                 "parameter_crc": _crc_hex(self._param_values),
                 "params": copy.deepcopy(self._param_values),
+                **({"safety_profile": copy.deepcopy(MOCK_SAFETY_PROFILE)} if self.extended_contract else {}),
             },
             prefix="mcu",
         )
@@ -510,6 +619,8 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="故障注入，例如 disconnect_after=10s 或 disconnect_after=2m",
     )
     parser.add_argument("--status-interval", type=float, default=1.0)
+    parser.add_argument("--extended-contract", action="store_true", help="启用未冻结的配方/终态/序号模拟契约")
+    parser.add_argument("--time-scale", type=float, default=1.0, help="模拟器倍速，不用于真实设备")
     parser.add_argument("--demo-alarms", action="store_true", help="周期性注入演示报警（联调/演示用）")
     return parser.parse_args(argv)
 
@@ -544,6 +655,8 @@ async def _amain(argv: list[str] | None = None) -> None:
         status_interval=args.status_interval,
         demo_alarms=args.demo_alarms,
         disconnect_after=_parse_disconnect_after(args.fault),
+        extended_contract=args.extended_contract,
+        time_scale=args.time_scale,
     )
     await server.start()
     logger.info("mock.listening", host=args.host, port=server.port, mode=args.mode)
