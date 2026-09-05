@@ -40,10 +40,5 @@ def require_fixed_runtime(version: Path) -> Path:
     return runtime
 
 
-def tls_options(host: str) -> dict:
-    cert, key = os.environ.get("SMD_TLS_CERTFILE"), os.environ.get("SMD_TLS_KEYFILE")
-    if not cert and not key and host in {"127.0.0.1", "::1", "localhost"}:
-        return {}
-    if not cert or not key or not Path(cert).is_file() or not Path(key).is_file():
-        raise RuntimeError("LAN 监听必须配置完整有效的 SMD_TLS_CERTFILE/SMD_TLS_KEYFILE；本机可使用 HTTP")
-    return {"ssl_certfile": cert, "ssl_keyfile": key}
+# 桌面服务与源码Web启动共享HTTPS策略，仍在load_environment之后调用。
+from app.core.network import tls_options  # noqa: E402,F401

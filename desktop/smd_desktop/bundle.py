@@ -51,7 +51,9 @@ def _files(root: Path) -> dict[str, Path]:
     return files
 
 
-def build_manifest(root: Path, *, version: str, commit: str, webview2_version: str) -> dict:
+def build_manifest(
+    root: Path, *, version: str, commit: str, webview2_version: str, compatibility: dict | None = None
+) -> dict:
     verify_version(version, version)
     files = _files(root)
     missing = [name for name in REQUIRED if name not in files]
@@ -67,6 +69,7 @@ def build_manifest(root: Path, *, version: str, commit: str, webview2_version: s
         "platform": "windows-x64",
         "python": "3.13",
         "webview2_version": webview2_version,
+        "compatibility": compatibility or {"validation": "fixture_only"},
         "files": {name: sha256(path) for name, path in sorted(files.items())},
     }
     (root / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")

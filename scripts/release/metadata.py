@@ -11,6 +11,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "desktop"))
+sys.path.insert(0, str(ROOT / "backend"))
 from smd_desktop.bundle import build_manifest, verify_version
 
 
@@ -82,11 +83,27 @@ def main():
     if args.bundle:
         runtime = json.loads((ROOT / "desktop/webview2.lock.json").read_text())
         sbom(args.bundle, version, runtime)
+        from app.db.database import get_expected_schema_head
+        from app.hostcomm.protocol import PROTOCOL_VERSION
+
         build_manifest(
             args.bundle,
             version=version,
             commit=subprocess.check_output(["git", "rev-parse", "HEAD"], text=True, cwd=ROOT).strip(),
             webview2_version=runtime["version"],
+            compatibility={
+                "database_revision": get_expected_schema_head(),
+                "hostcomm_version": PROTOCOL_VERSION,
+                "required_capabilities": ["status_snapshot", "command"],
+                "optional_capabilities": [
+                    "recipe_v1",
+                    "run_lifecycle_v1",
+                    "measurement_events_v1",
+                    "telemetry_sequence_v1",
+                ],
+                "firmware_validation": "unverified: real firmware must pass the documented contract and M5 acceptance",
+                "windows_validation": "CI build only; clean offline Win10/11 acceptance required",
+            },
         )
 
 

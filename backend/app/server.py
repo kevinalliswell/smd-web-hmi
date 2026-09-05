@@ -5,6 +5,7 @@ from __future__ import annotations
 import uvicorn
 
 from app.core.config import get_settings
+from app.core.network import tls_options
 
 
 def main() -> None:
@@ -14,6 +15,9 @@ def main() -> None:
         host=settings.smd_host,
         port=settings.smd_port,
         access_log=settings.hostcomm_mock,
+        workers=1,
+        proxy_headers=False,
+        **tls_options(settings.smd_host),
     )
 
 
