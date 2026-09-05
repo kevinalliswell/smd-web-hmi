@@ -30,6 +30,8 @@ Invoke-Checked 'python' @('scripts/release/freeze.py','--output',$Stage,'--work'
 Copy-Item frontend/dist (Join-Path $Stage 'frontend') -Recurse
 Copy-Item deploy/windows/configure-acl.ps1 $Stage
 Copy-Item deploy/windows/configure-recovery.ps1 $Stage
+Copy-Item CHANGELOG.md (Join-Path $Stage 'CHANGELOG.md')
+Copy-Item deploy/windows/README.md (Join-Path $Stage 'UPGRADE.md')
 # Exercise the frozen binaries with a scratch DB; migrations never start HostComm.
 $Smoke = Join-Path $Repo "$OutputDir/smoke"
 New-Item -ItemType Directory (Join-Path $Smoke 'config') -Force | Out-Null
@@ -48,5 +50,7 @@ $MakeNsis = Join-Path ${env:ProgramFiles(x86)} 'NSIS/makensis.exe'
 Invoke-Checked $MakeNsis @('/V3',"/DVERSION=$Version","/DPAYLOAD=$Stage","/DOUTPUT=$Repo/$OutputDir/SmdHmi-$Version-windows-x64.exe",'deploy/windows/installer.nsi')
 Copy-Item "$Stage/manifest.json" "$OutputDir/manifest.json"
 Copy-Item "$Stage/sbom.cdx.json" "$OutputDir/sbom.cdx.json"
+Copy-Item "$Stage/CHANGELOG.md" "$OutputDir/CHANGELOG.md"
+Copy-Item "$Stage/UPGRADE.md" "$OutputDir/UPGRADE.md"
 $Hash = Get-FileHash "$OutputDir/SmdHmi-$Version-windows-x64.exe" -Algorithm SHA256
 "$($Hash.Hash.ToLower())  $([IO.Path]::GetFileName($Hash.Path))" | Set-Content "$OutputDir/SHA256SUMS.txt" -Encoding ascii
