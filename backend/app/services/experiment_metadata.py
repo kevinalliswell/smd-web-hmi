@@ -7,8 +7,8 @@ from typing import Annotated
 
 from pydantic import BaseModel, ConfigDict, Field, FiniteFloat, model_validator
 
-Positive = Annotated[FiniteFloat, Field(gt=0)]
-Nonnegative = Annotated[FiniteFloat, Field(ge=0)]
+Positive = Annotated[FiniteFloat, Field(gt=0, strict=True)]
+Nonnegative = Annotated[FiniteFloat, Field(ge=0, strict=True)]
 Label = Annotated[str, Field(min_length=1, max_length=200)]
 Note = Annotated[str, Field(max_length=2000)]
 

@@ -27,6 +27,7 @@ from app.api.routes import (
     logs,
     maintenance,
     parameters,
+    recipes,
     reports,
     status,
     system,
@@ -292,6 +293,7 @@ def create_app() -> FastAPI:
         finally:
             structlog.contextvars.clear_contextvars()
         response.headers["X-Request-ID"] = request_id
+        response.headers["X-SMD-Version"] = __version__
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["Referrer-Policy"] = "no-referrer"
@@ -332,6 +334,7 @@ def create_app() -> FastAPI:
         parameters,
         logs,
         reports,
+        recipes,
         analytics,
         users,
         system,

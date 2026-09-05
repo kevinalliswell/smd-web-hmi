@@ -8,8 +8,8 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, FiniteFloat, model_validator
 
-Positive = Annotated[FiniteFloat, Field(gt=0)]
-Nonnegative = Annotated[FiniteFloat, Field(ge=0)]
+Positive = Annotated[FiniteFloat, Field(gt=0, strict=True)]
+Nonnegative = Annotated[FiniteFloat, Field(ge=0, strict=True)]
 
 
 class ContractModel(BaseModel):

@@ -36,3 +36,57 @@ async def compare(db: DbDep, test_ids: str = "", original_height_mm: float | Non
             }
         )
     return ok(out)
+
+
+from pydantic import BaseModel, Field
+
+from app.api.validation import TestId
+from app.services.snapshot_data import json_object, object_value
+from app.services.standard_metrics import evaluate_repeatability
+
+
+class RepeatabilityRequest(BaseModel):
+    test_ids: list[TestId] = Field(min_length=2, max_length=4)
+
+
+@router.post("/repeatability")
+async def repeatability(body: RepeatabilityRequest, db: DbDep):
+    """附录B按实际顺序判定；样品/版本/有效性不满足时不返回拼凑的平均结果。"""
+    errors = []
+    if len(set(body.test_ids)) != len(body.test_ids):
+        errors.append("duplicate_test_id")
+    identities = []
+    values = []
+    for test_id in body.test_ids:
+        test = await db.scalar(select(TestSession).where(TestSession.test_id == test_id))
+        if test is None:
+            errors.append(f"{test_id}:not_found")
+            continue
+        basis, _ = json_object(test.measurement_basis_json)
+        recipe, _ = json_object(test.recipe_snapshot_json)
+        batch = object_value(basis.get("sample_metadata")).get("batch")
+        if not batch or not recipe.get("digest"):
+            errors.append(f"{test_id}:missing_sample_or_recipe_identity")
+        identities.append((batch, test.mode, recipe.get("digest")))
+        if test.end_time is None or test.measurement_completed_at is None or test.data_integrity != "complete":
+            errors.append(f"{test_id}:experiment_not_validated")
+        values.append(await report_service.compute_metrics_from_database(db, test_id, test.original_height_mm))
+    if len(set(identities)) != 1:
+        errors.append("sample_or_recipe_mismatch")
+    results = []
+    if not errors:
+        for metric in ("t10", "t40", "ts", "td_drip_temp"):
+            measurements = [item.get(metric) for item in values]
+            try:
+                results.append(evaluate_repeatability(metric, measurements))
+            except ValueError:
+                errors.append(f"{metric}:missing_valid_values")
+    return ok(
+        {
+            "eligible": not errors,
+            "errors": errors,
+            "test_ids": body.test_ids,
+            "results": results if not errors else [],
+            "standard": "GB/T 34211-2017 附录B",
+        }
+    )

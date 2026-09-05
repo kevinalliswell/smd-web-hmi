@@ -20,11 +20,14 @@ import time
 import uuid
 from dataclasses import dataclass, field
 
+from pydantic import ValidationError
+
 from app.core.logging import get_logger
 from app.hostcomm.client import HostCommNotConnectedError, HostCommTimeoutError
 from app.hostcomm.protocol import now_iso
 from app.services import logging_service
 from app.services.control_ownership import assert_control_owner
+from app.services.experiment_metadata import SpecimenMetadata, validate_metadata
 from app.services.maintenance_service import maintenance_manager
 from app.services.operations import OperationExecution, run_operation
 from app.services.state_policy import classify_state, parameter_changes_allowed
@@ -449,6 +452,19 @@ class CommandService:
         for field in ("sample_metadata", "report_context"):
             if params.get(field) is not None and not isinstance(params[field], dict):
                 raise CommandError(422, "invalid_experiment_metadata", f"{field}必须为对象")
+        try:
+            sample_metadata, report_context = validate_metadata(
+                params.get("sample_metadata"), params.get("report_context")
+            )
+            height = SpecimenMetadata.model_validate(sample_metadata).original_height
+            if height is not None and params.get("original_height_mm") is not None:
+                if abs(height - params["original_height_mm"]) > 0.001:
+                    raise ValueError("H1-H2与原始高度不一致")
+            if height is not None:
+                params["original_height_mm"] = height
+            params["sample_metadata"], params["report_context"] = sample_metadata, report_context
+        except (ValidationError, ValueError, TypeError) as exc:
+            raise CommandError(422, "invalid_experiment_metadata", "样品/报告条件无效或原始高度不一致") from exc
         snapshot = await ParameterService(self._client, self._cache).get_parameters()
         device_values = snapshot.get("params", snapshot.get("values"))
         if not isinstance(device_values, dict):

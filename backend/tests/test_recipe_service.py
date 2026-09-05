@@ -189,7 +189,7 @@ async def test_start_refuses_different_selected_version_and_preserves_metadata_l
         )
     assert error.value.error_code == "active_recipe_mismatch"
     assert len(board.sent) == 1
-    params.update(recipe_version=1, sample_metadata={"batch": "lab-1"}, report_context={"lab": "test"})
+    params.update(recipe_version=1, sample_metadata={"batch": "lab-1"}, report_context={"laboratory_name": "test"})
     try:
         await service.execute(
             "start_test",
@@ -205,7 +205,7 @@ async def test_start_refuses_different_selected_version_and_preserves_metadata_l
         row = await db_session.scalar(select(TestSession).where(TestSession.test_id == "LOCAL"))
         basis = json.loads(row.measurement_basis_json)
         assert basis["sample_metadata"] == {"batch": "lab-1"}
-        assert basis["report_context"] == {"lab": "test"}
+        assert basis["report_context"] == {"laboratory_name": "test"}
     finally:
         active_test.stop()
 
