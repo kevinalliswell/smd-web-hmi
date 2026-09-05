@@ -3,10 +3,16 @@
 from __future__ import annotations
 
 import asyncio
+import hmac
+import json
+import os
+import re
+import secrets
 import sqlite3
 import time
 import uuid
-from contextlib import closing
+from collections.abc import AsyncIterator, Awaitable, Callable
+from contextlib import asynccontextmanager, closing
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -15,16 +21,109 @@ from app.core.logging import get_logger
 logger = get_logger("service.maintenance")
 
 
+class MaintenanceBlockedError(RuntimeError):
+    """维护期间或设备状态不确定时拒绝新的设备变更。"""
+
+
 class MaintenanceManager:
     """执行有校验的在线备份，并按保留期清理临时产物。"""
 
     def __init__(self) -> None:
+        self._operation_lock = asyncio.Lock()
+        self._upgrade_path: Path | None = None
         self._task: asyncio.Task[None] | None = None
         self._backup_lock = asyncio.Lock()
         self._last_backup_path: str | None = None
         self._last_backup_at: str | None = None
         self._last_error: str | None = None
         self._last_cleanup_count = 0
+
+    def configure_upgrade(self, state_path: Path) -> None:
+        """启动时设置受服务账户/管理员 ACL 保护的维护票据位置。"""
+        self._upgrade_path = state_path.resolve()
+
+    def upgrade_state(self) -> dict:
+        if self._upgrade_path is None or not self._upgrade_path.exists():
+            return {"state": "idle"}
+        try:
+            state = json.loads(self._upgrade_path.read_text(encoding="utf-8"))
+            if state.get("state") not in {"prepared", "claimed"}:
+                raise ValueError("unknown maintenance state")
+            return state
+        except (ValueError, OSError, AttributeError) as exc:
+            raise MaintenanceBlockedError("维护票据损坏，需通过本机升级恢复流程处理") from exc
+
+    def _write_upgrade(self, state: dict) -> None:
+        if self._upgrade_path is None:
+            raise MaintenanceBlockedError("维护票据目录未配置")
+        self._upgrade_path.parent.mkdir(parents=True, exist_ok=True)
+        temporary = self._upgrade_path.with_suffix(".tmp")
+        try:
+            with temporary.open("w", encoding="utf-8") as output:
+                os.chmod(temporary, 0o600)
+                json.dump(state, output, ensure_ascii=False)
+                output.flush()
+                os.fsync(output.fileno())
+            temporary.replace(self._upgrade_path)
+        finally:
+            temporary.unlink(missing_ok=True)
+
+    @asynccontextmanager
+    async def command_guard(self) -> AsyncIterator[None]:
+        """设备写操作共用此锁，准备升级不能与在途命令交错。"""
+        async with self._operation_lock:
+            if self.upgrade_state()["state"] != "idle":
+                raise MaintenanceBlockedError("设备处于离线升级维护状态，禁止新命令")
+            yield
+
+    async def prepare_upgrade(
+        self,
+        *,
+        target_version: str,
+        current_version: str,
+        db_path: Path,
+        operator_id: str,
+        validate: Callable[[], Awaitable[None]],
+    ) -> dict:
+        """管理员准备升级；validate 必须检查新鲜板端待机及未闭合会话。"""
+        if not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?", target_version):
+            raise ValueError("非法目标版本")
+        async with self._operation_lock:
+            if self.upgrade_state()["state"] != "idle":
+                raise MaintenanceBlockedError("已有维护操作，请先取消或恢复")
+            await validate()
+            state = {
+                "state": "prepared",
+                "upgrade_id": uuid.uuid4().hex,
+                "token": secrets.token_hex(32),
+                "created_at": time.time(),
+                "target_version": target_version,
+                "current_version": current_version,
+                "db_path": str(db_path.resolve()),
+                "operator_id": operator_id,
+            }
+            self._write_upgrade(state)
+            return state
+
+    async def claim_upgrade(self, token: str, *, validate: Callable[[], Awaitable[None]]) -> dict:
+        """本机提权升级器领取票据前再核对实时状态；票据只使用一次。"""
+        async with self._operation_lock:
+            state = self.upgrade_state()
+            if state["state"] != "prepared" or not hmac.compare_digest(state.get("token", ""), token):
+                raise MaintenanceBlockedError("维护票据无效或已领取")
+            if time.time() - state["created_at"] > 600:
+                raise MaintenanceBlockedError("维护票据超过十分钟，请取消并重新准备")
+            await validate()
+            state = {**state, "state": "claimed", "claimed_at": time.time()}
+            self._write_upgrade(state)
+            return state
+
+    async def cancel_upgrade(self) -> None:
+        async with self._operation_lock:
+            if self.upgrade_state()["state"] == "claimed":
+                raise MaintenanceBlockedError("升级器已领取票据，只能执行本机恢复")
+            if self._upgrade_path is not None:
+                self._upgrade_path.unlink(missing_ok=True)
 
     async def create_backup(self, source: Path, backup_dir: Path) -> Path:
         async with self._backup_lock:
