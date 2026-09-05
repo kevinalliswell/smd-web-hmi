@@ -11,6 +11,11 @@ import {
 import { generateReport, reportDownloadUrl } from '@/api/reports'
 import { exportLogs, logDownloadUrl } from '@/api/logs'
 import { downloadFile } from '@/utils/download'
+import {
+  historyEndReasonLabel,
+  historyPhaseLabel,
+  historyIntegrityLabel,
+} from '@/utils/historyLabels'
 import { formatDateTime } from '@/utils/dateTime'
 import ExperimentMetadataEditor from '@/components/history/ExperimentMetadataEditor.vue'
 import IncompleteReviewPanel from '@/components/history/IncompleteReviewPanel.vue'
@@ -169,12 +174,12 @@ onMounted(loadTests)
                 <span
                   v-if="!t.end_time"
                   class="running"
-                  >进行中</span
+                  >{{ historyPhaseLabel(t.phase) }}</span
                 >
                 <span
                   v-else
                   class="muted"
-                  >{{ t.end_reason || '已结束' }}</span
+                  >{{ historyEndReasonLabel(t.end_reason) }}</span
                 >
               </td>
             </tr>
@@ -243,8 +248,10 @@ onMounted(loadTests)
                 <span class="k">结束</span
                 >{{ selected.end_time ? formatDateTime(selected.end_time) : '进行中' }}
               </div>
-              <div><span class="k">结束原因</span>{{ selected.end_reason || '—' }}</div>
-              <div><span class="k">阶段</span>{{ selected.phase || '未知' }}</div>
+              <div>
+                <span class="k">结束原因</span>{{ historyEndReasonLabel(selected.end_reason) }}
+              </div>
+              <div><span class="k">阶段</span>{{ historyPhaseLabel(selected.phase) }}</div>
               <div>
                 <span class="k">实验模式</span
                 >{{
@@ -255,7 +262,10 @@ onMounted(loadTests)
                       : '未知'
                 }}
               </div>
-              <div><span class="k">数据完整性</span>{{ selected.data_integrity || '未知' }}</div>
+              <div>
+                <span class="k">数据完整性</span
+                >{{ historyIntegrityLabel(selected.data_integrity) }}
+              </div>
               <div>
                 <span class="k">测定完成</span
                 >{{
