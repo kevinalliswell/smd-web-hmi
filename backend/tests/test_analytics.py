@@ -22,9 +22,10 @@ async def _seed(db):
                     test_id=tid,
                     ts=f"2026-06-10T00:00:{i:02d}",
                     source="live_poll",
+                    furnace_pv=600 + i * 100,
                     burden_temp=float(base + i * 100),
                     delta_p=float(i * 10),
-                    displacement=i * 0.5,
+                    displacement=10 - i * 0.5,
                     drip_weight=0.0 if i < 3 else float(i),
                 )
             )

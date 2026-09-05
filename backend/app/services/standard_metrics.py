@@ -76,7 +76,9 @@ class MetricAccumulator:
         self._max("displacement_max", disp)
         if measurement.get("drip_weight_valid") is True:
             self._max("drip_weight_total", number(sample.drip_weight))
-        if extra.get("_transport", {}).get("data_gap"):
+        if (extra.get("_hostcomm") or {}).get("dropped_callbacks") or (extra.get("_hmi") or {}).get(
+            "persistence_failures"
+        ):
             self.limitations.add("transport_data_gap")
             self.previous = None
         if r["reference_displacement_mm"] is None and furnace is not None and disp is not None:

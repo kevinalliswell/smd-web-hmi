@@ -1,12 +1,4 @@
-"""报告生成服务（规格 3.8 / SOP §13 结果计算）。
-
-从 sample_point / event_log / alarm_log / parameter_snapshot 汇总一次试验，
-计算可由曲线稳健导出的指标，渲染为离线 HTML 报告并登记 report_export。
-
-注：T10/T40/Ts 等需"原始料层高度 H"的指标，当前 schema 未存 H（见
-docs/待确认事项与接口对齐清单 Q9）；若 options 提供 original_height_mm 则计算，
-否则标注 N/A，不臆造数值。
-"""
+"""报告生成：共用带质量标志、600 ℃ 基准和版本来源的国标计算器。"""
 
 from __future__ import annotations
 
@@ -34,6 +26,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import get_settings
 from app.db.models import AlarmLog, ParameterSnapshot, ReportExport, SamplePoint, TestSession
 from app.hostcomm.protocol import now_iso
+from app.services.standard_metrics import MetricAccumulator, number
 from app.services.test_id import InvalidTestIdError, validate_test_id
 
 SUPPORTED_FORMATS = {"html", "pdf", "xlsx"}
@@ -48,7 +41,12 @@ METRIC_ROWS = (
     ("最大位移", "displacement_max", 2, " mm"),
     ("T10（10% 收缩温度）", "t10", 1, " ℃"),
     ("T40（40% 收缩温度）", "t40", 1, " ℃"),
-    ("收缩率 ΔH", "delta_h_pct", 1, " %"),
+    ("软熔开始温度 Ts", "ts", 1, " ℃"),
+    ("熔落带厚度 ΔH", "delta_h_mm", 1, " mm"),
+    ("T40 − T10", "t40_minus_t10", 1, " ℃"),
+    ("Td − Ts", "td_minus_ts", 1, " ℃"),
+    ("Td − T10", "td_minus_t10", 1, " ℃"),
+    ("600 ℃ 位移基准", "reference_displacement_mm", 2, " mm"),
 )
 
 
@@ -75,10 +73,7 @@ async def _write_report_file(path: Path, content: str | bytes) -> None:
 
 
 def _num(v: Any) -> float | None:
-    try:
-        return float(v) if v is not None else None
-    except (TypeError, ValueError):
-        return None
+    return number(v)
 
 
 def _fmt(v: Any, digits: int = 1, unit: str = "") -> str:
@@ -94,55 +89,11 @@ def _xlsx_value(value: Any) -> Any:
 
 
 def compute_metrics(samples: list[SamplePoint], original_height_mm: float | None) -> dict[str, Any]:
-    """从采样点计算结果指标。缺数据的项返回 None。"""
-    temps = [_num(s.burden_temp) for s in samples]
-    furnace = [_num(s.furnace_pv) for s in samples]
-    dps = [(_num(s.delta_p), _num(s.burden_temp)) for s in samples]
-    drips = [(_num(s.drip_weight), _num(s.burden_temp)) for s in samples]
-    disps = [(_num(s.displacement), _num(s.burden_temp)) for s in samples]
-
-    metrics: dict[str, Any] = {}
-    metrics["furnace_pv_max"] = max([f for f in furnace if f is not None], default=None)
-    metrics["burden_temp_max"] = max([t for t in temps if t is not None], default=None)
-
-    # ΔPmax 及其对应料层温度
-    dp_valid = [(dp, t) for dp, t in dps if dp is not None]
-    if dp_valid:
-        dp_max, dp_t = max(dp_valid, key=lambda x: x[0])
-        metrics["delta_p_max"] = dp_max
-        metrics["delta_p_max_temp"] = dp_t
-    else:
-        metrics["delta_p_max"] = None
-        metrics["delta_p_max_temp"] = None
-
-    # 滴落：总滴落量 + Td（首次滴落时料层温度，阈值 0.5 g）
-    drip_vals = [d for d, _ in drips if d is not None]
-    metrics["drip_weight_total"] = max(drip_vals, default=None)
-    metrics["td_drip_temp"] = next((t for d, t in drips if d is not None and d > 0.5), None)
-
-    # 收缩：ΔH 与 T10/T40（需原始料层高度 H）
-    disp_vals = [d for d, _ in disps if d is not None]
-    metrics["displacement_max"] = max(disp_vals, default=None)
-    metrics["original_height_mm"] = original_height_mm
-    if original_height_mm and original_height_mm > 0:
-
-        def temp_at_shrink(pct: float) -> float | None:
-            target = original_height_mm * pct
-            return next((t for d, t in disps if d is not None and d >= target), None)
-
-        metrics["t10"] = temp_at_shrink(0.10)
-        metrics["t40"] = temp_at_shrink(0.40)
-        metrics["delta_h_pct"] = (
-            (metrics["displacement_max"] / original_height_mm * 100)
-            if metrics["displacement_max"] is not None
-            else None
-        )
-    else:
-        metrics["t10"] = None
-        metrics["t40"] = None
-        metrics["delta_h_pct"] = None
-
-    return metrics
+    """内存样本与数据库流使用同一算法。缺失质量和参考值保持未知。"""
+    reducer = MetricAccumulator(original_height_mm)
+    for sample in samples:
+        reducer.add(sample)
+    return reducer.finish()
 
 
 async def compute_metrics_from_database(
@@ -150,65 +101,47 @@ async def compute_metrics_from_database(
     test_id: str,
     original_height_mm: float | None,
 ) -> dict[str, Any]:
-    """用常量内存的 SQL 聚合计算报告指标。"""
-    aggregate = (
-        await session.execute(
-            select(
-                func.max(SamplePoint.furnace_pv).label("furnace_pv_max"),
-                func.max(SamplePoint.burden_temp).label("burden_temp_max"),
-                func.max(SamplePoint.delta_p).label("delta_p_max"),
-                func.max(SamplePoint.drip_weight).label("drip_weight_total"),
-                func.max(SamplePoint.displacement).label("displacement_max"),
-            ).where(SamplePoint.test_id == test_id)
-        )
-    ).one()
-
-    delta_p_max_temp = await session.scalar(
-        select(SamplePoint.burden_temp)
-        .where(SamplePoint.test_id == test_id, SamplePoint.delta_p.is_not(None))
-        .order_by(SamplePoint.delta_p.desc(), SamplePoint.id)
-        .limit(1)
+    """分批流式读取，避免把完整实验曲线载入内存；按接收序号处理时钟回拨。"""
+    test = await session.scalar(select(TestSession).where(TestSession.test_id == test_id))
+    basis = json.loads(getattr(test, "measurement_basis_json", None) or "{}")
+    reducer = MetricAccumulator(
+        original_height_mm,
+        measurement_complete=getattr(test, "measurement_completed_at", None) is not None,
+        detector_verified=basis.get("detector_verified") is True,
+        data_complete=getattr(test, "data_integrity", None) == "complete",
     )
-    td_drip_temp = await session.scalar(
-        select(SamplePoint.burden_temp)
-        .where(SamplePoint.test_id == test_id, SamplePoint.drip_weight > 0.5)
-        .order_by(SamplePoint.ts, SamplePoint.id)
-        .limit(1)
+    rows = await session.stream_scalars(
+        select(SamplePoint)
+        .where(SamplePoint.test_id == test_id)
+        .order_by(SamplePoint.id)
+        .execution_options(yield_per=512)
     )
+    try:
+        async for sample in rows:
+            reducer.add(sample)
+    finally:
+        await rows.close()
+    result = reducer.finish()
+    result.update(
+        standard="GB/T 34211-2017",
+        mode=getattr(test, "mode", "custom"),
+        data_integrity=getattr(test, "data_integrity", "unknown"),
+        recipe_snapshot=json.loads(getattr(test, "recipe_snapshot_json", None) or "null"),
+        compliance="not_certified",
+    )
+    return result
 
-    metrics: dict[str, Any] = {
-        "furnace_pv_max": aggregate.furnace_pv_max,
-        "burden_temp_max": aggregate.burden_temp_max,
-        "delta_p_max": aggregate.delta_p_max,
-        "delta_p_max_temp": delta_p_max_temp,
-        "drip_weight_total": aggregate.drip_weight_total,
-        "td_drip_temp": td_drip_temp,
-        "displacement_max": aggregate.displacement_max,
-        "original_height_mm": original_height_mm,
-    }
-    if original_height_mm and original_height_mm > 0:
 
-        async def temp_at_shrink(pct: float) -> float | None:
-            return await session.scalar(
-                select(SamplePoint.burden_temp)
-                .where(
-                    SamplePoint.test_id == test_id,
-                    SamplePoint.displacement >= original_height_mm * pct,
-                )
-                .order_by(SamplePoint.ts, SamplePoint.id)
-                .limit(1)
-            )
-
-        metrics["t10"] = await temp_at_shrink(0.10)
-        metrics["t40"] = await temp_at_shrink(0.40)
-        metrics["delta_h_pct"] = (
-            aggregate.displacement_max / original_height_mm * 100 if aggregate.displacement_max is not None else None
-        )
-    else:
-        metrics["t10"] = None
-        metrics["t40"] = None
-        metrics["delta_h_pct"] = None
-    return metrics
+def _provenance_rows(test, metrics):
+    return [
+        ("参考标准", "GB/T 34211-2017"),
+        ("实验模式", "标准模板" if metrics.get("mode") == "standard" else "非标 / 历史未标定"),
+        ("算法版本", metrics.get("algorithm_version", "unknown")),
+        ("数据完整性", metrics.get("data_integrity", "unknown")),
+        ("600 ℃ 位移基准来源", metrics.get("reference_source") or "缺失"),
+        ("结果限制", ", ".join(metrics.get("limitations", [])) or "无自动检出的数据缺口"),
+        ("符合性", "未签发国标符合性结论；缺失数据、原文争议和现场条件须复核"),
+    ]
 
 
 def _render_html(
@@ -280,7 +213,9 @@ def _render_html(
  {row("参数 CRC", (params.param_crc if params else None) or "—")}
 </table>
 
-<h2>结果指标（GB/T 34211 / SOP §13）</h2>
+<h2>计算依据与结果限制</h2>
+<table>{"".join(row(k, str(v)) for k, v in _provenance_rows(test, metrics))}</table>
+<h2>结果指标（GB/T 34211-2017 §9）</h2>
 <table>{metric_rows}</table>
 
 <h2>报警汇总</h2>
@@ -340,6 +275,12 @@ def _render_pdf(
             ("FONTSIZE", (0, 0), (-1, -1), 9),
             ("LEFTPADDING", (0, 0), (-1, -1), 6),
             ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+        ]
+    )
+    metadata.extend(
+        [
+            [key, Paragraph(html.escape(str(value)), styles["BodyText"])]
+            for key, value in _provenance_rows(test, metrics)
         ]
     )
     meta_table = Table(metadata, colWidths=[43 * mm, 120 * mm], repeatRows=0)
@@ -407,6 +348,8 @@ def _render_xlsx(
         ("参数 CRC", (params.param_crc if params else None) or "—"),
         ("生成时间", now_iso()),
     ):
+        summary.append([_xlsx_value(value) for value in item])
+    for item in _provenance_rows(test, metrics):
         summary.append([_xlsx_value(value) for value in item])
     summary.column_dimensions["A"].width = 28
     summary.column_dimensions["B"].width = 52
