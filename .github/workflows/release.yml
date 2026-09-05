@@ -42,7 +42,7 @@ jobs:
         working-directory: backend
         run: pytest -q --cov=app --cov-report=term --cov-fail-under=80
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: "20"
           cache: npm
@@ -94,7 +94,7 @@ jobs:
             echo "version=${{ github.event.inputs.version || 'v0.0.0-dev' }}" >> "$GITHUB_OUTPUT"
           fi
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: "20"
           cache: npm
