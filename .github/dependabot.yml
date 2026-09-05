@@ -1,28 +1,46 @@
 version: 2
 updates:
+  # Python updates must also regenerate both hash locks; shared CI rejects txt-only drift.
   - package-ecosystem: pip
-    directory: /backend
+    directories: [/backend, /desktop]
     schedule:
       interval: weekly
       day: monday
-      time: "03:00"
       timezone: Asia/Shanghai
-    open-pull-requests-limit: 5
-
+    open-pull-requests-limit: 3
+    groups:
+      python-patch-minor:
+        patterns: ['*']
+        update-types: [patch, minor]
+    ignore:
+      - dependency-name: '*'
+        update-types: ['version-update:semver-major']
   - package-ecosystem: npm
     directory: /frontend
     schedule:
       interval: weekly
       day: monday
-      time: "03:30"
       timezone: Asia/Shanghai
-    open-pull-requests-limit: 5
-
+    open-pull-requests-limit: 3
+    groups:
+      frontend-runtime:
+        dependency-type: production
+        update-types: [patch, minor]
+      frontend-tooling:
+        dependency-type: development
+        update-types: [patch, minor]
+    ignore:
+      - dependency-name: '*'
+        update-types: ['version-update:semver-major']
   - package-ecosystem: github-actions
     directory: /
     schedule:
-      interval: weekly
-      day: monday
-      time: "04:00"
-      timezone: Asia/Shanghai
-    open-pull-requests-limit: 5
+      interval: monthly
+    open-pull-requests-limit: 3
+    groups:
+      actions-patch-minor:
+        patterns: ['*']
+        update-types: [patch, minor]
+    ignore:
+      - dependency-name: '*'
+        update-types: ['version-update:semver-major']

@@ -1,0 +1,119 @@
+name: Shared checks
+on:
+  workflow_call:
+permissions:
+  contents: read
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: pip
+          cache-dependency-path: backend/requirements-dev.lock
+      - run: pip install --require-hashes -r backend/requirements-dev.lock
+      - run: python scripts/release/metadata.py && python scripts/release/check_locks.py
+      - run: black --config backend/pyproject.toml --check backend/app backend/tests desktop scripts/release
+      - run: isort --settings-path backend/pyproject.toml --check-only backend/app backend/tests desktop scripts/release
+  backend:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: pip
+          cache-dependency-path: backend/requirements-dev.lock
+      - run: pip install --require-hashes -r backend/requirements-dev.lock
+      - name: Safety red lines first
+        working-directory: backend
+        run: pytest tests/test_safety.py -v
+      - name: Empty database migration
+        working-directory: backend
+        run: alembic upgrade head
+      - name: Backend tests and coverage gate
+        working-directory: backend
+        run: pytest -q --cov=app --cov-report=term --cov-fail-under=80
+      - name: Desktop transaction and process tests
+        run: pytest -c backend/pytest.ini desktop/tests -q
+      - name: PowerShell syntax
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Get-ChildItem deploy/windows,scripts/release -Filter *.ps1 -Recurse | ForEach-Object {
+            $Tokens = $null; $ParseErrors = $null
+            [void][System.Management.Automation.Language.Parser]::ParseFile($_.FullName, [ref]$Tokens, [ref]$ParseErrors)
+            if ($ParseErrors.Count) { throw ($ParseErrors | Out-String) }
+          }
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run test
+      - run: npm run build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: frontend/dist
+          retention-days: 7
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - run: pipx run pip-audit -r backend/requirements.lock --no-deps --disable-pip
+      - run: pipx run pip-audit -r desktop/requirements.lock --no-deps --disable-pip
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - working-directory: frontend
+        run: npm audit --audit-level=high
+  windows-package:
+    needs: [lint, backend, frontend, audit]
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: pip
+          cache-dependency-path: |
+            backend/requirements.lock
+            desktop/requirements.lock
+      - run: pip install --require-hashes -r backend/requirements.lock -r desktop/requirements.lock
+      - uses: actions/download-artifact@v4
+        with:
+          name: frontend-dist
+          path: frontend/dist
+      - run: choco install nsis --version=3.11 -y --no-progress
+      - name: Freeze service, shell and updater; verify Fixed Runtime; compile NSIS
+        shell: pwsh
+        run: ./scripts/release/build-windows.ps1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-offline-installer
+          path: |
+            artifacts/*.exe
+            artifacts/manifest.json
+            artifacts/sbom.cdx.json
+            artifacts/SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 14
