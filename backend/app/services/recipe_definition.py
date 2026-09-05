@@ -179,8 +179,14 @@ def validate_for_device(recipe: RecipeDefinition, profile: dict | None, capabili
             errors.append(prefix + "co_target_below_required_temperature")
         if stage.kind == "cool":
             minimum_furnace = 0
-        elif stage.exit.signal == "furnace_c" and stage.exit.comparison == "gte":
-            minimum_furnace = stage.exit.value
+        elif stage.exit.signal == "furnace_c":
+            # A measured lower-bound exit can prove temperature only for the
+            # following stage. An upper-bound exit cannot carry an old proof.
+            minimum_furnace = stage.exit.value if stage.exit.comparison == "gte" else 0
+        if stage.furnace_target_c is not None:
+            # Any stage kind may lower its target. A higher setpoint alone does
+            # not prove reheating, and a lower one limits even a furnace exit.
+            minimum_furnace = min(minimum_furnace, stage.furnace_target_c)
     final = recipe.stages[-1]
     if (
         final.kind != "cool"
