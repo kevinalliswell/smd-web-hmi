@@ -56,7 +56,12 @@ async def _seed(db, test_id="TEST-R-1"):
                 delta_p=[0, 0, 100, 500, 1000, 800][i],
                 drip_weight=0.0 if i < 3 else float(i),
                 displacement=[6, 5.5, 5, 3.5, 3, 2][i],
-                ext_json=json.dumps({"measurement": {"first_drip": i == 4, "drip_weight_valid": True}}),
+                ext_json=json.dumps(
+                    {
+                        "measurement": {"first_drip": i == 4, "first_drip_valid": True, "drip_weight_valid": True},
+                        "_hostcomm": {"capabilities": ["measurement_events_v1"]},
+                    }
+                ),
             )
         )
     db.add(AlarmLog(test_id=test_id, alarm_code="ALM-X", level=2, occur_time="2026-06-10T00:00:03", text="压差高"))
@@ -254,3 +259,41 @@ async def test_report_metrics_are_computed_in_database(db_session):
     assert metrics["td_drip_temp"] == 1290.0
     assert metrics["t10"] == 890.0
     assert metrics["t40"] == 1090.0
+
+
+@pytest.mark.parametrize("basis,recipe", [("[]", "{broken"), ('{"measurement_end_sample_id":true}', "[]")])
+async def test_report_handles_invalid_persisted_provenance(db_session, basis, recipe):
+    test_id = await _seed(db_session, "TEST-MALFORMED-BASIS")
+    row = await db_session.scalar(select(TestSession).where(TestSession.test_id == test_id))
+    row.measurement_basis_json = basis
+    row.recipe_snapshot_json = recipe
+    row.measurement_completed_at = "2026-06-10T00:01:00Z"
+    row.data_integrity = "complete"
+    await db_session.commit()
+    result = await report_service.compute_metrics_from_database(db_session, test_id, 5)
+    assert "malformed_measurement_basis" in result["limitations"]
+    assert result.get("td_source") != "completed_without_drip"
+    assert "malformed_recipe_snapshot" in result["limitations"]
+
+
+async def test_report_uses_persisted_end_sample_id_to_exclude_cooling(db_session):
+    test_id = await _seed(db_session, "TEST-COOLING-BOUNDARY")
+    row = await db_session.scalar(select(TestSession).where(TestSession.test_id == test_id))
+    last = await db_session.scalar(select(func.max(SamplePoint.id)).where(SamplePoint.test_id == test_id))
+    row.measurement_basis_json = json.dumps({"measurement_end_sample_id": last})
+    row.measurement_completed_at = "2026-06-10T00:00:05Z"
+    db_session.add(
+        SamplePoint(
+            test_id=test_id,
+            ts="2026-06-10T00:01:00Z",
+            furnace_pv=900,
+            burden_temp=800,
+            displacement=-999,
+            delta_p=20000,
+            ext_json="{}",
+        )
+    )
+    await db_session.commit()
+    result = await report_service.compute_metrics_from_database(db_session, test_id, 5)
+    assert result["delta_p_max"] == 1000
+    assert result["excluded_sample_count"] == 1

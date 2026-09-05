@@ -18,7 +18,12 @@ def point(furnace, temp, height, dp=0, *, first_drip=False, valid=1):
         delta_p=dp,
         delta_p_v=valid,
         drip_weight=1 if first_drip else 0,
-        ext_json=json.dumps({"measurement": {"first_drip": first_drip, "drip_weight_valid": True}}),
+        ext_json=json.dumps(
+            {
+                "measurement": {"first_drip": first_drip, "first_drip_valid": True, "drip_weight_valid": True},
+                "_hostcomm": {"capabilities": ["measurement_events_v1"]},
+            }
+        ),
     )
 
 
@@ -107,3 +112,45 @@ def test_td_has_its_own_tolerances_and_rounding_is_half_up():
     assert evaluate_repeatability("t10", [1000, 1001])["result"] == 1001
     with pytest.raises(ValueError):
         evaluate_repeatability("t10", [float("nan"), 1000])
+
+
+@pytest.mark.parametrize("extra", ["{bad json", "[]", '{"measurement":true}', '{"_hostcomm":"bad"}', '{"_hmi":[1]}'])
+def test_malformed_metadata_is_a_limitation_not_a_report_crash(extra):
+    sample = point(600, 590, 30)
+    sample.ext_json = extra
+    result = metrics([sample])
+    assert "malformed_sample_metadata" in result["limitations"]
+    assert result["td_drip_temp"] is None
+
+
+def test_first_drip_requires_negotiated_event_capability_and_valid_detector():
+    sample = point(1300, 1290, 20, first_drip=True)
+    extra = json.loads(sample.ext_json)
+    extra["_hostcomm"] = {"capabilities": []}
+    sample.ext_json = json.dumps(extra)
+    assert metrics([sample])["td_drip_temp"] is None
+
+
+def test_cooling_after_measurement_boundary_cannot_change_standard_metrics():
+    complete = point(1600, 1580, 29, 100)
+    extra = json.loads(complete.ext_json)
+    extra.update(
+        state_machine={"measurement_complete": True},
+        _hostcomm={"capabilities": ["run_lifecycle_v1", "measurement_events_v1"]},
+    )
+    complete.ext_json = json.dumps(extra)
+    cooling = point(1100, 1000, 10, 20000, first_drip=True)
+    result = metrics([point(600, 590, 30), complete, cooling])
+    assert result["t10"] is None and result["ts"] is None and result["td_drip_temp"] is None
+    assert result["delta_p_max"] == 100
+    assert result["excluded_sample_count"] == 1
+
+
+def test_no_drip_substitution_requires_observed_1580_and_detector_health():
+    kwargs = dict(measurement_complete=True, detector_verified=True, data_complete=True)
+    assert metrics([point(600, 590, 30)], **kwargs)["td_drip_temp"] is None
+    failed = point(1600, 1580, 20)
+    extra = json.loads(failed.ext_json)
+    extra["measurement"]["first_drip_valid"] = False
+    failed.ext_json = json.dumps(extra)
+    assert metrics([point(600, 590, 30), failed], **kwargs)["td_drip_temp"] is None

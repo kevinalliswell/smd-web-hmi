@@ -26,6 +26,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import get_settings
 from app.db.models import AlarmLog, ParameterSnapshot, ReportExport, SamplePoint, TestSession
 from app.hostcomm.protocol import now_iso
+from app.services.snapshot_data import json_object
 from app.services.standard_metrics import MetricAccumulator, number
 from app.services.test_id import InvalidTestIdError, validate_test_id
 
@@ -103,13 +104,24 @@ async def compute_metrics_from_database(
 ) -> dict[str, Any]:
     """分批流式读取，避免把完整实验曲线载入内存；按接收序号处理时钟回拨。"""
     test = await session.scalar(select(TestSession).where(TestSession.test_id == test_id))
-    basis = json.loads(getattr(test, "measurement_basis_json", None) or "{}")
+    basis, basis_valid = json_object(getattr(test, "measurement_basis_json", None))
+    boundary = basis.get("measurement_end_sample_id")
+    if boundary is not None and (type(boundary) is not int or boundary <= 0):
+        basis_valid, boundary = False, None
+    recipe_raw = getattr(test, "recipe_snapshot_json", None)
+    recipe, recipe_valid = json_object(recipe_raw if recipe_raw != "null" else None)
     reducer = MetricAccumulator(
         original_height_mm,
-        measurement_complete=getattr(test, "measurement_completed_at", None) is not None,
+        measurement_complete=basis_valid and getattr(test, "measurement_completed_at", None) is not None,
         detector_verified=basis.get("detector_verified") is True,
-        data_complete=getattr(test, "data_integrity", None) == "complete",
+        data_complete=basis_valid and getattr(test, "data_integrity", None) == "complete",
+        measurement_end_sample_id=boundary,
+        test_id=test_id,
     )
+    if not basis_valid:
+        reducer.limitations.add("malformed_measurement_basis")
+    if not recipe_valid:
+        reducer.limitations.add("malformed_recipe_snapshot")
     rows = await session.stream_scalars(
         select(SamplePoint)
         .where(SamplePoint.test_id == test_id)
@@ -126,7 +138,7 @@ async def compute_metrics_from_database(
         standard="GB/T 34211-2017",
         mode=getattr(test, "mode", "custom"),
         data_integrity=getattr(test, "data_integrity", "unknown"),
-        recipe_snapshot=json.loads(getattr(test, "recipe_snapshot_json", None) or "null"),
+        recipe_snapshot=recipe if recipe else None,
         compliance="not_certified",
     )
     return result
@@ -138,6 +150,8 @@ def _provenance_rows(test, metrics):
         ("实验模式", "标准模板" if metrics.get("mode") == "standard" else "非标 / 历史未标定"),
         ("算法版本", metrics.get("algorithm_version", "unknown")),
         ("数据完整性", metrics.get("data_integrity", "unknown")),
+        ("测定窗口采样点", str(metrics.get("measurement_sample_count", 0))),
+        ("测定窗口外保留点", str(metrics.get("excluded_sample_count", 0))),
         ("600 ℃ 位移基准来源", metrics.get("reference_source") or "缺失"),
         ("结果限制", ", ".join(metrics.get("limitations", [])) or "无自动检出的数据缺口"),
         ("符合性", "未签发国标符合性结论；缺失数据、原文争议和现场条件须复核"),
