@@ -172,7 +172,10 @@ def _build_hostcomm_client(settings) -> HostCommClient:
     """根据配置构造 HostComm 客户端并接好回调（缓存 / WebSocket 广播）。"""
     host = "127.0.0.1" if settings.hostcomm_mock else settings.hostcomm_host
 
+    last_device_identity = None
+
     async def on_status(payload: dict) -> None:
+        nonlocal last_device_identity
         payload = enrich_status_snapshot(payload, control_ready=False)
         await status_cache.update(payload, ts_iso=(payload.get("_hostcomm") or {}).get("received_at") or now_iso())
         try:
@@ -182,8 +185,11 @@ def _build_hostcomm_client(settings) -> HostCommClient:
         payload = enrich_status_snapshot(
             payload, control_ready=client.is_online and status_cache.is_fresh and maintenance_idle
         )
-        if status_cache.is_fresh and active_test.needs_device_reconcile:
+        observed = (payload.get("state_machine") or {}).get("test_id")
+        identity_changed = observed != last_device_identity
+        if status_cache.is_fresh and (active_test.needs_device_reconcile or identity_changed):
             await _reconcile_test_runtime(payload)
+            last_device_identity = observed
         await ws_manager.broadcast("status_update", payload)
         await _persist_snapshot(payload)
 

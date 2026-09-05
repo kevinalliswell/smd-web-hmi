@@ -120,7 +120,9 @@ async def advance_test_session(session: AsyncSession, test_id: str, snapshot: di
         )
         furnace = number(object_value(snapshot.get("temperature")).get("furnace_pv_deg_c"))
         if furnace is not None and furnace >= 600:
-            basis["detector_verified"] = basis.get("detector_verified", True) is True and detector
+            previously_healthy = basis.get("detector_verified") is True if basis.get("detector_observed") else True
+            basis["detector_verified"] = previously_healthy and detector
+            basis["detector_observed"] = True
         if sm.get("measurement_complete") is True:
             row.measurement_completed_at = now_iso()
             basis["measurement_end_sample_id"] = await session.scalar(

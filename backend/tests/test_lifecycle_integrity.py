@@ -147,3 +147,21 @@ async def test_new_database_session_detects_gap_after_hmi_restart(db_session):
     await db_session.refresh(row)
     assert row.data_integrity == "incomplete"
     assert json.loads(row.measurement_basis_json)["telemetry"]["sequence"] == 12
+
+
+async def test_new_start_false_placeholder_does_not_disable_healthy_drip_detector(db_session):
+    row = await run_row(db_session)
+    row.measurement_basis_json = json.dumps({"detector_verified": False})
+    await db_session.commit()
+    frame = snapshot()
+    await append_sample_point(db_session, "RUN-I", frame, commit=False)
+    await advance_test_session(db_session, "RUN-I", frame)
+    assert json.loads(row.measurement_basis_json)["detector_verified"] is True
+    frame = snapshot(seq=2)
+    frame["measurement"]["first_drip_valid"] = False
+    await append_sample_point(db_session, "RUN-I", frame, commit=False)
+    await advance_test_session(db_session, "RUN-I", frame)
+    frame = snapshot(seq=3)
+    await append_sample_point(db_session, "RUN-I", frame, commit=False)
+    await advance_test_session(db_session, "RUN-I", frame)
+    assert json.loads(row.measurement_basis_json)["detector_verified"] is False

@@ -26,7 +26,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import get_settings
 from app.db.models import AlarmLog, ParameterSnapshot, ReportExport, SamplePoint, TestSession
 from app.hostcomm.protocol import now_iso
-from app.services.snapshot_data import json_object
+from app.services.snapshot_data import json_object, object_value
 from app.services.standard_metrics import MetricAccumulator, number
 from app.services.test_id import InvalidTestIdError, validate_test_id
 
@@ -149,8 +149,25 @@ async def compute_metrics_from_database(
 
 
 def _provenance_rows(test, metrics):
-    return [
+    basis, _ = json_object(getattr(test, "measurement_basis_json", None))
+    context = object_value(basis.get("report_context"))
+    specimen = object_value(basis.get("sample_metadata"))
+    recipe = object_value(metrics.get("recipe_snapshot"))
+    validation = object_value(recipe.get("validation"))
+    rows = [
         ("参考标准", "GB/T 34211-2017"),
+        ("实验室", context.get("laboratory_name") or "未记录"),
+        ("实验室地址", context.get("laboratory_address") or "未记录"),
+        ("试验日期", context.get("test_date") or "未记录"),
+        ("异常操作", context.get("abnormal_operations") or "未记录"),
+        ("标准未规定的操作", context.get("additional_operations") or "未记录"),
+        ("条件记录版本", basis.get("metadata_revision", 0)),
+        ("样品与装样条件", json.dumps(specimen, ensure_ascii=False, sort_keys=True) if specimen else "未记录"),
+        ("配方身份/版本", f"{recipe.get('recipe_id', 'unknown')} / {recipe.get('version', 'unknown')}"),
+        ("配方摘要", recipe.get("digest") or "未记录"),
+        ("工艺偏离项", ", ".join(validation.get("deviations", [])) or "未记录偏离项；不能据此认定符合标准"),
+        ("判定规则依据", basis.get("rules_reference") or "未确认"),
+        ("固件/协议", f"{recipe.get('firmware', 'unknown')} / {recipe.get('protocol_version', 'unknown')}"),
         ("实验模式", "标准模板" if metrics.get("mode") == "standard" else "非标 / 历史未标定"),
         ("算法版本", metrics.get("algorithm_version", "unknown")),
         ("全实验数据完整性", metrics.get("data_integrity", "unknown")),
@@ -161,6 +178,8 @@ def _provenance_rows(test, metrics):
         ("结果限制", ", ".join(metrics.get("limitations", [])) or "无自动检出的数据缺口"),
         ("符合性", "未签发国标符合性结论；缺失数据、原文争议和现场条件须复核"),
     ]
+
+    return rows
 
 
 def _render_html(
