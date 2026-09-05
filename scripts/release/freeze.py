@@ -1,6 +1,7 @@
 """构建三个独立入口；生成spec中的源码/数据路径与调用目录无关。"""
 
 import argparse
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -41,9 +42,18 @@ def main():
     parser.add_argument("--work", type=Path, required=True)
     opts = parser.parse_args()
     repo = Path(__file__).resolve().parents[2]
+    environment = os.environ.copy()
+    # Spec preamble collectors execute before Analysis applies --paths/pathex.
+    # Make the ordinary source packages importable in the collector subprocess too.
+    paths = [str(repo / "backend"), str(repo / "desktop")]
+    if environment.get("PYTHONPATH"):
+        paths.append(environment["PYTHONPATH"])
+    environment["PYTHONPATH"] = os.pathsep.join(paths)
     for entry, name in APPLICATIONS:
         subprocess.run(
-            [sys.executable, "-m", "PyInstaller", *arguments(repo, opts.output, opts.work, entry, name)], check=True
+            [sys.executable, "-m", "PyInstaller", *arguments(repo, opts.output, opts.work, entry, name)],
+            env=environment,
+            check=True,
         )
 
 
