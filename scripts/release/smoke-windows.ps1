@@ -59,6 +59,7 @@ foreach ($Root in @($DataDir, $InstallDir, $MenuDir)) {
 
 # These checks happen before creating a directory, rule, task or process.
 foreach ($Existing in @($DataDir, $InstallDir, $MenuDir, $ProductKey, $UninstallKey,
+    (Join-Path $env:PROGRAMDATA 'SmdHmi-TestBackups'),
     (Join-Path ([Environment]::GetFolderPath('ProgramFiles')) 'SmdHmi'))) {
     if (Test-Path -LiteralPath $Existing) { throw "Refusing existing installation object: $Existing" }
 }
@@ -185,6 +186,11 @@ try {
     $Result.unprepared_upgrade = @{ installer_exit_code = $InstallProcess.ExitCode; service_process_unchanged = $true;
         installation_and_config_unchanged = $true; maintenance_ticket_created = $false; utf8_guidance = 'ok' }
 
+    $Stage = 'test_machine_reset_and_reinstall'
+    . (Join-Path $PSScriptRoot 'test-reset-smoke.ps1')
+    $Result.test_reset = Invoke-TestResetSmoke -Installer $Installer -InstallDir $InstallDir -DataDir $DataDir `
+        -Version $Expected.version -Identity $Identity -OwnerFile $OwnerFile -TimeoutSeconds $InstallTimeoutSeconds
+
     $Stage = 'offline_pairing'
     $Controller = Get-Service -Name 'SmdHmi'
     try {
@@ -243,7 +249,7 @@ try {
             $InstallProcess.Dispose()
         }
     }
-    if ($AttemptedInstall) {
+    if ($AttemptedInstall -and -not $CleanupErrors.Contains('reset_process')) {
         Invoke-SmokeCleanup 'recovery_task' {
             $Task = Get-ScheduledTask -TaskName 'SmdHmi-Recover' -ErrorAction SilentlyContinue
             if ($Task) {
@@ -291,13 +297,13 @@ try {
     }
     if ($FirewallCreated) {
         Invoke-SmokeCleanup 'firewall_rule' {
-            if ($CleanupErrors.Contains('installer_process') -or $CleanupErrors.Contains('pairing_process') -or (Get-SmokeService)) { throw 'Keep device traffic blocked until installer, pairing and service have stopped' }
+            if ($CleanupErrors.Contains('installer_process') -or $CleanupErrors.Contains('pairing_process') -or $CleanupErrors.Contains('reset_process') -or (Get-SmokeService)) { throw 'Keep device traffic blocked until installer, pairing, reset and service have stopped' }
             Remove-NetFirewallRule -Name $FirewallName
         }
     }
     foreach ($Directory in $CreatedRoots) {
         Invoke-SmokeCleanup "directory:$Directory" {
-            if ($CleanupErrors.Contains('installer_process') -or $CleanupErrors.Contains('pairing_process') -or (Get-SmokeService)) { throw 'Do not remove directories while installer, pairing or service may still run' }
+            if ($CleanupErrors.Contains('installer_process') -or $CleanupErrors.Contains('pairing_process') -or $CleanupErrors.Contains('reset_process') -or (Get-SmokeService)) { throw 'Do not remove directories while installer, pairing, reset or service may still run' }
             Remove-OwnedDirectory $Directory
         }
     }
