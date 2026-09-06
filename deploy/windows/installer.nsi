@@ -57,7 +57,11 @@ Section "SMD HMI" SEC_MAIN
     Abort
   ${EndIf}
   ${If} $0 != 0
-    MessageBox MB_ICONSTOP "安装或升级未完成（更新器退出码：$0）。$\r$\n请以管理员打开 %ProgramData%\SmdHmi\logs\updater.log 查看具体原因；若设置了 SMD_DATA_ROOT，请查看该数据目录下的 logs\updater.log。$\r$\n请保留数据、配置及 updates 中的恢复记录，按日志判断后再重试或恢复。" /SD IDOK
+    ${If} $0 == 20
+      MessageBox MB_ICONSTOP "尚未准备升级到 ${VERSION}，或准备的目标版本不匹配。$\r$\n请在旧版软件中以应用管理员登录，打开“系统设置 → 离线升级”，将目标版本填写为 ${VERSION}，点击“准备升级”并确认，再于十分钟内运行本安装器。$\r$\n如果旧版拒绝准备，请保留拒绝原因及 logs\updater.log，不要删除数据或维护记录。" /SD IDOK
+    ${Else}
+      MessageBox MB_ICONSTOP "安装或升级未完成（更新器退出码：$0）。$\r$\n请以管理员打开 %ProgramData%\SmdHmi\logs\updater.log 查看具体原因；若设置了 SMD_DATA_ROOT，请查看该数据目录下的 logs\updater.log。$\r$\n请保留数据、配置及 updates 中的恢复记录，按日志判断后再重试或恢复。" /SD IDOK
+    ${EndIf}
     SetErrorLevel $0
     Abort
   ${EndIf}

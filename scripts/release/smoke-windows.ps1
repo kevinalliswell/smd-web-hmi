@@ -158,6 +158,33 @@ try {
     $Result.static_page = 'ok'
     $Result.static_script = 'ok'
 
+    $Stage = 'unprepared_upgrade'
+    # Exercise the installed-upgrade branch through the same real NSIS binary.
+    # This fresh, unpaired installation has never prepared a maintenance ticket.
+    if (Test-Path -LiteralPath (Join-Path $DataDir 'maintenance.json')) { throw 'Unexpected maintenance ticket before upgrade probe' }
+    $BeforeUpgradeService = Get-SmokeService
+    $InstallationFile = Join-Path $DataDir 'installation.json'
+    $ConfigurationFile = Join-Path $DataDir 'config/service.env'
+    $BeforeInstallationHash = (Get-FileHash -LiteralPath $InstallationFile -Algorithm SHA256).Hash
+    $BeforeConfigurationHash = (Get-FileHash -LiteralPath $ConfigurationFile -Algorithm SHA256).Hash
+    $InstallProcess.Dispose()
+    $InstallProcess = $null
+    $InstallProcess = Start-Process -FilePath $Installer -ArgumentList "/S /D=$InstallDir" -PassThru
+    if (-not $InstallProcess.WaitForExit($InstallTimeoutSeconds * 1000)) { throw 'Unprepared upgrade probe exceeded its time limit' }
+    if ($InstallProcess.ExitCode -ne 20) { throw 'Unprepared upgrade must return the maintenance-required exit code' }
+    $AfterUpgradeService = Get-SmokeService
+    if (-not $BeforeUpgradeService -or -not $AfterUpgradeService -or $AfterUpgradeService.State -ne 'Running' -or
+        $AfterUpgradeService.ProcessId -ne $BeforeUpgradeService.ProcessId -or
+        -not (Test-SamePath $AfterUpgradeService.PathName $ServiceExe)) { throw 'Unprepared upgrade changed the running backend' }
+    if ((Get-FileHash -LiteralPath $InstallationFile -Algorithm SHA256).Hash -ne $BeforeInstallationHash -or
+        (Get-FileHash -LiteralPath $ConfigurationFile -Algorithm SHA256).Hash -ne $BeforeConfigurationHash -or
+        (Test-Path -LiteralPath (Join-Path $DataDir 'maintenance.json'))) { throw 'Unprepared upgrade changed installation or maintenance state' }
+    $UpdaterLog = Get-Content -LiteralPath (Join-Path $DataDir 'logs/updater.log') -Raw -Encoding utf8
+    if (-not $UpdaterLog.Contains('MaintenanceRequired') -or -not $UpdaterLog.Contains($Expected.version) -or
+        -not $UpdaterLog.Contains('旧版→系统设置→离线升级')) { throw 'Updater log must contain readable target-specific maintenance guidance' }
+    $Result.unprepared_upgrade = @{ installer_exit_code = $InstallProcess.ExitCode; service_process_unchanged = $true;
+        installation_and_config_unchanged = $true; maintenance_ticket_created = $false; utf8_guidance = 'ok' }
+
     $Stage = 'offline_pairing'
     $Controller = Get-Service -Name 'SmdHmi'
     try {

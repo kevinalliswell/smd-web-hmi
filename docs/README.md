@@ -1,6 +1,6 @@
 # 文档入口
 
-维护角色：项目维护者。当前候选软件版本为 `0.3.0-rc.3`，HostComm 2.0 适配和交付证据见[运行验证](verification/2026-09-06-hostcomm-v2-runtime.md)，状态更新于2026-09-06。
+维护角色：项目维护者。当前候选软件版本为 `0.3.0-rc.4`，状态更新于2026-09-06。本次仅修正安装器诊断及缺失升级准备的提示，见[Windows安装排查记录](verification/2026-09-06-windows-installer-errors.md)；现场日志已确认缺少维护准备文件，尚未验证用户重试成功。rc.3 的 HostComm 2.0 功能与[运行验证](verification/2026-09-06-hostcomm-v2-runtime.md)保留；新候选包仍须通过对应提交的检查，发布状态见 [GitHub Releases](https://github.com/kevinalliswell/smd-web-hmi/releases)。
 
 历史整改审查基线为 `dev@855c84d425f35279cabb9ac9ed6dc322711c335c`（`0.3.0-rc.1`，2026-09-05）；上一轮软件检查、合并和分支清理见[历史软件验证](verification/2026-09-06-software.md#最终集成软件验证)。基线不冻结后续实现；各任务的提交与验收在任务和证据记录中更新。
 

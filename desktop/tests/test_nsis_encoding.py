@@ -65,6 +65,39 @@ def test_correct_text_in_a_comment_does_not_hide_a_corrupted_message(compiler_ar
         checker.check_encoding("makensis.exe", compiler_arguments)
 
 
+@pytest.mark.parametrize(
+    "source_message, preprocessed_message",
+    [
+        (r"安装失败$\r$\n查看日志。", "安装失败\r\n查看日志。"),
+        (r"安装失败$\n查看日志。", "安装失败\r\n查看日志。"),
+        (r"安装失败$\t查看日志。", "安装失败\t查看日志。"),
+        (r"字面量$$\n保留。", r"字面量$$\n保留。"),
+        (r"字面量$$$$\r保留。", r"字面量$$$$\r保留。"),
+        (r"字面量$$$\n与换行。", "字面量$$\n与换行。"),
+    ],
+)
+def test_matches_nsis_311_control_character_expansion(
+    compiler_arguments, monkeypatch, source_message, preprocessed_message
+):
+    # NSIS v3.11 ps_addtoline expands r/n/t before /PPO prints the quoted line.
+    # A pair of dollar signs is preserved by the preprocessor and prevents the
+    # following backslash from beginning another control-character expansion.
+    source = f'MessageBox MB_ICONSTOP "{source_message}" /SD IDOK\n'
+    output = f'MessageBox MB_ICONSTOP "{preprocessed_message}" /SD IDOK\n'
+    Path(compiler_arguments[-1]).write_text(source, encoding="utf-8")
+    monkeypatch.setattr(checker.subprocess, "run", lambda *a, **kw: result(output.encode("utf-8")))
+    assert checker.check_encoding("makensis.exe", compiler_arguments) == 1
+
+
+def test_does_not_decode_literal_escaped_output_a_second_time(compiler_arguments, monkeypatch):
+    source = 'MessageBox MB_ICONSTOP "字面量$$\\n保留。" /SD IDOK\n'
+    incorrectly_expanded = 'MessageBox MB_ICONSTOP "字面量$\n保留。" /SD IDOK\n'
+    Path(compiler_arguments[-1]).write_text(source, encoding="utf-8")
+    monkeypatch.setattr(checker.subprocess, "run", lambda *a, **kw: result(incorrectly_expanded.encode("utf-8")))
+    with pytest.raises(ValueError, match="MessageBox text changed"):
+        checker.check_encoding("makensis.exe", compiler_arguments)
+
+
 def test_nonzero_compiler_exit_cannot_pass_with_correct_stdout(compiler_arguments, monkeypatch):
     monkeypatch.setattr(checker.subprocess, "run", lambda *a, **kw: result(returncode=7))
     with pytest.raises(ValueError, match="makensis preprocessing failed.*7"):

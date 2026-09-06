@@ -4,7 +4,7 @@
 
 ## 项目状态
 
-当前处于开发与联调阶段。`dev@855c84d / 0.3.0-rc.1` 是整改前基线，当前候选版本为 `0.3.0-rc.3`，新增 HostComm 2.0 上位机适配、离线配对和无执行器模拟器，保留1.0兼容入口。当前实现与验证见[rc.3 运行验证](docs/verification/2026-09-06-hostcomm-v2-runtime.md)，[rc.2 软件记录](docs/verification/2026-09-06-software.md)保留为历史证据。固件尚未开发，不能代表整套设备已通过国标、干净断网Windows10/11现场或真机验收。已有功能与缺口见[验收证据基线](docs/verification.md)，后续进度统一记录在[任务清单](tasks/todo.md)。
+当前处于开发与联调阶段。`dev@855c84d / 0.3.0-rc.1` 是整改前基线，当前候选版本为 `0.3.0-rc.4`，修正 Windows 安装器中文及升级准备提示，见[安装错误排查](docs/verification/2026-09-06-windows-installer-errors.md)。HostComm 2.0 上位机适配、离线配对和无执行器模拟器沿用[rc.3 运行验证](docs/verification/2026-09-06-hostcomm-v2-runtime.md)，保留1.0兼容入口；[rc.2 软件记录](docs/verification/2026-09-06-software.md)保留为历史证据。固件尚未开发，不能代表整套设备已通过国标、干净断网Windows10/11现场或真机验收。已有功能与缺口见[验收证据基线](docs/verification.md)，后续进度统一记录在[任务清单](tasks/todo.md)。
 
 | 项目 | 本轮软件实现 | 待验证边界 |
 |---|---|---|

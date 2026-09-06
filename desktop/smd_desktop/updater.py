@@ -21,6 +21,18 @@ from .uninstall import UninstallTransaction
 from .upgrade import UpgradeTransaction
 from .windows_platform import WindowsPlatform
 
+MAINTENANCE_REQUIRED_EXIT_CODE = 20
+
+
+class MaintenanceRequired(RuntimeError):
+    """The verified upgrade target has not been prepared by the running application."""
+
+    def __init__(self, target_version: str):
+        super().__init__(
+            f"尚未为目标版本 {target_version} 准备升级。请以应用管理员登录旧版→系统设置→离线升级，"
+            f"填写目标版本 {target_version} 并确认准备，再运行安装器。"
+        )
+
 
 def initialize(package: Path, install: Path, data: Path, platform: WindowsPlatform):
     manifest = verify_bundle(package)
@@ -198,9 +210,12 @@ def run():
             initialize(args.package, args.install, data, platform)
         else:
             manifest = verify_bundle(args.package)
-            gate = json.loads((data / "maintenance.json").read_text(encoding="utf-8"))
+            try:
+                gate = json.loads((data / "maintenance.json").read_text(encoding="utf-8"))
+            except FileNotFoundError as exc:
+                raise MaintenanceRequired(manifest["version"]) from exc
             if gate.get("target_version") != manifest["version"]:
-                raise RuntimeError("先以 Admin 在系统维护中准备这个目标版本")
+                raise MaintenanceRequired(manifest["version"])
             permit = platform.request("/api/system/maintenance/claim", token=gate["token"])
             transaction.apply(args.package, permit)
 
@@ -217,6 +232,9 @@ def main():
     logging.basicConfig(handlers=[handler], level=logging.INFO, force=True)
     try:
         run()
+    except MaintenanceRequired as exc:
+        logging.exception("Upgrade maintenance is required")
+        raise SystemExit(MAINTENANCE_REQUIRED_EXIT_CODE) from exc
     except Exception:
         logging.exception("Installation or recovery failed")
         raise
