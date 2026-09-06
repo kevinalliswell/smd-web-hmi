@@ -2,6 +2,7 @@
 import { onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useRole } from '@/composables/useRole'
+import { useDeviceStore } from '@/stores/device'
 import { useAuthStore } from '@/stores/auth'
 import { fetchHealth, fetchSystemInfo, syncTime } from '@/api/system'
 import { fetchUsers, createUser, updateUser, changePassword } from '@/api/users'
@@ -10,6 +11,7 @@ import MaintenancePanel from '@/components/system/MaintenancePanel.vue'
 
 const { canConfigure } = useRole()
 const auth = useAuthStore()
+const device = useDeviceStore()
 const router = useRouter()
 
 const banner = ref(null)
@@ -110,6 +112,7 @@ async function onChangeOwnPassword() {
 }
 
 async function onSyncTime() {
+  if (!device.supportsCommand('sync_time')) return
   try {
     const r = await syncTime()
     notify('ok', `校时已下发（${r.result}），时间 ${r.sent_time}`)
@@ -140,7 +143,7 @@ onMounted(loadAll)
         </tbody>
       </table>
       <div v-if="canConfigure()" class="actions">
-        <button @click="onSyncTime">校时（sync_time）</button>
+        <button v-if="device.supportsCommand('sync_time')" @click="onSyncTime">校时（sync_time）</button>
       </div>
     </div>
 

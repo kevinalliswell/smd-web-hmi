@@ -6,7 +6,7 @@ import hashlib
 import json
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, FiniteFloat, model_validator
+from pydantic import BaseModel, ConfigDict, Field, FiniteFloat, model_serializer, model_validator
 
 Positive = Annotated[FiniteFloat, Field(gt=0, strict=True)]
 Nonnegative = Annotated[FiniteFloat, Field(ge=0, strict=True)]
@@ -20,6 +20,14 @@ class ExitCondition(ContractModel):
     signal: Literal["furnace_c", "burden_c", "elapsed_s"]
     comparison: Literal["gte", "lt"] = "gte"
     value: Nonnegative
+    stable_s: Nonnegative | None = None
+
+    @model_serializer(mode="wrap")
+    def preserve_saved_shape(self, handler):
+        result = handler(self)
+        if self.stable_s is None:
+            result.pop("stable_s", None)
+        return result
 
 
 class Stage(ContractModel):
@@ -31,6 +39,14 @@ class Stage(ContractModel):
     co_l_min: Nonnegative
     exit: ExitCondition
     timeout_s: int = Field(gt=0, le=604800)
+    heater_mode: Literal["off", "ramp", "hold"] | None = None
+
+    @model_serializer(mode="wrap")
+    def preserve_saved_shape(self, handler):
+        result = handler(self)
+        if self.heater_mode is None:
+            result.pop("heater_mode", None)
+        return result
 
     @model_validator(mode="after")
     def coherent_stage(self):
@@ -178,7 +194,7 @@ def validate_for_device(recipe: RecipeDefinition, profile: dict | None, capabili
             and stage.furnace_target_c < limits.co_min_furnace_c
         ):
             errors.append(prefix + "co_target_below_required_temperature")
-        if stage.kind == "cool":
+        if stage.kind == "cool" or stage.heater_mode == "off":
             minimum_furnace = 0
         elif stage.exit.signal == "furnace_c":
             # A measured lower-bound exit can prove temperature only for the

@@ -9,6 +9,11 @@ const emit = defineEmits(['close', 'done'])
 const error = ref('')
 const unknownOperationId = ref(null)
 function onOperationResolved(result) {
+  if (result.wire_reconciled && !['accepted', 'verified', 'rejected'].includes(result.operation_status)) {
+    error.value = '已核查，执行结果仍未知；新的操作须根据当前设备状态重新确认'
+    unknownOperationId.value = null
+    return
+  }
   if (result.operation_status === 'rejected') {
     error.value = result.reason_code || '设备已拒绝，请核查后重新确认'
     unknownOperationId.value = null

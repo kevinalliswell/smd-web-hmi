@@ -104,6 +104,11 @@ def initialize(package: Path, install: Path, data: Path, platform: WindowsPlatfo
             "HOSTCOMM_MOCK": "false",
             "HOSTCOMM_HOST": "192.168.1.100",
             "HOSTCOMM_PORT": "34211",
+            "PROTOCOL_VERSION": "2.0",
+            "HOSTCOMM_DEVICE_ID": "",
+            "HOSTCOMM_CONTROLLER_ID": "",
+            "HOSTCOMM_CONTROLLER_EPOCH": "",
+            "HOSTCOMM_PSK_FILE": "",
             "SMD_BOOTSTRAP_ADMIN_PASSWORD_FILE": str(password),
         }
         # dotenv handles quoted backslashes, but does not decode JSON's Unicode escapes.
@@ -131,12 +136,43 @@ def run():
     parser.add_argument("--install", type=Path, required=True)
     parser.add_argument("--recover", action="store_true")
     parser.add_argument("--uninstall", action="store_true")
+    parser.add_argument("--pair-device", help="Offline HostComm 2.0 device UUID (32 lowercase hex)")
+    parser.add_argument("--controller-id")
+    parser.add_argument("--controller-epoch")
+    parser.add_argument(
+        "--import-psk", type=Path, help="Private file containing a 32-byte key encoded as 64 hex digits"
+    )
+    parser.add_argument("--replace-pairing", action="store_true")
+    parser.add_argument("--recover-pairing", action="store_true")
+    parser.add_argument("--reason", help="Offline pairing maintenance audit reason")
     args = parser.parse_args()
     if os.name != "nt" or not ctypes.windll.shell32.IsUserAnAdmin():
         raise RuntimeError("安装与恢复必须在 Windows 管理员终端执行")
     data = data_root()
     with single_instance("SmdHmi.Updater", data / "updater.lock"):
         platform = WindowsPlatform(data)
+        if args.pair_device or args.recover_pairing:
+            if args.package or args.recover or args.uninstall or (args.pair_device and args.recover_pairing):
+                raise RuntimeError("配对与安装/升级/卸载/其他恢复必须分别执行")
+            from .pairing import PairingTransaction
+
+            pairing = PairingTransaction(data, platform)
+            result = (
+                pairing.recover()
+                if args.recover_pairing
+                else pairing.apply(
+                    device_id=args.pair_device,
+                    controller_id=args.controller_id,
+                    controller_epoch=args.controller_epoch,
+                    import_psk=args.import_psk,
+                    replace=args.replace_pairing,
+                    reason=args.reason or "",
+                )
+            )
+            print(json.dumps(result, ensure_ascii=False))  # Identifiers and protected paths only; never the PSK.
+            return
+        if any((args.controller_id, args.controller_epoch, args.import_psk, args.replace_pairing, args.reason)):
+            raise RuntimeError("配对参数必须与 --pair-device 一起使用")
         transaction = UpgradeTransaction(args.install, data, platform)
         uninstall = UninstallTransaction(args.install, data, platform)
         if uninstall.journal_path.exists():

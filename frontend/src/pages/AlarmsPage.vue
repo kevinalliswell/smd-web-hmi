@@ -1,20 +1,27 @@
 <script setup>
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useAlarmsStore } from '@/stores/alarms'
+import { useDeviceStore } from '@/stores/device'
 import { useRole } from '@/composables/useRole'
 import { ackAlarm as apiAckAlarm } from '@/api/alarms'
 import AlarmTable from '@/components/alarms/AlarmTable.vue'
 import EmptyState from '@/components/shared/EmptyState.vue'
 
 const alarms = useAlarmsStore()
+const device = useDeviceStore()
 const { sortedActive, alarmHistory, criticalCount, hasCritical } = storeToRefs(alarms)
 const { canOperate } = useRole()
 
 const tab = ref('active')
 const banner = ref('')
+const historyPage = ref(1), historyBusy = ref(false), acking = ref(false)
+const historyPending = computed(() => alarmHistory.value.filter(alarm => !alarm.ack_time).length)
+const alarmSnapshotKnown = computed(() => !alarms.syncing && !alarms.syncError && (!device.isV2 || (device.commQuality === 'online' && !device.dataStale)))
 
 async function onAck(alarm) {
+  if (!canOperate() || !device.canAckAlarm || acking.value) return
+  acking.value = true
   banner.value = ''
   try {
     const r = await apiAckAlarm(alarm.alarm_id ?? alarm.id)
@@ -22,15 +29,23 @@ async function onAck(alarm) {
     banner.value = `已确认 ${alarm.alarm_code}（控制板：${r.command || 'ok'}）`
   } catch (e) {
     banner.value = `确认失败：${e.response?.data?.message || e.message}`
-  }
+  } finally { acking.value = false }
 }
 
-async function loadHistory() {
+async function loadHistory(page = historyPage.value) {
+  if (historyBusy.value) return
+  historyBusy.value = true
   try {
-    await alarms.loadHistory()
-  } catch {
-    /* 忽略 */
-  }
+    await alarms.loadHistory(page, 50)
+    historyPage.value = page
+  } catch (error) {
+    banner.value = `历史报警读取失败：${error.response?.data?.message || error.message}`
+  } finally { historyBusy.value = false }
+}
+async function refresh() {
+  try { await alarms.loadActive() }
+  catch { banner.value = '活动报警刷新失败，请核对连接后重试' }
+  await loadHistory()
 }
 
 onMounted(async () => {
@@ -48,7 +63,7 @@ onMounted(async () => {
     <div class="page-head">
       <h1 class="page-title">报警事件</h1>
       <div class="spacer" />
-      <button @click="alarms.loadActive()">刷新</button>
+      <button :disabled="historyBusy" @click="refresh">刷新</button>
     </div>
 
     <!-- L3 危险报警顶部横幅 -->
@@ -71,25 +86,33 @@ onMounted(async () => {
       <AlarmTable
         :alarms="sortedActive"
         show-ack
-        :can-ack="canOperate()"
+        :can-ack="canOperate() && device.canAckAlarm && !acking"
         @ack="onAck"
       />
       <EmptyState
         v-if="!sortedActive.length"
-        tone="ok"
-        title="当前无活跃报警"
-        hint="设备未上报未消除的报警。报警由控制板判定并推送，此处仅作显示与确认。"
+        :tone="alarmSnapshotKnown ? 'ok' : 'neutral'"
+        :title="alarmSnapshotKnown ? '当前无活跃报警' : '报警状态待同步'"
+        :hint="alarmSnapshotKnown ? '设备未上报未消除的报警。报警由控制板判定并推送，此处仅作显示与确认。' : '设备连接或报警对账尚未完成，不能据此认定现场无报警。'"
       />
     </div>
 
     <div v-show="tab === 'history'" class="card">
-      <AlarmTable :alarms="alarmHistory" show-ack show-clear :can-ack="false" />
+      <p class="history-hint" role="status">本页待确认 {{ historyPending }} 条。报警消除后仍须操作确认；请核查对应发生序号，所需报警未确认会阻止实验结束确认。</p>
+      <AlarmTable :alarms="alarmHistory" show-ack show-clear :can-ack="canOperate() && device.canAckAlarm && !acking" @ack="onAck" />
+      <nav class="history-pages" aria-label="历史报警分页">
+        <button :disabled="historyBusy || historyPage === 1" @click="loadHistory(historyPage - 1)">上一页</button>
+        <span>第 {{ historyPage }} 页</span>
+        <button :disabled="historyBusy || alarmHistory.length < 50" @click="loadHistory(historyPage + 1)">下一页</button>
+      </nav>
       <EmptyState v-if="!alarmHistory.length" title="暂无历史报警" hint="报警发生并消除后会归档到这里。" />
     </div>
   </div>
 </template>
 
 <style scoped>
+.history-hint { color: var(--text-sec); font-size: 12px; line-height: 1.6; margin-bottom: 12px; }
+.history-pages { display: flex; justify-content: space-between; align-items: center; margin-top: 12px; gap: 12px; font-size: 12px; }
 .page { display: flex; flex-direction: column; gap: 16px; }
 .page-head { display: flex; align-items: center; gap: 12px; }
 .page-title { font-size: 18px; font-weight: 700; }

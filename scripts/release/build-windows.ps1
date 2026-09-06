@@ -32,12 +32,13 @@ Copy-Item deploy/windows/configure-acl.ps1 $Stage
 Copy-Item deploy/windows/configure-recovery.ps1 $Stage
 Copy-Item CHANGELOG.md (Join-Path $Stage 'CHANGELOG.md')
 Copy-Item deploy/windows/README.md (Join-Path $Stage 'UPGRADE.md')
+Copy-Item docs/hostcomm/v2/runtime.md (Join-Path $Stage 'HOSTCOMM-2-RUNTIME.md')
 # Exercise the frozen binaries with a scratch DB; migrations never start HostComm.
 $Smoke = Join-Path $Repo "$OutputDir/smoke"
 New-Item -ItemType Directory (Join-Path $Smoke 'config') -Force | Out-Null
 $env:SMD_DATA_ROOT = $Smoke
 $Db = (Join-Path $Smoke 'smd.db').Replace('\','/')
-@("SMD_DB_PATH=$Db",'HOSTCOMM_MOCK=true','SMD_JWT_SECRET=ci-only-secret-at-least-thirty-two-bytes') | Set-Content (Join-Path $Smoke 'config/service.env') -Encoding utf8
+@("SMD_DB_PATH=$Db",'HOSTCOMM_MOCK=true','PROTOCOL_VERSION=2.0','HOSTCOMM_DEVICE_ID=','HOSTCOMM_CONTROLLER_ID=','HOSTCOMM_CONTROLLER_EPOCH=','HOSTCOMM_PSK_FILE=','SMD_JWT_SECRET=ci-only-secret-at-least-thirty-two-bytes') | Set-Content (Join-Path $Smoke 'config/service.env') -Encoding utf8
 try {
     Invoke-Checked (Join-Path $Stage 'SmdService/SmdService.exe') @('--migrate')
     Invoke-Checked (Join-Path $Stage 'SmdService/SmdService.exe') @('--self-check')
@@ -52,5 +53,6 @@ Copy-Item "$Stage/manifest.json" "$OutputDir/manifest.json"
 Copy-Item "$Stage/sbom.cdx.json" "$OutputDir/sbom.cdx.json"
 Copy-Item "$Stage/CHANGELOG.md" "$OutputDir/CHANGELOG.md"
 Copy-Item "$Stage/UPGRADE.md" "$OutputDir/UPGRADE.md"
+Copy-Item "$Stage/HOSTCOMM-2-RUNTIME.md" "$OutputDir/HOSTCOMM-2-RUNTIME.md"
 $Hash = Get-FileHash "$OutputDir/SmdHmi-$Version-windows-x64.exe" -Algorithm SHA256
 "$($Hash.Hash.ToLower())  $([IO.Path]::GetFileName($Hash.Path))" | Set-Content "$OutputDir/SHA256SUMS.txt" -Encoding ascii

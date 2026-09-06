@@ -29,7 +29,7 @@ const emit = defineEmits(['ack'])
       <tr v-for="a in alarms" :key="a.alarm_id ?? a.id ?? a.alarm_code" :class="{ critical: (a.level ?? 0) >= 3 }">
         <td><AlarmBadge :level="a.level ?? 0" /></td>
         <td class="mono">{{ a.alarm_code }}</td>
-        <td>{{ a.text }}</td>
+        <td>{{ a.text }}<small v-if="a.wire_alarm_id" class="source mono">发生序号 {{ a.occurrence_seq }} · {{ a.wire_alarm_id }}</small></td>
         <td class="mono small">{{ formatDateTime(a.occur_time) }}</td>
         <td v-if="showClear" class="mono small">{{ formatDateTime(a.clear_time) }}</td>
         <td v-if="showAck">
@@ -43,6 +43,7 @@ const emit = defineEmits(['ack'])
 </template>
 
 <style scoped>
+.source { display: block; color: var(--text-sec); overflow-wrap: anywhere; font-size: 10px; margin-top: 4px; }
 .alarm-table { width: 100%; border-collapse: collapse; font-size: 12px; }
 .alarm-table th, .alarm-table td { text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--border); }
 .alarm-table th { color: var(--text-sec); font-weight: 600; font-size: 11px; }

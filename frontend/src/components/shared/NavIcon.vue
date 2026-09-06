@@ -47,7 +47,7 @@ defineProps({
       <path d="M10.5 20a2 2 0 0 0 3 0" />
     </template>
     <!-- 历史试验：归档 -->
-    <template v-else-if="name === 'history'">
+    <template v-else-if="name === 'history' || name === 'operations'">
       <rect x="3" y="4" width="18" height="5" rx="1" />
       <path d="M5 9v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V9" />
       <path d="M10 13h4" />

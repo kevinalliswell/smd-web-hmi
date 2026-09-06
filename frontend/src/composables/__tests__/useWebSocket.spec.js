@@ -4,6 +4,7 @@ import { flushPromises } from '@vue/test-utils'
 import { useWebSocket } from '@/composables/useWebSocket'
 import { useAuthStore } from '@/stores/auth'
 import { useDeviceStore } from '@/stores/device'
+import { fetchActiveAlarms } from '@/api/alarms'
 import { fetchStatus } from '@/api/status'
 
 vi.mock('@/api/status', () => ({ fetchStatus: vi.fn() }))
@@ -35,6 +36,7 @@ class FakeWebSocket {
 
 describe('useWebSocket 链路状态', () => {
   beforeEach(() => {
+    vi.clearAllMocks()
     vi.useFakeTimers()
     setActivePinia(createPinia())
     localStorage.clear()
@@ -79,4 +81,19 @@ describe('useWebSocket 链路状态', () => {
     expect(device.backendConnected).toBe(false)
     expect(device.commQuality).toBe('offline')
   })
+  it('reloads persisted alarms after the device resynchronization event, without adding wire UUIDs as local alarms', async () => {
+    useAuthStore().token = 'jwt-token'
+    const connection = useWebSocket()
+    connection.connect()
+    const socket = FakeWebSocket.instances[0]
+    socket.readyState = FakeWebSocket.OPEN
+    socket.onmessage({ data: JSON.stringify({ type: 'auth_ok' }) })
+    await flushPromises()
+    expect(fetchActiveAlarms).toHaveBeenCalledOnce()
+    socket.onmessage({ data: JSON.stringify({ type: 'event', data: { kind: 'alarms_resynced', _v2_persisted: true } }) })
+    await flushPromises()
+    expect(fetchActiveAlarms).toHaveBeenCalledTimes(2)
+    connection.disconnect()
+  })
+
 })

@@ -46,8 +46,36 @@ function unknownOperation(operationId) {
 }
 
 /** @param {OperationResult} result */
+export function wireOperationStatus(result) {
+  return result.wire_operation?.status || result.wire_status || result.device_result?.wire_status
+}
+
+/** Audit closure releases the local intent lock, never rewrites the execution result. */
+export function operationReconciled(result) {
+  return result?.wire_reconciled === true || result?.wire_operation?.reconciled === 1
+}
+
+/** @param {OperationResult} result */
+export function operationResolved(result, requireVerified = false) {
+  if (operationReconciled(result) || (result.prerequisite_only && result.operation_status === 'rejected')) return true
+  const wire = wireOperationStatus(result)
+  if (wire && !['applied', 'rejected', 'interrupted'].includes(String(wire))) return false
+  return ['verified', 'rejected'].includes(result.operation_status) || (!requireVerified && result.operation_status === 'accepted')
+}
+
+/** @param {OperationResult} result */
 function finishOperation(result, key, operationId, command) {
   const status = result.operation_status || result.result
+  if (operationReconciled(result) && !['accepted', 'verified', 'rejected'].includes(status)) {
+    const entries = pendingOperations()
+    delete entries[key]
+    savePending(entries)
+    // The next explicit user intent may have a new ID; this call never resends.
+    const error = new Error('已核查，执行结果仍未知；如需新的操作，请核对当前状态后重新确认')
+    throw error
+  }
+  if (wireOperationStatus(result) && !operationResolved(result, ['set_parameters', 'activate_recipe'].includes(command)))
+    throw unknownOperation(operationId)
   if (['set_parameters', 'activate_recipe'].includes(command) && status === 'accepted')
     throw unknownOperation(operationId)
   if (!['accepted', 'verified', 'rejected'].includes(status)) throw unknownOperation(operationId)
@@ -73,12 +101,18 @@ export async function fetchOperation(operationId) {
   const result = (
     await apiClient.get(`/api/commands/operations/${encodeURIComponent(operationId)}`)
   ).data.data
-  if (['accepted', 'verified', 'rejected'].includes(result.operation_status)) {
+  return rememberResult(result, operationId)
+}
+
+/** @param {OperationResult} result @param {string} operationId */
+function rememberResult(result, operationId) {
+  if (operationResolved(result)) {
     const entries = pendingOperations()
     for (const [key, entry] of Object.entries(entries)) {
       if (
         entry.operation_id === operationId &&
         !(
+          !operationReconciled(result) &&
           ['set_parameters', 'activate_recipe'].includes(entry.command) &&
           result.operation_status === 'accepted'
         )
@@ -88,6 +122,24 @@ export async function fetchOperation(operationId) {
     savePending(entries)
   }
   return result
+}
+
+/** @returns {Promise<OperationResult[]>} */
+export function fetchOperations(page = 1, size = 20) {
+  return apiClient.get('/api/commands/operations', { params: { page, size } }).then(r => r.data.data)
+}
+
+/** Read-only board reconciliation. This endpoint never reissues the command. */
+export async function queryDeviceOperation(operationId) {
+  const result = (await apiClient.post(`/api/commands/operations/${encodeURIComponent(operationId)}/query`)).data.data
+  return rememberResult(result, operationId)
+}
+
+/** @param {string} operationId @param {string} reason */
+export async function reconcileOperation(operationId, reason) {
+  if (!reason.trim()) throw new Error('请填写对账依据')
+  const result = (await apiClient.post(`/api/commands/operations/${encodeURIComponent(operationId)}/reconcile`, { reason: reason.trim() })).data.data
+  return rememberResult(result, operationId)
 }
 
 // Each logical intent retains its identity across transport failure and user retries.

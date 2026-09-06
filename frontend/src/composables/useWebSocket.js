@@ -27,7 +27,7 @@ export function useWebSocket() {
   const alarms = useAlarmsStore()
   const test = useTestStore()
 
-  function dispatch(msg) {
+  function dispatch(msg, isCurrent) {
     switch (msg.type) {
       case 'status_update':
         device.updateSnapshot(msg.data)
@@ -46,6 +46,10 @@ export function useWebSocket() {
         break
       case 'state_change':
         if (test.currentTest) test.currentTest.state = msg.data.to_state
+        break
+      case 'event':
+        if (msg.data?.kind === 'alarms_resynced' && msg.data?._v2_persisted === true)
+          alarms.loadActive(isCurrent).catch(() => {})
         break
       case 'pong':
         break
@@ -99,7 +103,7 @@ export function useWebSocket() {
       try {
         const message = JSON.parse(ev.data)
         if (message.type === 'auth_ok') onAuthenticated()
-        else if (authenticated) dispatch(message)
+        else if (authenticated) dispatch(message, () => socket === activeSocket && authenticated)
       } catch {
         /* 忽略非 JSON 帧 */
       }

@@ -80,6 +80,11 @@ class SamplePoint(Base):
     test_id: Mapped[str] = mapped_column(String(64), nullable=False)
     ts: Mapped[str] = mapped_column(UTCISOText(), nullable=False)
     source: Mapped[str] = mapped_column(String, nullable=False, default="live_poll")
+    # 原始设备顺序；十进制文本保留完整 uint64，旧记录保持未知。
+    source_boot_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    source_sequence: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    source_run_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    source_uptime_ms: Mapped[str | None] = mapped_column(String(20), nullable=True)
     # 温度
     furnace_pv: Mapped[float | None] = mapped_column(Float, nullable=True)
     furnace_sv: Mapped[float | None] = mapped_column(Float, nullable=True)
@@ -104,7 +109,10 @@ class SamplePoint(Base):
     # 扩展
     ext_json: Mapped[str | None] = mapped_column(Text, nullable=True)
 
-    __table_args__ = (Index("idx_sp_test_ts", "test_id", "ts"),)
+    __table_args__ = (
+        Index("idx_sp_test_ts", "test_id", "ts"),
+        Index("idx_sp_test_source_identity", "test_id", "source_boot_id", "source_sequence"),
+    )
 
 
 # ============================================================ 2.4 event_log
@@ -219,3 +227,6 @@ class ReportExport(Base):
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     __table_args__ = (Index("idx_re_test_generated", "test_id", "generated_at"),)
+
+
+from app.db import v2_models  # noqa: E402,F401 — register v2 metadata after Base and legacy models.

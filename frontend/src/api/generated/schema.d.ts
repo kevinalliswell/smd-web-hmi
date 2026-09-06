@@ -106,6 +106,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/commands/operations/{operation_id}/query": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Query Device Operation */
+        post: operations["query_device_operation_api_commands_operations__operation_id__query_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/commands/operations/{operation_id}/reconcile": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reconcile Device Operation */
+        post: operations["reconcile_device_operation_api_commands_operations__operation_id__reconcile_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/commands/operations": {
         parameters: {
             query?: never;
@@ -993,6 +1027,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/system/maintenance/source-logs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Recover Source Logs */
+        post: operations["recover_source_logs_api_system_maintenance_source_logs_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/system/maintenance/source-logs/{task_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Source Recovery Status */
+        get: operations["source_recovery_status_api_system_maintenance_source_logs__task_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/system/maintenance": {
         parameters: {
             query?: never;
@@ -1137,6 +1205,8 @@ export interface components {
             comparison: "gte" | "lt";
             /** Value */
             value: number;
+            /** Stable S */
+            stable_s?: number | null;
         };
         /** ExportLogRequest */
         ExportLogRequest: {
@@ -1224,6 +1294,16 @@ export interface components {
         RecipeSelection: {
             /** Version */
             version: number;
+        };
+        /** ReconcileOperationRequest */
+        ReconcileOperationRequest: {
+            /** Reason */
+            reason: string;
+        };
+        /** RecoverSourceLogsRequest */
+        RecoverSourceLogsRequest: {
+            /** First Record Seq */
+            first_record_seq?: string | null;
         };
         /** RepeatabilityRequest */
         RepeatabilityRequest: {
@@ -1313,6 +1393,8 @@ export interface components {
             exit: components["schemas"]["ExitCondition"];
             /** Timeout S */
             timeout_s: number;
+            /** Heater Mode */
+            heater_mode?: ("off" | "ramp" | "hold") | null;
         };
         /** UpdateUserRequest */
         UpdateUserRequest: {
@@ -1488,6 +1570,76 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    query_device_operation_api_commands_operations__operation_id__query_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                operation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reconcile_device_operation_api_commands_operations__operation_id__reconcile_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                operation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReconcileOperationRequest"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {
@@ -3169,6 +3321,74 @@ export interface operations {
                 "application/json": components["schemas"]["HostCommDebugRequest"];
             };
         };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    recover_source_logs_api_system_maintenance_source_logs_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RecoverSourceLogsRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    source_recovery_status_api_system_maintenance_source_logs__task_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
             200: {

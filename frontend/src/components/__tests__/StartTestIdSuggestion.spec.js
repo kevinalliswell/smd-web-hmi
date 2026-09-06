@@ -1,5 +1,6 @@
+import { createPinia, setActivePinia } from 'pinia'
 vi.mock('@/api/recipes', () => ({ fetchRecipes: vi.fn().mockResolvedValue({ items: [], total: 0 }), fetchRecipeVersions: vi.fn() }))
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import StartTestModal from '@/components/command/StartTestModal.vue'
 import { fetchNextTestId } from '@/api/tests'
@@ -19,3 +20,5 @@ describe('StartTestModal 试验编号建议', () => {
     expect(wrapper.find('input').element.value).toBe('TEST-20260610-004')
   })
 })
+
+beforeEach(() => setActivePinia(createPinia()))

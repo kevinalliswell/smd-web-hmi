@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Header, HTTPException, Request
-from pydantic import Field
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 
-from app.api.deps import DbDep, UserDep, get_command_service
+from app.api.deps import DbDep, UserDep, get_command_service, get_hostcomm_client
 from app.api.operation_api import OPERATION_ERRORS, operation_http_error, request_operation_id
 from app.api.schemas import CommandRequest, ConfirmIntentRequest, err, ok
 from app.api.validation import Page, PageSize
@@ -19,6 +19,43 @@ router = APIRouter(prefix="/api/commands", tags=["commands"])
 
 class OperationCommandRequest(CommandRequest):
     operation_id: str | None = Field(default=None, min_length=1, max_length=128)
+
+
+class ReconcileOperationRequest(BaseModel):
+    reason: str = Field(min_length=1, max_length=1000)
+
+
+async def _owned_operation(db, operation_id, user):
+    row = await get_operation(db, operation_id)
+    if row is None or (row.operator_id != user.username and not user.has_role("admin")):
+        raise HTTPException(status_code=404, detail=err("not_found", "操作记录不存在"))
+    return row
+
+
+@router.post("/operations/{operation_id}/query")
+async def query_device_operation(operation_id: str, request: Request, user: UserDep, db: DbDep):
+    from app.services.v2_operation_api import query_operation
+
+    row = await _owned_operation(db, operation_id, user)
+    try:
+        return ok(await query_operation(db, row, get_hostcomm_client(request), actor=user.username))
+    except OPERATION_ERRORS as exc:
+        raise operation_http_error(exc) from exc
+
+
+@router.post("/operations/{operation_id}/reconcile")
+async def reconcile_device_operation(
+    operation_id: str, body: ReconcileOperationRequest, request: Request, user: UserDep, db: DbDep
+):
+    from app.services.v2_operation_api import query_operation
+
+    if user.role not in {"admin", "maintainer"}:
+        raise HTTPException(status_code=403, detail=err("operator_permission_denied", "需要维护权限"))
+    row = await _owned_operation(db, operation_id, user)
+    try:
+        return ok(await query_operation(db, row, get_hostcomm_client(request), actor=user.username, reason=body.reason))
+    except OPERATION_ERRORS as exc:
+        raise operation_http_error(exc) from exc
 
 
 @router.get("/operations")
@@ -47,9 +84,7 @@ async def operation_status(operation_id: str, user: UserDep, db: DbDep):
     row = await get_operation(db, operation_id)
     if row is None or (row.operator_id != user.username and not user.has_role("admin")):
         raise HTTPException(status_code=404, detail=err("not_found", "操作记录不存在"))
-    data = operation_payload(row)
-    data.update({"command": row.command, "created_at": row.created_at, "updated_at": row.updated_at})
-    return ok(data)
+    return ok(operation_payload(row))
 
 
 @router.post("/confirm-intent")

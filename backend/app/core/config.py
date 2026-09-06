@@ -5,7 +5,7 @@ from __future__ import annotations
 import secrets
 from functools import lru_cache
 from pathlib import Path
-from typing import Protocol
+from typing import Literal, Protocol
 from urllib.parse import urlsplit
 
 from pydantic import Field
@@ -83,6 +83,10 @@ class Settings(BaseSettings):
     hostcomm_timeout_count: int = 3
     hostcomm_command_timeout: float = 3.0
     hostcomm_mock: bool = False
+    hostcomm_device_id: str = ""
+    hostcomm_controller_id: str = ""
+    hostcomm_controller_epoch: str = ""
+    hostcomm_psk_file: str = ""
 
     # ---- 前端静态托管（生产同源部署）----
     # 留空时自动探测仓库内 frontend/dist；显式配置用于离线包部署（见 deploy/windows/）
@@ -91,7 +95,7 @@ class Settings(BaseSettings):
     # ---- 元信息 ----
     client_id: str = "hmi-01"
     client_name: str = "smd-web-backend"
-    protocol_version: str = "1.0"
+    protocol_version: Literal["1.0", "2.0"] = "1.0"
 
     @property
     def jwt_secret(self) -> str:

@@ -84,7 +84,6 @@ def main():
         runtime = json.loads((ROOT / "desktop/webview2.lock.json").read_text())
         sbom(args.bundle, version, runtime)
         from app.db.database import get_expected_schema_head
-        from app.hostcomm.protocol import PROTOCOL_VERSION
 
         build_manifest(
             args.bundle,
@@ -93,14 +92,13 @@ def main():
             webview2_version=runtime["version"],
             compatibility={
                 "database_revision": get_expected_schema_head(),
-                "hostcomm_version": PROTOCOL_VERSION,
-                "required_capabilities": ["status_snapshot", "command"],
-                "optional_capabilities": [
-                    "recipe_v1",
-                    "run_lifecycle_v1",
-                    "measurement_events_v1",
-                    "telemetry_sequence_v1",
-                ],
+                "hostcomm_version": "2.0",
+                "hostcomm_supported_versions": ["1.0", "2.0"],
+                "new_install_protocol": "2.0 (unpaired; explicit offline pairing required)",
+                "upgrade_protocol": "preserve existing configuration; no automatic protocol switch or downgrade",
+                "hostcomm_v2_design_revision": "2.0-design.1",
+                "hostcomm_v2_security": "TLS 1.3 external PSK / AES_128_GCM_SHA256 / secp256r1; Python 3.13",
+                "required_capabilities": ["durable_operations", "atomic_recipe", "sample_log", "alarm_log"],
                 "firmware_validation": "unverified: real firmware must pass the documented contract and M5 acceptance",
                 "windows_validation": "CI build only; clean offline Win10/11 acceptance required",
             },

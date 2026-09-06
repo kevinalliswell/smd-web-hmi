@@ -1,6 +1,6 @@
 # HostComm v2.0 固件与上位机实施路线
 
-设计日期：2026-09-06。固件尚未开发；本项目负责协议设计。当前安装包 `0.3.0-rc.2` 仍使用 HostComm 1.0，本文不表示 v2.0 已可连接设备。
+设计日期：2026-09-06。固件尚未开发；本项目负责协议设计。旧安装包 `0.3.0-rc.2` 使用 HostComm 1.0；`0.3.0-rc.3` 的上位机适配与模拟器见[运行验证](../../verification/2026-09-06-hostcomm-v2-runtime.md)。固件仍须实现并经过台架验证。
 
 规范入口为 [v2.0 总览](README.md)、[报文与数据格式](wire.md)、[状态与恢复](state-and-recovery.md)及 [ADR-008](../../decisions/ADR-008-hostcomm-v2-design.md)。任务状态只在[执行清单](../../../tasks/todo.md#hostcomm-v20-与新固件)更新，本文维护拆分依据、开发顺序和验收方法。
 

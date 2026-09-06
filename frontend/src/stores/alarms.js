@@ -44,10 +44,11 @@ export const useAlarmsStore = defineStore('alarms', () => {
 
   function ackAlarm(alarmId, operator, ackTime) {
     if (syncing.value) pendingEvents.push(() => ackAlarm(alarmId, operator, ackTime))
-    const a = activeAlarms.value.find((x) => _key(x) === alarmId)
-    if (a) {
-      a.ack_time = ackTime
-      a.ack_operator = operator
+    for (const row of [...activeAlarms.value, ...alarmHistory.value]) {
+      if (_key(row) === alarmId) {
+        row.ack_time = ackTime
+        row.ack_operator = operator
+      }
     }
   }
 
