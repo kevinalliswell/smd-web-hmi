@@ -23,6 +23,8 @@ from app.services.v2_operations import V2OperationCoordinator, ensure_v2_identit
 async def factory(tmp_path):
     engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path}/v2.db")
     async with engine.begin() as connection:
+        # Keep schema DDL in one durable transaction, preserving runtime DML behavior.
+        await connection.exec_driver_sql("BEGIN")
         await connection.run_sync(Base.metadata.create_all)
     yield async_sessionmaker(engine, expire_on_commit=False)
     await engine.dispose()

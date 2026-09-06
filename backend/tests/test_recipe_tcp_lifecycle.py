@@ -42,7 +42,9 @@ async def test_recipe_control_and_cooling_through_real_tcp_and_database(db_sessi
 
     async def collect():
         await client.get_status()
-        await asyncio.sleep(0.08)
+        # A TCP snapshot reply precedes its asynchronous archive callback.
+        # Wait for the actual persistence work before inspecting database rows.
+        await asyncio.wait_for(client._callback_queues["data"].join(), 10)
 
     try:
         await collect()

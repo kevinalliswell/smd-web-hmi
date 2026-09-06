@@ -34,6 +34,8 @@ def run_state():
 async def factory(tmp_path):
     engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path}/archive.db")
     async with engine.begin() as connection:
+        # Keep schema DDL in one durable transaction, preserving runtime DML behavior.
+        await connection.exec_driver_sql("BEGIN")
         await connection.run_sync(Base.metadata.create_all)
     factory = async_sessionmaker(engine, expire_on_commit=False)
     run = run_state()

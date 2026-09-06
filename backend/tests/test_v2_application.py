@@ -6,15 +6,16 @@ import json
 import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import func, select
-from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import async_sessionmaker
 
 import app.main as main
 from app.api import deps
-from app.api.routes import recipes
+from app.api.routes import maintenance, recipes
 from app.core.config import Settings
-from app.db.database import get_db
+from app.db.database import _create_engine, get_db
 from app.db.models import Base, SamplePoint, TestSession
 from app.hostcomm.v2_simulator import V2Simulator, synthetic_profile
+from app.services.background_jobs import BackgroundJobManager
 from app.services.cache import StatusCache
 from app.services.maintenance_service import maintenance_manager
 from app.services.test_runtime import active_test
@@ -24,8 +25,11 @@ from app.services.test_runtime import active_test
 async def system(tmp_path, monkeypatch):
     sim = V2Simulator(tmp_path / "board.sqlite", test_plaintext=True, profile=synthetic_profile(approved=True))
     await sim.start()
-    engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'app.sqlite'}")
+    # Exercise the same WAL/busy-timeout configuration used by the service.
+    engine = _create_engine(f"sqlite+aiosqlite:///{tmp_path / 'app.sqlite'}")
     async with engine.begin() as conn:
+        # SQLite legacy transaction mode otherwise commits each DDL separately.
+        await conn.exec_driver_sql("BEGIN")
         await conn.run_sync(Base.metadata.create_all)
     factory = async_sessionmaker(engine, expire_on_commit=False)
     cache = StatusCache()
@@ -33,6 +37,8 @@ async def system(tmp_path, monkeypatch):
         monkeypatch.setattr(module, "status_cache", cache)
     monkeypatch.setattr(main, "get_sessionmaker", lambda: factory)
     maintenance_manager.configure_upgrade(tmp_path / "maintenance.json")
+    jobs = BackgroundJobManager()
+    monkeypatch.setattr(maintenance, "background_jobs", jobs)
     p = sim.pairing
     settings = Settings(
         _env_file=None,
@@ -56,14 +62,18 @@ async def system(tmp_path, monkeypatch):
     active_test.stop()
     await client.start()
     try:
-        for _ in range(200):
-            if client._ready:
-                break
-            await asyncio.sleep(0.01)
-        assert client._ready, client.stats
+        try:
+            async with asyncio.timeout(10):
+                while not (client._ready and client._recovery_task is not None and client._recovery_task.done()):
+                    await asyncio.sleep(0.01)
+        except TimeoutError:
+            pytest.fail(f"Device recovery did not complete: {client.stats}")
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as http:
             yield http, client, sim, factory
     finally:
+        # Do not let a failed HTTP task-status assertion leave recovery running
+        # against a disposed database or the next test's event loop.
+        await jobs.shutdown()
         await client.close()
         await sim.close()
         await engine.dispose()
@@ -88,6 +98,30 @@ async def command(http, name, params, operation_id):
     return await http.post(
         "/api/commands", json={"command": name, "params": params, "operation_id": operation_id, "confirm_token": token}
     )
+
+
+async def stop_with_pending_work(http, client, operation_id, pending, monkeypatch):
+    """Measure the stop wire slot separately from durable HTTP audit commits."""
+    request = client.transport.request
+    witnessed = False
+
+    async def observe(kind, payload, **kwargs):
+        nonlocal witnessed
+        if kind == "command" and payload["command"] == "stop_run":
+            assert pending(), "The ordinary/read work finished before stop was sent"
+            result = await asyncio.wait_for(request(kind, payload, **kwargs), 1)
+            assert pending(), "Stop waited for ordinary/read work before its receipt"
+            witnessed = True
+            return result
+        return await request(kind, payload, **kwargs)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(client.transport, "request", observe)
+        # Confirmation and durable intent/result/audit commits have their own
+        # bounded integration budget; the wire receipt above remains under 1s.
+        result = await asyncio.wait_for(command(http, "stop_test", {}, operation_id), 10)
+    assert witnessed, "Stop never reached its independent wire slot"
+    return result
 
 
 async def wait_alarm(http, wire_id, *, active=True):
@@ -217,7 +251,7 @@ async def test_global_alarm_uses_wire_occurrence_and_offline_ack_cannot_fake_boa
     assert unchanged["ack_time"] is None
 
 
-async def test_stop_bypasses_a_lost_ordinary_receipt_at_both_http_and_wire_layers(system):
+async def test_stop_bypasses_a_lost_ordinary_receipt_at_both_http_and_wire_layers(system, monkeypatch):
     http, client, sim, factory = system
     recipe = await deploy(http)
     started = await command(
@@ -243,15 +277,14 @@ async def test_stop_bypasses_a_lost_ordinary_receipt_at_both_http_and_wire_layer
         assert sim._drop_replies["command_result"] == 0
         assert sim.state.data["alarms"][f"{alarm['wire_alarm_id']}:{alarm['occurrence_seq']}"]["acknowledged"]
         assert not pending.done()
-        result = await asyncio.wait_for(command(http, "stop_test", {}, "priority-stop"), 1.0)
+        result = await stop_with_pending_work(http, client, "priority-stop", lambda: not pending.done(), monkeypatch)
         assert result.status_code == 200, result.text
-        assert not pending.done()
         assert sim.state.run["state"] in {"safe_disposal", "cooling"}
     finally:
         await pending
 
 
-async def test_stop_uses_current_session_run_identity_when_all_read_slots_are_busy(system):
+async def test_stop_uses_current_session_run_identity_when_all_read_slots_are_busy(system, monkeypatch):
     http, client, sim, factory = system
     recipe = await deploy(http)
     result = await command(
@@ -264,6 +297,12 @@ async def test_stop_uses_current_session_run_identity_when_all_read_slots_are_bu
     await sim.tick()
     await asyncio.sleep(0.05)
     await client.get_status()
+    # The refreshed status response follows tick's frames on the same TCP
+    # connection. Drain their optional refresh before deliberately filling all
+    # four read slots, so none consumes an injected reply loss for this test.
+    await asyncio.wait_for(client.transport._callbacks.join(), 10)
+    if client._refresh_task is not None:
+        await asyncio.wait_for(asyncio.shield(client._refresh_task), 10)
     sim.drop_reply("status_snapshot", count=4)
     reads = [asyncio.create_task(client.transport.request("get_status", {})) for _ in range(4)]
     for _ in range(100):
@@ -272,7 +311,9 @@ async def test_stop_uses_current_session_run_identity_when_all_read_slots_are_bu
         await asyncio.sleep(0.01)
     assert sim._drop_replies["status_snapshot"] == 0
     try:
-        result = await asyncio.wait_for(command(http, "stop_test", {}, "busy-read-stop"), 1)
+        result = await stop_with_pending_work(
+            http, client, "busy-read-stop", lambda: all(not task.done() for task in reads), monkeypatch
+        )
         assert result.status_code == 200, result.text
         assert result.json()["data"]["wire_status"] in {"accepted", "applied"}
         assert client.is_online
@@ -373,15 +414,39 @@ async def test_manual_source_scan_is_bounded_background_work(system):
     response = await http.post("/api/system/maintenance/source-logs", json={"first_record_seq": "1"})
     assert response.status_code == 200, response.text
     task_id = response.json()["data"]["task_id"]
-    for _ in range(100):
-        task = (await http.get(f"/api/system/maintenance/source-logs/{task_id}")).json()["data"]
-        if task["status"] in {"completed", "failed"}:
-            break
-        await asyncio.sleep(0.01)
+    async with asyncio.timeout(10):
+        while True:
+            task = (await http.get(f"/api/system/maintenance/source-logs/{task_id}")).json()["data"]
+            if task["status"] in {"completed", "failed"}:
+                break
+            await asyncio.sleep(0.01)
     assert task["status"] == "completed", task
     assert (
         await http.post("/api/system/maintenance/source-logs", json={"first_record_seq": str(2**64)})
     ).status_code == 422
+
+
+async def test_optional_status_refresh_cannot_hold_up_durable_log_ack(system, monkeypatch):
+    http, client, sim, factory = system
+    entered, release = asyncio.Event(), asyncio.Event()
+    original = client._optional_status
+
+    async def slow_refresh():
+        entered.set()
+        await release.wait()
+        await original()
+
+    monkeypatch.setattr(client, "_optional_status", slow_refresh)
+    await sim.raise_alarm("clock_unsynced", severity="warning")
+    try:
+        await asyncio.wait_for(entered.wait(), 10)
+        # The real transport retains its 3s progress deadline. An optional
+        # refresh must not keep a received chunk waiting behind it for an ACK.
+        await asyncio.wait_for(client.recover_logs(first_record_seq="1"), 5)
+        assert client.is_online and client._ready
+        assert client.transport.stats["dropped_callbacks"] == 0
+    finally:
+        release.set()
 
 
 async def test_cleared_unacknowledged_alarm_can_be_confirmed_before_run_ack(system):

@@ -56,6 +56,8 @@ async def db_session(tmp_path):
 
     engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path}/test.db")
     async with engine.begin() as conn:
+        # sqlite3 legacy mode does not begin for DDL; batch schema setup only.
+        await conn.exec_driver_sql("BEGIN")
         await conn.run_sync(Base.metadata.create_all)
     sessionmaker = async_sessionmaker(engine, expire_on_commit=False)
     async with sessionmaker() as session:

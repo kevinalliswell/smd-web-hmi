@@ -66,6 +66,8 @@ class V2Client:
         self._alarm_lock = asyncio.Lock()
         self._recovery_task = self._poll_task = None
         self._source_recovery_task = None
+        self._refresh_task = None
+        self._refresh_pending = self._refresh_needs_status = False
         self._closed = False
         self._ready = False
         self._recovery_failures = 0
@@ -142,7 +144,11 @@ class V2Client:
 
     async def close(self):
         self._closed = True
-        tasks = [task for task in (self._recovery_task, self._poll_task, self._source_recovery_task) if task]
+        tasks = [
+            task
+            for task in (self._recovery_task, self._poll_task, self._source_recovery_task, self._refresh_task)
+            if task
+        ]
         for task in tasks:
             task.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)
@@ -172,9 +178,11 @@ class V2Client:
             return
         self._ready = False
         self._status_frame = self._telemetry_frame = self._profile_frame = self.profile = None
-        if self._recovery_task:
-            self._recovery_task.cancel()
-            await asyncio.gather(self._recovery_task, return_exceptions=True)
+        tasks = [task for task in (self._recovery_task, self._refresh_task) if task]
+        for task in tasks:
+            task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+        self._refresh_pending = self._refresh_needs_status = False
         if self.on_comm_status:
             await self.on_comm_status(event)
         if event["status"] == "online":
@@ -250,13 +258,12 @@ class V2Client:
                 ):
                     return
                 self._telemetry_frame = frame
-                if (
-                    self._status_frame is None
-                    or frame["payload"]["state_revision"] != self._status_frame["payload"]["run"]["state_revision"]
-                ):
-                    await self._optional_status()
-                else:
-                    await self._publish()
+                self._schedule_refresh(
+                    needs_status=(
+                        self._status_frame is None
+                        or frame["payload"]["state_revision"] != self._status_frame["payload"]["run"]["state_revision"]
+                    )
+                )
             else:
                 if self.on_event:
                     await self.on_event(
@@ -267,7 +274,37 @@ class V2Client:
                             "payload": frame["payload"],
                         }
                     )
-                await self._optional_status()
+                self._schedule_refresh(needs_status=True)
+
+    def _schedule_refresh(self, *, needs_status):
+        # Optional reads/publishing must never hold the durable source callback
+        # lane: the next log chunk has an independent 3s progress deadline.
+        if self._closed or not self.is_online:
+            return
+        self._refresh_pending = True
+        self._refresh_needs_status |= needs_status
+        if self._refresh_task is None or self._refresh_task.done():
+            self._refresh_task = asyncio.create_task(self._refresh_status())
+
+    async def _refresh_status(self):
+        try:
+            while self._refresh_pending and not self._closed:
+                needs_status = self._refresh_needs_status
+                self._refresh_pending = self._refresh_needs_status = False
+                if needs_status:
+                    await self._optional_status()
+                else:
+                    await self._publish()
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            # Polling owns recovery. A failed optional worker must not leave
+            # control advertised as ready or create unobserved task failures.
+            self._ready = False
+            self.last_error = type(exc).__name__
+            logger.warning("v2.status_refresh_incomplete", reason=self.last_error)
+            if self.on_comm_status:
+                await self.on_comm_status({"status": "degraded", "reason": "v2_status_refresh_incomplete"})
 
     async def _optional_status(self):
         from app.services.command_service import CommandError
