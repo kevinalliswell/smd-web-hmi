@@ -291,19 +291,25 @@ async def test_internal_lease_loss_is_exposed_and_can_be_reconciled_without_send
         http.post(f"/api/recipes/{recipe['recipe_id']}/activate", json={"version": 1, "operation_id": "lost-lease"})
     )
     epoch = sim.pairing.controller_epoch
-    for _ in range(100):
-        if epoch in sim.state.data["highwater"]:
-            break
-        await asyncio.sleep(0.01)
-    sequence = sim.state.data["highwater"][epoch]
-    sim.evict_result(epoch, sequence)
-    reply = await pending
+    try:
+        async with asyncio.timeout(10):
+            while sim._drop_replies["command_result"]:
+                assert not pending.done(), "Activation finished before the intended lease-reply loss"
+                await asyncio.sleep(0.01)
+        sequence = sim.state.data["highwater"][epoch]
+        sim.evict_result(epoch, sequence)
+        reply = await pending
+    finally:
+        # A failed precondition must not leave an HTTP request owning the global
+        # ordinary-command guard when the next test gets a fresh event loop.
+        if not pending.done():
+            pending.cancel()
+        await asyncio.gather(pending, return_exceptions=True)
     assert reply.status_code == 504, reply.text
     assert sim.state.data["active_recipe"] is None
-    for _ in range(400):
-        if client.is_online and client._ready:
-            break
-        await asyncio.sleep(0.01)
+    async with asyncio.timeout(10):
+        while not (client.is_online and client._ready):
+            await asyncio.sleep(0.01)
     query = await http.post("/api/commands/operations/lost-lease/query")
     assert query.status_code == 200, query.text
     assert query.json()["data"]["prerequisite_only"]
