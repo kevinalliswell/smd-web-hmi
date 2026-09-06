@@ -15,7 +15,9 @@ from app.db.v2_models import V2LogChunk, V2LogCursor, V2LogGap, V2LogTransfer, V
 from app.hostcomm.v2_contract.codec import canonical_bytes
 from app.services.v2_source_logs import V2SourceLogStore, read_alarm_snapshot
 
-VECTORS = json.loads((Path(__file__).resolve().parents[2] / "contracts/hostcomm/v2/vectors.json").read_text())
+VECTORS = json.loads(
+    (Path(__file__).resolve().parents[2] / "contracts/hostcomm/v2/vectors.json").read_text(encoding="utf-8")
+)
 
 
 @pytest.fixture

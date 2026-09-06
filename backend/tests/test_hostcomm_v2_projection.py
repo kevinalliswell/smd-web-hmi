@@ -8,7 +8,9 @@ from app.hostcomm.v2_contract.codec import digest
 from app.hostcomm.v2_projection import project_status
 from app.services.state_policy import classify_state, enrich_status_snapshot
 
-VECTORS = json.loads((Path(__file__).resolve().parents[2] / "contracts/hostcomm/v2/vectors.json").read_text())
+VECTORS = json.loads(
+    (Path(__file__).resolve().parents[2] / "contracts/hostcomm/v2/vectors.json").read_text(encoding="utf-8")
+)
 
 
 def example(name):

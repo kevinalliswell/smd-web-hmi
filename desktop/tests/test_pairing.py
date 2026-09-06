@@ -66,12 +66,12 @@ def test_new_pairing_keeps_key_private_and_returns_only_material_paths(installat
 def test_replacement_requires_explicit_flag_and_preserves_epoch_watermark(installation):
     first = prepare(installation)
     data, database, _ = installation
-    previous = (data / "config/service.env").read_text()
+    previous = (data / "config/service.env").read_text(encoding="utf-8")
     with closing(sqlite3.connect(database)) as db, db:
         db.execute("UPDATE v2_controller_identity SET last_seq='9223372036854776000'")
     with pytest.raises(RuntimeError, match="replace"):
         prepare(installation)
-    assert (data / "config/service.env").read_text() == previous
+    assert (data / "config/service.env").read_text(encoding="utf-8") == previous
     second = prepare(installation, replace=True)
     with closing(sqlite3.connect(database)) as db:
         assert db.execute("SELECT last_seq FROM v2_controller_identity").fetchone() == ("9223372036854776000",)
@@ -121,7 +121,7 @@ def test_interrupted_pairing_recovers_fixed_identity_and_secret(installation, mo
     monkeypatch.setattr(transaction, "_record", interrupted)
     with pytest.raises(SystemExit):
         transaction.apply(device_id="a" * 32, reason="offline commissioning")
-    journal = json.loads(transaction.journal_path.read_text())
+    journal = json.loads(transaction.journal_path.read_text(encoding="utf-8"))
     assert (data / "maintenance.json").exists()
     result = PairingTransaction(data, platform).recover()
     assert result["controller_epoch"] == journal["controller_epoch"]
@@ -146,10 +146,10 @@ def test_explicit_new_epoch_retains_old_database_and_key(installation):
 
 def test_import_uses_private_file_without_exposing_key(installation, tmp_path):
     imported = tmp_path / "import.hex"
-    imported.write_text("12" * 32 + "\n")
+    imported.write_text("12" * 32 + "\n", encoding="ascii")
     imported.chmod(0o600)
     result = prepare(installation, import_psk=imported)
-    assert Path(result["psk_file"]).read_text().strip() == "12" * 32
+    assert Path(result["psk_file"]).read_text(encoding="ascii").strip() == "12" * 32
     assert "12" * 32 not in json.dumps(result)
 
 
@@ -166,8 +166,8 @@ def test_tampered_staged_key_keeps_recovery_locked(installation, monkeypatch):
     monkeypatch.setattr(transaction, "_record", interrupted)
     with pytest.raises(SystemExit):
         transaction.apply(device_id="a" * 32, reason="offline commissioning")
-    journal = json.loads(transaction.journal_path.read_text())
-    Path(journal["psk_file"]).write_text("ff" * 32 + "\n")
+    journal = json.loads(transaction.journal_path.read_text(encoding="utf-8"))
+    Path(journal["psk_file"]).write_text("ff" * 32 + "\n", encoding="ascii")
     with pytest.raises(RuntimeError, match="changed"):
         PairingTransaction(data, platform).recover()
     assert (data / "maintenance.json").exists()
@@ -181,3 +181,25 @@ def test_windows_crlf_configuration_is_preserved_byte_for_byte_in_backup(install
     result = prepare(installation)
     assert (Path(result["folder"]) / "previous-service.env").read_bytes() == original
     assert dotenv_values(config, interpolate=False)["SMD_JWT_SECRET"] == "keep-me"
+
+
+def test_pairing_and_recovery_read_unicode_journals_under_legacy_windows_locale(installation, monkeypatch):
+    data, database, platform = installation
+    renamed = database.with_name("配对数据库.sqlite")
+    database.rename(renamed)
+    config = data / "config/service.env"
+    config.write_text(f"SMD_DB_PATH={json.dumps(str(renamed), ensure_ascii=False)}\n", encoding="utf-8")
+    original_read = Path.read_text
+
+    def windows_read(path, encoding=None, errors=None, **kwargs):
+        return original_read(path, encoding=encoding or "cp1252", errors=errors, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", windows_read)
+    first = PairingTransaction(data, platform).apply(device_id="a" * 32, reason="配对维护")
+    recovered = PairingTransaction(data, platform).recover()
+    assert recovered["controller_epoch"] == first["controller_epoch"]
+    second = PairingTransaction(data, platform).apply(device_id="a" * 32, reason="配对替换", replace=True)
+    assert second["controller_epoch"] == first["controller_epoch"]
+    journal = json.loads((data / "updates/pairing.json").read_text(encoding="utf-8"))
+    assert journal["reason"] == "配对替换"
+    assert not (data / "maintenance.json").exists()

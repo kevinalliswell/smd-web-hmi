@@ -120,7 +120,7 @@ class PairingTransaction:
     def _environment(self):
         if self.env_path.is_symlink() or not self.env_path.is_file():
             raise RuntimeError("A regular installed service.env is required")
-        values = dotenv_values(self.env_path, interpolate=False)
+        values = dotenv_values(self.env_path, interpolate=False, encoding="utf-8")
         database = Path(values.get("SMD_DB_PATH") or "")
         if not database.is_absolute() or not database.is_file() or database.is_symlink():
             raise RuntimeError("The actual configured database must be an existing absolute regular file")
@@ -132,13 +132,19 @@ class PairingTransaction:
         self._stopped()
         with single_instance("SmdHmi.Backend", self.data / "backend.lock"):
             self._stopped()
-            if self.journal_path.exists() and json.loads(self.journal_path.read_text())["phase"] != "committed":
+            if (
+                self.journal_path.exists()
+                and json.loads(self.journal_path.read_text(encoding="utf-8"))["phase"] != "committed"
+            ):
                 raise RuntimeError("Recover the existing pairing transaction first")
             if self.gate_path.exists():
                 raise RuntimeError("Another maintenance ticket is active")
             for name in ("active.json", "uninstall.json"):
                 path = self.data / "updates" / name
-                if path.exists() and json.loads(path.read_text()).get("phase") not in {"committed", "rolled_back"}:
+                if path.exists() and json.loads(path.read_text(encoding="utf-8")).get("phase") not in {
+                    "committed",
+                    "rolled_back",
+                }:
                     raise RuntimeError("Finish the pending installation maintenance first")
             values, database = self._environment()
             with closing(sqlite3.connect(f"{database.as_uri()}?mode=rw", uri=True)) as db:
@@ -237,7 +243,7 @@ class PairingTransaction:
 
     def _finish(self, journal):
         if self.gate_path.exists():
-            gate = json.loads(self.gate_path.read_text())
+            gate = json.loads(self.gate_path.read_text(encoding="utf-8"))
             if gate.get("purpose") != "hostcomm_pairing" or gate.get("upgrade_id") != journal["transaction_id"]:
                 raise RuntimeError("Another maintenance transaction owns the gate")
         elif journal["phase"] != "committed":
@@ -298,7 +304,7 @@ class PairingTransaction:
 
     def _clear_gate(self, journal):
         if self.gate_path.exists():
-            gate = json.loads(self.gate_path.read_text())
+            gate = json.loads(self.gate_path.read_text(encoding="utf-8"))
             if gate.get("purpose") == "hostcomm_pairing" and gate.get("upgrade_id") == journal["transaction_id"]:
                 self.gate_path.unlink()
 

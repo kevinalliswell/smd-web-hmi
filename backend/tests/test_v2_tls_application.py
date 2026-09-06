@@ -34,7 +34,7 @@ def test_real_tls_recipe_run_stop_cooling_and_source_log_recovery(tmp_path):
     )
     assert completed.returncode == 0, completed.stdout + completed.stderr
     assert "TLS_APPLICATION_COMPLETE" in completed.stdout
-    assert key.read_text().strip() not in completed.stdout + completed.stderr
+    assert key.read_text(encoding="ascii").strip() not in completed.stdout + completed.stderr
 
 
 async def _application_scenario(directory):

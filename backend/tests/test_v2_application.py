@@ -230,8 +230,16 @@ async def test_stop_bypasses_a_lost_ordinary_receipt_at_both_http_and_wire_layer
     alarm = (await http.get("/api/alarms/active")).json()["data"][0]
     sim.drop_reply("command_result")
     pending = asyncio.create_task(http.post(f"/api/alarms/{alarm['id']}/ack"))
-    await asyncio.sleep(0.1)
     try:
+        # Wait for the intended ordinary reply to be dropped. A fixed sleep can
+        # let stop overtake a slow SQLite intent and consume the injected loss.
+        for _ in range(400):
+            if sim._drop_replies["command_result"] == 0:
+                break
+            await asyncio.sleep(0.01)
+        assert sim._drop_replies["command_result"] == 0
+        assert sim.state.data["alarms"][f"{alarm['wire_alarm_id']}:{alarm['occurrence_seq']}"]["acknowledged"]
+        assert not pending.done()
         result = await asyncio.wait_for(command(http, "stop_test", {}, "priority-stop"), 1.0)
         assert result.status_code == 200, result.text
         assert not pending.done()

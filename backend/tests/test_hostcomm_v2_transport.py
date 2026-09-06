@@ -12,7 +12,9 @@ import pytest
 from app.hostcomm.v2_contract.codec import encode_message, strict_loads
 from app.hostcomm.v2_transport import V2CapacityError, V2RemoteError, V2Transport, V2TransportError
 
-VECTORS = json.loads((Path(__file__).resolve().parents[2] / "contracts/hostcomm/v2/vectors.json").read_text())
+VECTORS = json.loads(
+    (Path(__file__).resolve().parents[2] / "contracts/hostcomm/v2/vectors.json").read_text(encoding="utf-8")
+)
 
 
 def example(name):

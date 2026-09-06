@@ -18,8 +18,8 @@ from smd_desktop.bundle import build_manifest, verify_version
 def source_version():
     source = (ROOT / "backend/app/__init__.py").read_text(encoding="utf-8")
     backend = re.search(r'__version__\s*=\s*[\'"]([^\'"]+)', source).group(1)
-    frontend = json.loads((ROOT / "frontend/package.json").read_text())["version"]
-    lock = json.loads((ROOT / "frontend/package-lock.json").read_text())
+    frontend = json.loads((ROOT / "frontend/package.json").read_text(encoding="utf-8"))["version"]
+    lock = json.loads((ROOT / "frontend/package-lock.json").read_text(encoding="utf-8"))
     if lock["version"] != frontend or lock["packages"][""]["version"] != frontend:
         raise ValueError("package-lock version differs from package.json")
     tag = os.environ.get("GITHUB_REF_NAME") if os.environ.get("GITHUB_REF_TYPE") == "tag" else None
@@ -39,7 +39,7 @@ def sbom(root: Path, version: str, runtime: dict):
                 "properties": [{"name": "smd:inventory", "value": "python-freeze-environment"}],
             }
         )
-    packages = json.loads((ROOT / "frontend/package-lock.json").read_text())["packages"]
+    packages = json.loads((ROOT / "frontend/package-lock.json").read_text(encoding="utf-8"))["packages"]
     for path, item in sorted(packages.items()):
         if not path or "version" not in item:
             continue
@@ -81,7 +81,7 @@ def main():
     version = source_version()
     print(version)
     if args.bundle:
-        runtime = json.loads((ROOT / "desktop/webview2.lock.json").read_text())
+        runtime = json.loads((ROOT / "desktop/webview2.lock.json").read_text(encoding="utf-8"))
         sbom(args.bundle, version, runtime)
         from app.db.database import get_expected_schema_head
 

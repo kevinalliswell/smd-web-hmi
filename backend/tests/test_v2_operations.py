@@ -226,7 +226,9 @@ async def test_unknown_stop_blocks_new_ordinary_action_until_fresh_safe_audit(fa
     unknown = await stop(value)
     with pytest.raises(ValueError, match="operation_unresolved"):
         await value.submit("acquire_lease", {"lease_ms": 8000}, actor="alice", role="operator")
-    vectors = json.loads((Path(__file__).resolve().parents[2] / "contracts/hostcomm/v2/vectors.json").read_text())
+    vectors = json.loads(
+        (Path(__file__).resolve().parents[2] / "contracts/hostcomm/v2/vectors.json").read_text(encoding="utf-8")
+    )
     snapshot = copy.deepcopy(next(v["value"] for v in vectors["valid_messages"] if v["name"] == "status_snapshot"))
     snapshot.update(boot_id=transport.boot_id, session_id=transport.session_id)
     snapshot["payload"]["run"].update(
@@ -256,7 +258,9 @@ async def test_unknown_stop_blocks_new_ordinary_action_until_fresh_safe_audit(fa
 )
 async def test_lease_readback_must_be_current_owned_and_unexpired(factory, current, expires, expected):
     value, transport = await coordinator(factory)
-    vectors = json.loads((Path(__file__).resolve().parents[2] / "contracts/hostcomm/v2/vectors.json").read_text())
+    vectors = json.loads(
+        (Path(__file__).resolve().parents[2] / "contracts/hostcomm/v2/vectors.json").read_text(encoding="utf-8")
+    )
     snapshot = copy.deepcopy(next(v["value"] for v in vectors["valid_messages"] if v["name"] == "status_snapshot"))
     snapshot.update(boot_id=transport.boot_id, session_id=transport.session_id, uptime_ms="12345")
     snapshot["payload"].update(

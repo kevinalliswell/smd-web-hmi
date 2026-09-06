@@ -23,7 +23,7 @@ def load_environment(data: Path, version: Path) -> None:
     config = data / "config/service.env"
     if not config.is_file():
         raise RuntimeError("缺少受限的 ProgramData/config/service.env")
-    values = dotenv_values(config, interpolate=False)
+    values = dotenv_values(config, interpolate=False, encoding="utf-8")
     for key, value in values.items():
         if value is not None:
             os.environ[key] = value

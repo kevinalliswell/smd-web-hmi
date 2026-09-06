@@ -45,7 +45,7 @@ def key_file(tmp_path):
 
 def test_key_reader_accepts_exact_32_bytes_hex_without_exposing_value(key_file):
     assert load_psk(key_file) == bytes.fromhex("37" * 32)
-    key_file.write_text("not-a-key\n")
+    key_file.write_text("not-a-key\n", encoding="ascii")
     with pytest.raises(V2SecurityError) as error:
         load_psk(key_file)
     assert "not-a-key" not in str(error.value)
@@ -73,7 +73,7 @@ def test_missing_psk_support_never_falls_back(key_file, monkeypatch):
 @pytest.mark.parametrize("failure", ["none", "key", "identity", "certificate"])
 def test_real_tls13_psk_roundtrip_or_authentication_rejection(key_file, tmp_path, failure):
     policy = tmp_path / "openssl.cnf"
-    policy.write_text(OPENSSL_AES128_POLICY)
+    policy.write_text(OPENSSL_AES128_POLICY, encoding="ascii")
     if failure == "certificate":
         executable = shutil.which("openssl")
         if executable is None:
@@ -121,7 +121,7 @@ async def main():
         server_context.load_cert_chain(key_file.with_name("server.crt"),key_file.with_name("server.key"))
     else: server_context=create_server_context(key_file,identity)
     server=await asyncio.start_server(serve,"127.0.0.1",0,ssl=server_context)
-    other=key_file.with_name("other.psk");other.write_text("38"*32+"\n");other.chmod(0o600)
+    other=key_file.with_name("other.psk");other.write_text("38"*32+"\n", encoding="ascii");other.chmod(0o600)
     context=create_client_context(other if failure=="key" else key_file,identity+"wrong" if failure=="identity" else identity)
     writer=None
     try:

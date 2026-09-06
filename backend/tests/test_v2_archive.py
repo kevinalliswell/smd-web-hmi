@@ -16,7 +16,9 @@ from app.db.v2_models import V2AlarmProjection, V2RunBinding, V2SourceRecord
 from app.services.v2_archive import V2ArchiveProjector
 from app.services.v2_source_logs import V2SourceLogStore
 
-VECTORS = json.loads((Path(__file__).resolve().parents[2] / "contracts/hostcomm/v2/vectors.json").read_text())
+VECTORS = json.loads(
+    (Path(__file__).resolve().parents[2] / "contracts/hostcomm/v2/vectors.json").read_text(encoding="utf-8")
+)
 DEVICE = "a" * 32
 
 
