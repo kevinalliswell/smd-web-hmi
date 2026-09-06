@@ -8,6 +8,7 @@
 |---|---|---|
 | 认证与连接 | `backend/tests/test_hostcomm_v2_security.py`、`test_hostcomm_v2_transport.py` | 真 TLS PSK、错误身份/密钥/证书替代拒绝、套件校验、心跳、半帧超时、慢回调、过载、请求关联 |
 | 持久操作 | `backend/tests/test_v2_operations.py` | 写前意图、固定身份、完整 uint64 水位、重复/冲突、未知结果、重启查询与安全核查 |
+| 租约申请与心跳并发 | `backend/tests/test_hostcomm_v2_transport.py`、`test_v2_application.py` | 板端授予租约后、本地回执归档前的真实周期心跳不误断线；空租约心跳不授予或续期，非空租约回读不符仍断线 |
 | 配方 | `backend/tests/test_v2_recipe_compiler.py`、`test_v2_client.py` | 精确整数转换、旧摘要保留、含糊加热拒绝、工程范围、原子激活及逐字节回读 |
 | 数据与报警 | `backend/tests/test_v2_source_logs.py`、`test_v2_archive.py` | 分块落盘后 ACK、摘要/缺口、补传去重、未知 run、原始边界、固定报警快照与历史事件不回退当前状态 |
 | 取消与数据库清理 | `backend/tests/test_v2_cancellation.py` | 在真实 SQLite 游标执行后注入重复取消；事务和游标释放后传播取消，后续独立写入成功，网络命令不受取消保护 |

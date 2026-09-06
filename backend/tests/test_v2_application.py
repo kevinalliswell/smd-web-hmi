@@ -421,6 +421,41 @@ async def test_internal_lease_loss_is_exposed_and_can_be_reconciled_without_send
     assert sim.state.data["active_recipe"] is None
 
 
+async def test_lease_receipt_can_be_archived_across_a_connectivity_heartbeat(system, monkeypatch):
+    http, client, sim, factory = system
+    observed = asyncio.Event()
+    record_result = client.operations._record_result
+    dispatch = client.transport._dispatch
+    expires = None
+
+    async def hold_receipt(stored, response, expected_type):
+        nonlocal expires
+        if stored["command"] == "acquire_lease":
+            assert response["payload"]["status"] == "applied"
+            assert client.transport.lease_id is None
+            expires = sim.state.data["lease"]["expires"]
+            # Exercise the real periodic heartbeat in the exact board-applied /
+            # locally-unconfirmed window, without changing any protocol deadline.
+            await asyncio.wait_for(observed.wait(), 10)
+        return await record_result(stored, response, expected_type)
+
+    def witness_heartbeat(frame):
+        if frame["type"] == "heartbeat_ack" and expires is not None and not observed.is_set():
+            pending = client.transport._pending[frame["reply_to"]]
+            assert pending.payload["lease_id"] is None
+            assert frame["payload"]["lease_id"] == sim.state.data["lease"]["id"]
+            assert sim.state.data["lease"]["expires"] == expires
+            observed.set()
+        dispatch(frame)
+
+    monkeypatch.setattr(client.operations, "_record_result", hold_receipt)
+    monkeypatch.setattr(client.transport, "_dispatch", witness_heartbeat)
+    await deploy(http)
+    assert observed.is_set()
+    assert client.is_online and client.transport.lease_id == sim.state.data["lease"]["id"]
+    assert client.transport.response_timeout == 3
+
+
 async def test_recovery_pending_rejects_start_before_creating_an_experiment(system):
     http, client, sim, factory = system
     recipe = await deploy(http)

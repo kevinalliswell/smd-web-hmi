@@ -537,7 +537,14 @@ class V2Transport:
                 for key in ("operation_id", "controller_epoch", "command_seq"):
                     if message["payload"][key] != pending.payload[key]:
                         raise V2ProtocolError("Operation result identity mismatch")
-            if pending.kind == "heartbeat" and message["payload"]["lease_id"] != pending.payload["lease_id"]:
+            # A connectivity-only heartbeat may overlap lease acquisition or
+            # release. Its reply never grants ownership; the operation layer
+            # must still confirm the current boot/session/owner via get_status.
+            if (
+                pending.kind == "heartbeat"
+                and pending.payload["lease_id"] is not None
+                and message["payload"]["lease_id"] != pending.payload["lease_id"]
+            ):
                 raise V2ProtocolError("Heartbeat did not confirm the requested lease")
             if not pending.future.done():
                 pending.future.set_result(message)

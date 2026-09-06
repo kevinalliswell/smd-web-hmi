@@ -69,6 +69,10 @@ class Peer:
                         lease_id=request["payload"]["lease_id"],
                         lease_expires_uptime_ms=None if request["payload"]["lease_id"] is None else "20000",
                     )
+                    if self.mode == "report_current_lease":
+                        payload.update(lease_id="a" * 32, lease_expires_uptime_ms="20000")
+                    elif self.mode == "report_no_lease":
+                        payload.update(lease_id=None, lease_expires_uptime_ms=None)
                     await self.reply(writer, request, "heartbeat_ack", payload)
                 elif kind == "get_status":
                     await self.reply(writer, request, "status_snapshot", example("status_snapshot")["payload"])
@@ -187,6 +191,38 @@ async def test_heartbeat_deadline_and_half_frame_absolute_deadline_disconnect():
         finally:
             await client.close()
             await peer.close()
+
+
+@pytest.mark.parametrize("local_lease", [None, "b" * 32])
+async def test_connectivity_heartbeat_never_adopts_or_erases_a_lease(local_lease):
+    peer = await Peer("report_current_lease").start()
+    client = transport(peer, heartbeat_interval=30)
+    try:
+        await client.start()
+        client.set_lease(local_lease)
+        reply = await client.request("heartbeat", {"lease_id": None})
+        assert reply["payload"]["lease_id"] == "a" * 32
+        assert client.is_online
+        assert client.lease_id == local_lease
+    finally:
+        await client.close()
+        await peer.close()
+
+
+@pytest.mark.parametrize("mode", ["report_current_lease", "report_no_lease"])
+async def test_renewal_heartbeat_rejects_different_or_missing_lease(mode):
+    peer = await Peer(mode).start()
+    client = transport(peer, heartbeat_interval=30)
+    try:
+        await client.start()
+        client.set_lease("b" * 32)
+        with pytest.raises(V2TransportError):
+            await client.request("heartbeat", {"lease_id": "b" * 32})
+        assert not client.is_online
+        assert client.lease_id is None
+    finally:
+        await client.close()
+        await peer.close()
 
 
 async def test_slow_callback_cannot_block_request_ack_and_overflow_is_visible():
