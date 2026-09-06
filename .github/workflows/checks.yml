@@ -46,8 +46,9 @@ jobs:
         working-directory: backend
         run: alembic upgrade head
       - name: Backend tests and coverage gate
+        timeout-minutes: 10
         working-directory: backend
-        run: pytest -q --cov=app --cov-report=term --cov-fail-under=80
+        run: pytest -v -o faulthandler_timeout=60 --durations=10 --cov=app --cov-report=term --cov-fail-under=80
       - name: Desktop transaction and process tests
         if: matrix.python == '3.13'
         run: pytest -c backend/pytest.ini desktop/tests -q
