@@ -44,6 +44,23 @@ def test_script_is_ascii_for_windows_powershell_51():
     assert SCRIPT.read_bytes().isascii()
 
 
+def test_stage_file_can_be_atomically_updated_twice_in_windows_powershell_51(powershell, tmp_path):
+    stage = tmp_path / "阶段 状态.json"
+    result = run(
+        powershell,
+        tmp_path,
+        f"$stage={literal(stage)}\n"
+        "foreach ($phase in @('planned','stopping')) {\n"
+        "Write-ResetJson -Path $stage -Value @{phase=$phase}\n"
+        "if ((Read-ResetJson $stage).phase -cne $phase) { throw 'Stage readback did not match' }\n"
+        "}\n(Read-ResetJson $stage).phase",
+    )
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == "stopping"
+    assert json.loads(stage.read_text(encoding="utf-8")) == {"phase": "stopping"}
+    assert not Path(str(stage) + ".tmp").exists()
+
+
 @pytest.mark.parametrize("arguments", ["-Apply", "-ConfirmNoDeviceAttached"])
 def test_partial_confirmation_never_reaches_machine_inspection(powershell, tmp_path, arguments):
     result = run(

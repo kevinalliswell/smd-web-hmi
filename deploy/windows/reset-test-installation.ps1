@@ -46,7 +46,8 @@ function Write-ResetJson([string]$Path, $Value) {
     [IO.File]::WriteAllText($Temporary, ($Value | ConvertTo-Json -Depth 12), (New-Object Text.UTF8Encoding($false)))
     $Stream = [IO.File]::Open($Temporary, 'Open', 'ReadWrite', 'None')
     try { $Stream.Flush($true) } finally { $Stream.Dispose() }
-    if ([IO.File]::Exists($Path)) { [IO.File]::Replace($Temporary, $Path, $null) }
+    # PS5 converts $null to an empty string for this CLR string parameter.
+    if ([IO.File]::Exists($Path)) { [IO.File]::Replace($Temporary, $Path, [System.Management.Automation.Language.NullString]::Value) }
     else { [IO.File]::Move($Temporary, $Path) }
 }
 function Assert-TransactionsClosed([string]$DataDir) {

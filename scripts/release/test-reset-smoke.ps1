@@ -56,7 +56,12 @@ function Invoke-TestResetSmoke {
         $Process = Start-Process -FilePath $WindowsPowerShell -ArgumentList `
             "-NoProfile -NonInteractive -ExecutionPolicy Bypass -File `"$ResetScript`"" `
             -RedirectStandardOutput $Stdout -RedirectStandardError $Stderr -PassThru
-        if (-not $Process.WaitForExit(60000) -or $Process.ExitCode -ne 0) { throw 'Reset preview failed under Windows PowerShell 5.1' }
+        if (-not $Process.WaitForExit(60000)) { throw 'Reset preview timed out under Windows PowerShell 5.1' }
+        if ($Process.ExitCode -ne 0) {
+            # This tool emits only controlled reasons, exception types and protected paths.
+            Write-Host (Get-Content -LiteralPath $Stderr -Raw)
+            throw 'Reset preview failed under Windows PowerShell 5.1'
+        }
         $Preview = Get-Content -LiteralPath $Stdout -Raw | ConvertFrom-Json
         $AfterService = Get-SmokeService
         $AfterBackups = @(Get-ChildItem -LiteralPath $BackupRoot -Directory -ErrorAction SilentlyContinue | ForEach-Object FullName)
@@ -68,7 +73,11 @@ function Invoke-TestResetSmoke {
         $Process = Start-Process -FilePath $WindowsPowerShell -ArgumentList `
             "-NoProfile -NonInteractive -ExecutionPolicy Bypass -File `"$ResetScript`" -Apply -ConfirmNoDeviceAttached" `
             -RedirectStandardOutput $Stdout -RedirectStandardError $Stderr -PassThru
-        if (-not $Process.WaitForExit(600000) -or $Process.ExitCode -ne 0) { throw 'Test reset failed under Windows PowerShell 5.1' }
+        if (-not $Process.WaitForExit(600000)) { throw 'Test reset timed out under Windows PowerShell 5.1' }
+        if ($Process.ExitCode -ne 0) {
+            Write-Host (Get-Content -LiteralPath $Stderr -Raw)
+            throw 'Test reset failed under Windows PowerShell 5.1'
+        }
         $Reset = Get-Content -LiteralPath $Stdout -Raw | ConvertFrom-Json
         if ($Reset.mode -ne 'apply' -or $Reset.phase -ne 'completed' -or $Reset.version -ne $Version -or
             -not (Test-SamePath $Reset.install_dir $InstallDir) -or -not (Test-SamePath $Reset.data_dir $DataDir) -or
