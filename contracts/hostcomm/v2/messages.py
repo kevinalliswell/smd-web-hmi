@@ -227,6 +227,8 @@ class RunStatus(StrictModel):
             raise ValueError("valid_candidate requires natural measurement completion")
         if self.safe_complete != (self.safe_boundary is not None):
             raise ValueError("safe_complete and original safe boundary must agree")
+        if self.state in {"preparing", "measuring"} and self.safe_complete:
+            raise ValueError("preparing or measuring cannot claim safe completion")
         if self.state == "completed" and not self.safe_complete:
             raise ValueError("completed requires original safe boundary")
         refs = [ref for ref in (self.measurement_start, self.measurement_end, self.safe_boundary) if ref is not None]
@@ -488,6 +490,12 @@ class AlarmEvent(EventBase):
     @model_validator(mode="after")
     def protection_level(self):
         check_alarm_level(self.code, self.severity)
+        if self.transition == "raised" and (not self.active or self.acknowledged):
+            raise ValueError("new alarm occurrence must be active and unacknowledged")
+        if self.transition == "cleared" and self.active:
+            raise ValueError("cleared alarm condition cannot remain active")
+        if self.transition == "acknowledged" and not self.acknowledged:
+            raise ValueError("acknowledgement event must retain its acknowledgement")
         return self
 
 
@@ -567,6 +575,12 @@ class LogRequest(StrictModel):
     requested: LogRange
     max_records: Annotated[int, Field(ge=1, le=10000)]
     max_bytes: Annotated[int, Field(ge=1, le=16777216)]
+
+    @model_validator(mode="after")
+    def range_budget(self):
+        if int(self.requested.last_record_seq) - int(self.requested.first_record_seq) + 1 > self.max_records:
+            raise ValueError("requested inclusive range exceeds record budget")
+        return self
 
 
 class MissingRange(LogRange):

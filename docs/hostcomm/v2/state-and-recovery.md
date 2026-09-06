@@ -33,6 +33,8 @@
 
 ## 运行结果与安全终态
 
+preparing/measuring 不得携带 safe_complete=true 或安全终态边界，不能同时宣告测定仍在进行和安全收尾完成。
+
 运行结果不由状态名推导；`completed` 只说明安全收尾完成。
 
 | outcome | 判定语义 |

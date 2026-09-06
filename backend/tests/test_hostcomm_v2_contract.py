@@ -280,3 +280,45 @@ def test_protection_alarm_cannot_be_downgraded_to_informational():
     event["payload"]["severity"] = "info"
     with pytest.raises(ValueError):
         validate_message(event)
+
+
+@pytest.mark.parametrize("state", ["preparing", "measuring"])
+def test_live_measurement_or_preparation_cannot_claim_safe_completion(state):
+    snapshot = example("status_snapshot")
+    snapshot["payload"]["run"].update(
+        state=state,
+        safe_complete=True,
+        safe_boundary={"boot_id": snapshot["boot_id"], "sample_seq": "99"},
+    )
+    with pytest.raises(ValueError):
+        validate_message(snapshot)
+
+
+@pytest.mark.parametrize(
+    "transition,active,acknowledged",
+    [("raised", False, False), ("raised", True, True), ("cleared", True, False), ("acknowledged", True, False)],
+)
+def test_contradictory_alarm_transition_flags_are_rejected(transition, active, acknowledged):
+    event = example("alarm")
+    event["payload"].update(transition=transition, active=active, acknowledged=acknowledged)
+    with pytest.raises(ValueError):
+        validate_message(event)
+
+
+def test_alarm_may_clear_before_or_after_acknowledgement():
+    event = example("alarm")
+    for active, acknowledged, transition in [
+        (False, False, "cleared"),
+        (False, True, "cleared"),
+        (False, True, "acknowledged"),
+    ]:
+        event["payload"].update(transition=transition, active=active, acknowledged=acknowledged)
+        validate_message(event)
+
+
+def test_log_request_cut_cannot_exceed_record_budget():
+    request = example("log_request")
+    request["payload"]["requested"].update(first_record_seq="1", last_record_seq="10001")
+    request["payload"]["max_records"] = 10000
+    with pytest.raises(ValueError):
+        validate_message(request)

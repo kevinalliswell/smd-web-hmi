@@ -30,7 +30,7 @@ Point 由可空 value、quality、age_ms 构成；quality 为 good、invalid、s
 
 首滴事件必须给出发生时的 event_seq、run_id、源样本引用、event_uptime_ms/event_timestamp，以及当时料层温度和 is_valid。无效检测也保留原始事件；只有 is_valid=true、料温 good 且满足工程对齐规则时才可产生有效 Td。检测器边沿与温度采样若不同时，工程配置必须规定最大对齐偏差和采用规则；超差时事件保留但不得产生有效 Td。重连后看到 first_drip=true 只能证明曾锁存，不能采用当前料温。
 
-每个报警 occurrence 有独立 alarm_id/occurrence_seq 身份，并通过原始 boot_id/event_seq 定位发生事件；报警码标识原因，不能充当发生次数身份。发生、条件恢复、确认和复位分别追加事件。active 条件恢复不抹掉发生记录；ACK 只记录人类确认，不解除硬接线/软件联锁。get_alarms/alarms_snapshot 按固定 active_alarm_revision 分页（单页最多 16 项且完整报文不得超过 8192 字节，装不下时返回更少项目并推进实际 next_offset）；读取期间修订改变返回 state_conflict，主机重新开始，不能混合两版页。状态快照、报警分页与日志重放共同恢复断线期间的报警，不假定一帧能装下所有历史事件。
+每个报警 occurrence 有独立 alarm_id/occurrence_seq 身份，并通过原始 boot_id/event_seq 定位发生事件；报警码标识原因，不能充当发生次数身份。发生、条件恢复、确认和复位分别追加事件。raised 必须 active=true/acknowledged=false；cleared 必须 active=false，保留此前确认状态；acknowledged 必须 acknowledged=true，允许在条件恢复之前或之后确认，不能借确认改变 active。active 条件恢复不抹掉发生记录；ACK 只记录人类确认，不解除硬接线/软件联锁。get_alarms/alarms_snapshot 按固定 active_alarm_revision 分页（单页最多 16 项且完整报文不得超过 8192 字节，装不下时返回更少项目并推进实际 next_offset）；读取期间修订改变返回 state_conflict，主机重新开始，不能混合两版页。状态快照、报警分页与日志重放共同恢复断线期间的报警，不假定一帧能装下所有历史事件。
 
 本版核心报警码如下，Schema 拒绝表外报警码。warning 可按批准工程配置提升为 trip，但不能降低最低级别；trip 表示必须触发对应的启动禁止/安全监督，具体硬切和置换时序由工程配置决定，不能等网络 ACK。
 
