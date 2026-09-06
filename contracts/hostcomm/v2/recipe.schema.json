@@ -1,0 +1,210 @@
+{
+  "$defs": {
+    "ExitCondition": {
+      "additionalProperties": false,
+      "properties": {
+        "op": {
+          "enum": [
+            "gte",
+            "lt"
+          ],
+          "title": "Op",
+          "type": "string"
+        },
+        "source": {
+          "enum": [
+            "furnace_mc",
+            "burden_mc",
+            "elapsed_ms"
+          ],
+          "title": "Source",
+          "type": "string"
+        },
+        "stable_ms": {
+          "maximum": 9007199254740991,
+          "minimum": 0,
+          "title": "Stable Ms",
+          "type": "integer"
+        },
+        "value": {
+          "maximum": 9007199254740991,
+          "minimum": 0,
+          "title": "Value",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "source",
+        "op",
+        "value",
+        "stable_ms"
+      ],
+      "title": "ExitCondition",
+      "type": "object"
+    },
+    "Stage": {
+      "additionalProperties": false,
+      "properties": {
+        "co_ml_min": {
+          "maximum": 9007199254740991,
+          "minimum": 0,
+          "title": "Co Ml Min",
+          "type": "integer"
+        },
+        "exit": {
+          "$ref": "#/$defs/ExitCondition"
+        },
+        "heater_mode": {
+          "enum": [
+            "off",
+            "ramp",
+            "hold"
+          ],
+          "title": "Heater Mode",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "ramp",
+            "hold",
+            "gas",
+            "cool"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "n2_ml_min": {
+          "maximum": 9007199254740991,
+          "minimum": 0,
+          "title": "N2 Ml Min",
+          "type": "integer"
+        },
+        "name": {
+          "maxLength": 80,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "rate_mc_per_min": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Rate Mc Per Min"
+        },
+        "target_mc": {
+          "anyOf": [
+            {
+              "maximum": 9007199254740991,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Target Mc"
+        },
+        "timeout_ms": {
+          "exclusiveMinimum": 0,
+          "maximum": 604800000,
+          "title": "Timeout Ms",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "name",
+        "kind",
+        "heater_mode",
+        "target_mc",
+        "rate_mc_per_min",
+        "n2_ml_min",
+        "co_ml_min",
+        "exit",
+        "timeout_ms"
+      ],
+      "title": "Stage",
+      "type": "object"
+    }
+  },
+  "$id": "urn:smd:hostcomm:2.0:recipe.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "mode": {
+      "enum": [
+        "standard",
+        "custom"
+      ],
+      "title": "Mode",
+      "type": "string"
+    },
+    "name": {
+      "maxLength": 100,
+      "minLength": 1,
+      "title": "Name",
+      "type": "string"
+    },
+    "recipe_id": {
+      "pattern": "^[0-9a-f]{32}$",
+      "title": "Recipe Id",
+      "type": "string"
+    },
+    "rules_version": {
+      "anyOf": [
+        {
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Rules Version"
+    },
+    "safety_profile_digest": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Safety Profile Digest",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 2,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "stages": {
+      "items": {
+        "$ref": "#/$defs/Stage"
+      },
+      "maxItems": 64,
+      "minItems": 1,
+      "title": "Stages",
+      "type": "array"
+    },
+    "version": {
+      "exclusiveMinimum": 0,
+      "maximum": 9007199254740991,
+      "title": "Version",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "schema_version",
+    "recipe_id",
+    "version",
+    "name",
+    "mode",
+    "rules_version",
+    "safety_profile_digest",
+    "stages"
+  ],
+  "title": "Recipe",
+  "type": "object"
+}
