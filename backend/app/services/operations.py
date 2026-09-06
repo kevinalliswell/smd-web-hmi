@@ -49,7 +49,16 @@ async def get_operation(db: AsyncSession, operation_id: str) -> Operation | None
 def operation_payload(row: Operation) -> dict:
     """accepted仅代表设备受理；verified仅用于参数回读已完成。"""
     result = json.loads(row.result_json) if row.result_json else {"result": row.status}
-    result.update({"operation_id": row.operation_id, "operation_status": row.status, "request_msg_id": row.msg_id})
+    result.update(
+        {
+            "operation_id": row.operation_id,
+            "operation_status": row.status,
+            "request_msg_id": row.msg_id,
+            "command": row.command,
+            "created_at": row.created_at,
+            "updated_at": row.updated_at,
+        }
+    )
     if row.reason_code:
         result["reason_code"] = row.reason_code
     if row.device_result_json:

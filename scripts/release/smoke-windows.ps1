@@ -70,6 +70,7 @@ if (@(Get-NetFirewallProfile | Where-Object { -not $_.Enabled }).Count) { throw 
 $CreatedRoots = [Collections.Generic.List[string]]::new()
 $CleanupErrors = [Collections.Generic.List[string]]::new()
 $InstallProcess = $null
+$PairingProcess = $null
 $FirewallCreated = $false
 $AttemptedInstall = $false
 $Passed = $false
@@ -156,12 +157,59 @@ try {
     if ($Script.StatusCode -ne 200 -or $Script.Headers['Content-Type'] -match 'text/html') { throw 'Application script asset was not served' }
     $Result.static_page = 'ok'
     $Result.static_script = 'ok'
+
+    $Stage = 'offline_pairing'
+    $Controller = Get-Service -Name 'SmdHmi'
+    try {
+        $Controller.Stop()
+        $Controller.WaitForStatus('Stopped', [TimeSpan]::FromSeconds(30))
+    } finally { $Controller.Dispose() }
+    $PairDeviceId = [guid]::NewGuid().ToString('N')
+    $PairingProcess = Start-Process -FilePath $UpdaterExe -ArgumentList `
+        "--install `"$InstallDir`" --pair-device $PairDeviceId --reason `"Isolated CI credential access verification`"" `
+        -RedirectStandardOutput (Join-Path $DataDir 'logs/pairing-cli.stdout') `
+        -RedirectStandardError (Join-Path $DataDir 'logs/pairing-cli.stderr') -PassThru
+    if (-not $PairingProcess.WaitForExit(60000)) { throw 'Offline pairing exceeded its time limit' }
+    if ($PairingProcess.ExitCode -ne 0) { throw 'Installed offline pairing command failed' }
+
+    $Stage = 'localservice_pairing_read'
+    Start-Service -Name 'SmdHmi'
+    $Deadline = [DateTime]::UtcNow.AddSeconds(60)
+    $CredentialRead = $false
+    $ServiceLog = Join-Path $DataDir 'logs/service.log'
+    do {
+        # A fresh random device identity binds this event to this CLI transaction.
+        # The event occurs only after production load_psk has verified ownership,
+        # DACL and key bytes in the actual service process, before any handshake.
+        if (Test-Path -LiteralPath $ServiceLog) {
+            $CredentialRead = @(Select-String -LiteralPath $ServiceLog -Encoding utf8 -Pattern 'v2\.tls_credentials_loaded' |
+                Where-Object { $_.Line.Contains($PairDeviceId) -and $_.Line.Contains('not_started') }).Count -gt 0
+        }
+        try { $Health = (Invoke-RestMethod -Uri 'http://127.0.0.1:8000/api/system/health' -Method Get -NoProxy -TimeoutSec 3).data }
+        catch { $Health = $null }
+        if ($CredentialRead -and $Health -and $Health.status -eq 'ready') { break }
+        Start-Sleep -Milliseconds 500
+    } while ([DateTime]::UtcNow -lt $Deadline)
+    $Service = Get-SmokeService
+    if (-not $CredentialRead -or -not $Health -or $Health.status -ne 'ready' -or
+        $Health.checks.hostcomm -ne 'offline' -or -not $Service -or $Service.State -ne 'Running' -or
+        $Service.StartName -ne 'NT AUTHORITY\LocalService' -or -not (Test-SamePath $Service.PathName $ServiceExe)) {
+        throw 'LocalService credential read was not verified with device traffic blocked'
+    }
+    $Result.pairing = @{ cli = 'passed'; credential_read = 'verified_as_LocalService'; device_id = $PairDeviceId;
+        hostcomm = 'offline'; tls_handshake = 'not_validated_device_network_blocked'; key_material_in_evidence = $false }
     $Passed = $true
 } catch {
     # Do not serialize exception bodies, environment/configuration or authentication material.
     $Result.failure_stage = $Stage
     $Result.failure_type = $_.Exception.GetType().Name
 } finally {
+    if ($PairingProcess) {
+        Invoke-SmokeCleanup 'pairing_process' {
+            if (-not $PairingProcess.HasExited) { $PairingProcess.Kill($true); [void]$PairingProcess.WaitForExit(10000) }
+            $PairingProcess.Dispose()
+        }
+    }
     if ($InstallProcess) {
         Invoke-SmokeCleanup 'installer_process' {
             if (-not $InstallProcess.HasExited) { $InstallProcess.Kill($true); [void]$InstallProcess.WaitForExit(10000) }
@@ -216,13 +264,13 @@ try {
     }
     if ($FirewallCreated) {
         Invoke-SmokeCleanup 'firewall_rule' {
-            if ($CleanupErrors.Contains('installer_process') -or (Get-SmokeService)) { throw 'Keep device traffic blocked until installer and service have stopped' }
+            if ($CleanupErrors.Contains('installer_process') -or $CleanupErrors.Contains('pairing_process') -or (Get-SmokeService)) { throw 'Keep device traffic blocked until installer, pairing and service have stopped' }
             Remove-NetFirewallRule -Name $FirewallName
         }
     }
     foreach ($Directory in $CreatedRoots) {
         Invoke-SmokeCleanup "directory:$Directory" {
-            if ($CleanupErrors.Contains('installer_process') -or (Get-SmokeService)) { throw 'Do not remove directories while installer or service may still run' }
+            if ($CleanupErrors.Contains('installer_process') -or $CleanupErrors.Contains('pairing_process') -or (Get-SmokeService)) { throw 'Do not remove directories while installer, pairing or service may still run' }
             Remove-OwnedDirectory $Directory
         }
     }
@@ -234,4 +282,4 @@ try {
     $Result | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $Evidence -Encoding utf8
 }
 if ($Result.status -ne 'passed') { throw 'Windows installation smoke failed; inspect the sanitized evidence stages' }
-Write-Host 'Install smoke passed: LocalService and application ready with HostComm offline; owned test objects removed'
+Write-Host 'Install smoke passed: LocalService read the offline pairing, application ready with HostComm offline; owned test objects removed'

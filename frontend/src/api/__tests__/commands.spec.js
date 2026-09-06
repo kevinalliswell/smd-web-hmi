@@ -64,3 +64,31 @@ describe('command operation identity', () => {
   })
 
 })
+
+it('retains a v2 accepted intent until applied evidence is queried, with no command replay', async () => {
+  const { queryDeviceOperation } = await import('@/api/commands')
+  apiClient.post.mockResolvedValueOnce({ data: { data: { operation_status: 'accepted', result: 'accepted', wire_status: 'accepted' } } })
+  await expect(sendCommand('ack_run')).rejects.toThrow('结果未知')
+  const operationId = apiClient.post.mock.calls[0][1].operation_id
+  expect(sessionStorage.getItem('smd_pending_operations')).toContain(operationId)
+  apiClient.post.mockResolvedValueOnce({ data: { data: { operation_status: 'accepted', result: 'accepted', wire_operation: { status: 'applied' } } } })
+  await queryDeviceOperation(operationId)
+  expect(apiClient.post.mock.calls[1][0]).toBe(`/api/commands/operations/${operationId}/query`)
+  expect(sessionStorage.getItem('smd_pending_operations')).not.toContain(operationId)
+})
+
+it('clears an audited unknown intent without changing its result, and a later explicit request gets a new identity', async () => {
+  const { reconcileOperation } = await import('@/api/commands')
+  apiClient.post.mockRejectedValueOnce({ code: 'ECONNABORTED' })
+  apiClient.get.mockResolvedValue({ data: { data: { operation_status: 'unknown', wire_status: 'unknown' } } })
+  await expect(sendCommand('ack_run')).rejects.toThrow('结果未知')
+  const previousId = apiClient.post.mock.calls[0][1].operation_id
+  apiClient.post.mockResolvedValueOnce({ data: { data: { operation_status: 'unknown', result: 'unknown', wire_status: 'result_expired', wire_reconciled: true } } })
+  const reviewed = await reconcileOperation(previousId, '现场状态及源日志已核查')
+  expect(reviewed.operation_status).toBe('unknown')
+  expect(sessionStorage.getItem('smd_pending_operations')).not.toContain(previousId)
+  expect(apiClient.post).toHaveBeenCalledTimes(2)
+  apiClient.post.mockResolvedValueOnce({ data: { data: { operation_status: 'accepted', result: 'accepted', wire_status: 'applied' } } })
+  await sendCommand('ack_run')
+  expect(apiClient.post.mock.calls[2][1].operation_id).not.toBe(previousId)
+})

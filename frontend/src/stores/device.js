@@ -19,6 +19,18 @@ export const useDeviceStore = defineStore('device', () => {
   const isRunning = computed(() => snapshot.value?.system?.is_running === true)
   const canStartTest = computed(() => !appCompatibility.mismatch && isFresh.value && snapshot.value?.system?.can_start_test === true)
   const canSetParameters = computed(() => !appCompatibility.mismatch && isFresh.value && snapshot.value?.system?.can_set_parameters === true)
+  const isV2 = computed(() => (snapshot.value?.system?.protocol_version || snapshot.value?._hostcomm?.protocol_version) === '2.0')
+  const capabilities = computed(() => snapshot.value?._hostcomm?.capabilities || [])
+  const supportsRecipes = computed(() => capabilities.value.includes(isV2.value ? 'atomic_recipe' : 'recipe_v1'))
+  const canActivateRecipe = computed(() => isV2.value
+    ? !appCompatibility.mismatch && isFresh.value && supportsRecipes.value && snapshot.value?.system?.can_activate_recipe === true
+    : canSetParameters.value)
+  const canAckRun = computed(() => isV2.value && !appCompatibility.mismatch && isFresh.value && snapshot.value?.system?.can_ack_run === true)
+  const canAckAlarm = computed(() => !isV2.value || (!appCompatibility.mismatch && isFresh.value && snapshot.value?.system?.can_ack_alarm === true))
+  const canResetFault = computed(() => isV2.value && !appCompatibility.mismatch && isFresh.value && snapshot.value?.system?.can_reset_fault === true)
+  function supportsCommand(command) {
+    return !isV2.value || ['start_test', 'stop_test', 'ack_run', 'ack_alarm', 'reset_fault'].includes(command)
+  }
   const canStopTest = computed(() => snapshot.value?.system?.can_stop_test === true)
   const safetyOk = computed(() => !!snapshot.value?.safety?.safety_relay_allowed)
 
@@ -53,6 +65,14 @@ export const useDeviceStore = defineStore('device', () => {
     dataStale,
     isFresh,
     canSetParameters,
+    isV2,
+    capabilities,
+    supportsRecipes,
+    supportsCommand,
+    canActivateRecipe,
+    canAckRun,
+    canAckAlarm,
+    canResetFault,
     checkFreshness,
     currentState,
     furnacePV,

@@ -75,9 +75,17 @@ _RUNNING_STATES = {
 }
 
 
-def classify_state(state: str | None) -> str:
+def classify_state(state: str | None, *, protocol_version: str = "1.0") -> str:
     """返回 ``idle`` / ``running`` / ``fault`` / ``unknown``。"""
     normalized = normalize_state(state)
+    if protocol_version == "2.0":
+        if normalized == "idle":
+            return "idle"
+        if normalized in {"preparing", "measuring", "safedisposal", "cooling"}:
+            return "running"
+        if normalized == "completed":
+            return "terminal"
+        return "fault" if normalized == "fault" else "unknown"
     if normalized in _IDLE_STATES:
         return "idle"
     if "fault" in normalized:
@@ -87,8 +95,10 @@ def classify_state(state: str | None) -> str:
     return "unknown"
 
 
-def parameter_changes_allowed(state: str | None) -> bool:
+def parameter_changes_allowed(state: str | None, *, protocol_version: str = "1.0") -> bool:
     """参数仅允许在明确的非运行态修改；未知状态一律拒绝。"""
+    if protocol_version == "2.0":
+        return False  # Atomic recipe activation is a separate operation, never generic set_parameters.
     return classify_state(state) == "idle" or normalize_state(state) == "fault"
 
 
@@ -107,6 +117,61 @@ def enrich_status_snapshot(snapshot: dict[str, Any] | None, *, control_ready: bo
     enriched = dict(snapshot or {})
     system = dict(enriched.get("system") or {})
     current_state = snapshot_state(enriched)
+    if system.get("protocol_version") == "2.0":
+        source = enriched.get("_v2") or {}
+        frame = source.get("status") or {}
+        native = frame.get("payload") or {}
+        run, safety = native.get("run") or {}, native.get("safety") or {}
+        phase = run.get("state")
+        operation_state = classify_state(phase, protocol_version="2.0")
+        coherent = current_state == phase
+        control_role = source.get("granted_role") == "control"
+        ready = bool(control_ready and enriched.get("control_ready") and coherent and control_role)
+        idle = phase == "idle" and run.get("run_id") is None
+        no_trip = (
+            not any(safety.get(key) for key in ("emergency_stop", "co_alarm", "overtemperature"))
+            and safety.get("exhaust_ok") is True
+        )
+        permit = no_trip and safety.get("hardwired_permit") is True
+        # fault_revision is a version, not a pending-fault flag. Offer an explicit
+        # recovery request after safe completion; the board checks alarm evidence.
+        revision = run.get("fault_revision")
+        known_fault_revision = isinstance(revision, str) and revision.isdecimal() and int(revision) > 0
+        safe_reset_context = (
+            phase == "fault"  # A controlled reset may permit continuing safety disposal.
+            or (phase == "completed" and run.get("safe_complete") is True)
+            or (phase == "idle" and run.get("run_id") is None)
+        )
+        system.update(
+            {
+                "operation_state": operation_state if coherent else "unknown",
+                "state_policy_version": 2,
+                "is_running": coherent and operation_state == "running",
+                "can_start_test": bool(ready and idle and permit and native.get("active_recipe_digest")),
+                "can_set_parameters": False,
+                "can_activate_recipe": ready and idle,
+                "can_stop_test": bool(
+                    coherent
+                    and control_role
+                    and source.get("online")
+                    and run.get("run_id")
+                    and phase in {"preparing", "measuring", "safe_disposal", "cooling", "fault"}
+                ),
+                "can_ack_run": bool(
+                    ready
+                    and phase == "completed"
+                    and run.get("safe_complete") is True
+                    and no_trip
+                    and source.get("alarms_reconciled") is True
+                    and (enriched.get("alarm") or {}).get("ack_required") is False
+                    and (enriched.get("alarm") or {}).get("latched_alarm_count") == 0
+                ),
+                "can_ack_alarm": ready,
+                "can_reset_fault": ready and known_fault_revision and safe_reset_context and no_trip,
+            }
+        )
+        enriched["system"] = system
+        return enriched
     operation_state = classify_state(current_state)
 
     system.update(

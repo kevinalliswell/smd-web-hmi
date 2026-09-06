@@ -46,6 +46,25 @@ class RecipeService:
         self.client = hostcomm_client
         self.cache = status_cache
 
+    def device_verdict(self, bundle: dict, snapshot: dict) -> dict:
+        if getattr(self.client, "protocol_version", None) == "2.0":
+            from app.services.v2_recipe_compiler import compile_recipe
+
+            try:
+                artifact = compile_recipe(bundle, snapshot.get("safety_profile"))
+                return {**artifact.validation, "wire_digest": artifact.digest, "protocol_version": "2.0"}
+            except (ValueError, TypeError, KeyError) as exc:
+                return {
+                    "executable": False,
+                    "errors": [str(exc)],
+                    "deviations": definition_model(bundle["definition"]).deviations(),
+                }
+        return validate_for_device(
+            definition_model(bundle["definition"]),
+            snapshot.get("safety_profile"),
+            list(getattr(self.client, "capabilities", [])),
+        )
+
     async def get(self, recipe_id: str, version: int | None = None) -> dict:
         query = select(RecipeVersion).where(RecipeVersion.recipe_id == recipe_id)
         if version is not None:
@@ -127,9 +146,7 @@ class RecipeService:
         if bundle["digest"] != saved["digest"] or model.digest() != saved["digest"]:
             raise CommandError(409, "recipe_digest_mismatch", "配方内容与保存的版本不一致")
         # 固件安全配置为快照顶层只读字段，绝不接受来自调用者的覆盖值。
-        verdict = validate_for_device(
-            model, snapshot.get("safety_profile"), list(getattr(self.client, "capabilities", []))
-        )
+        verdict = self.device_verdict(bundle, snapshot)
         if not verdict["executable"]:
             raise CommandError(409, "recipe_not_executable", "; ".join(verdict["errors"]))
         return {**bundle_payload(saved), "validation": verdict}
@@ -139,10 +156,10 @@ class RecipeService:
 
         recipe = await self.get(recipe_id, version)
         capabilities = list(getattr(self.client, "capabilities", []))
-        if "recipe_v1" not in capabilities:
+        if "recipe_v1" not in capabilities and getattr(self.client, "protocol_version", None) != "2.0":
             return validate_for_device(definition_model(recipe["definition"]), None, capabilities)
         snapshot = await ParameterService(self.client, self.cache).get_parameters()
-        return validate_for_device(definition_model(recipe["definition"]), snapshot.get("safety_profile"), capabilities)
+        return self.device_verdict(recipe, snapshot)
 
     async def activate(
         self,

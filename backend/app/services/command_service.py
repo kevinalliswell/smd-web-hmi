@@ -45,6 +45,7 @@ COMMAND_PERMISSIONS: dict[str, set[str]] = {
     "pause_hold": _ROLES_OPERATOR_UP,
     "resume_test": _ROLES_OPERATOR_UP,
     "ack_alarm": _ROLES_OPERATOR_UP,
+    "ack_run": _ROLES_OPERATOR_UP,
     "reset_fault": _ROLES_OPERATOR_UP,
     "tare_balance": _ROLES_OPERATOR_UP,
     "export_log": _ROLES_OPERATOR_UP,
@@ -227,7 +228,7 @@ class CommandService:
                 operation=operation,
             )
 
-        async with maintenance_manager.command_guard():
+        async with maintenance_manager.command_guard(priority=command == "stop_test"):
             return await run_operation(
                 db_session,
                 command=command,
@@ -252,6 +253,8 @@ class CommandService:
         operation: OperationExecution,
     ) -> dict:
         # 2. 状态校验（StatusCache 对缺失/过期/冲突状态返回 None）
+        if getattr(self._client, "protocol_version", None) == "2.0":
+            await self._client.preflight(command)
         current_state = self._cache.current_state
         check_state(command, current_state)
         reserved_test_id = await self._reserve_start(command, params, db_session)
@@ -313,10 +316,18 @@ class CommandService:
                     from app.db.models import TestSession
 
                     await db_session.rollback()
+                    definitely_not_sent = getattr(
+                        self._client, "protocol_version", None
+                    ) == "2.0" and not await self._client.has_business_intent(operation.msg_id)
+                    changes = (
+                        {"phase": "start_rejected", "end_time": now_iso(), "end_reason": "start_not_sent"}
+                        if definitely_not_sent
+                        else {"phase": "needs_review"}
+                    )
                     await db_session.execute(
                         update(TestSession)
                         .where(TestSession.test_id == params.get("test_id"), TestSession.end_time.is_(None))
-                        .values(phase="needs_review")
+                        .values(**changes)
                     )
                     await db_session.commit()
                 except Exception as error:
@@ -449,7 +460,16 @@ class CommandService:
                 return
             row = await db_session.scalar(select(TestSession).where(TestSession.test_id == test_id))
             if row is not None and row.end_time is None:
-                if result in {"rejected", "busy", "invalid_param", "permission_denied", "unsupported"}:
+                never_accepted = getattr(self._client, "protocol_version", None) != "2.0" or (
+                    result_payload.get("wire_status") == "rejected"
+                )
+                if never_accepted and result in {
+                    "rejected",
+                    "busy",
+                    "invalid_param",
+                    "permission_denied",
+                    "unsupported",
+                }:
                     row.phase = "start_rejected"
                     row.end_time = now_iso()
                     row.end_reason = "start_rejected:" + result
@@ -510,7 +530,7 @@ class CommandService:
             "safety_profile": snapshot.get("safety_profile"),
         }
         mode = "custom"
-        if "recipe_v1" in caps:
+        if "recipe_v1" in caps or getattr(self._client, "protocol_version", None) == "2.0":
             if not isinstance(params.get("recipe_id"), str) or type(params.get("recipe_version")) is not int:
                 raise CommandError(422, "recipe_selection_required", "启动必须选择保存的配方版本")
             binding = await RecipeService(db_session, self._client, self._cache).validate_bundle(
@@ -543,6 +563,16 @@ class CommandService:
                     "rules_reference": (binding.get("validation") or {}).get("rules_reference"),
                     "sample_metadata": params.get("sample_metadata") or {},
                     "report_context": params.get("report_context") or {},
+                    **(
+                        {
+                            "v2": {
+                                "profile_snapshot": snapshot["safety_profile"],
+                                "profile_digest": snapshot["safety_profile"]["profile_digest"],
+                            }
+                        }
+                        if getattr(self._client, "protocol_version", None) == "2.0"
+                        else {}
+                    ),
                 }
             ),
         )
@@ -552,7 +582,7 @@ class CommandService:
             db_session, snapshot, test_id=row.test_id, operator_id=operator_id, source="test_start"
         )
         await db_session.commit()
-        if "recipe_v1" in caps:
+        if "recipe_v1" in caps or getattr(self._client, "protocol_version", None) == "2.0":
             return {key: binding[key] for key in ("recipe_id", "version", "digest")}
         return None
 

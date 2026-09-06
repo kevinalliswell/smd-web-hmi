@@ -31,6 +31,7 @@ class MaintenanceManager:
 
     def __init__(self) -> None:
         self._operation_lock = asyncio.Lock()
+        self._priority_lock = asyncio.Lock()
         self._upgrade_path: Path | None = None
         self._task: asyncio.Task[None] | None = None
         self._backup_lock = asyncio.Lock()
@@ -70,9 +71,9 @@ class MaintenanceManager:
             temporary.unlink(missing_ok=True)
 
     @asynccontextmanager
-    async def command_guard(self) -> AsyncIterator[None]:
+    async def command_guard(self, *, priority: bool = False) -> AsyncIterator[None]:
         """设备写操作共用此锁，准备升级不能与在途命令交错。"""
-        async with self._operation_lock:
+        async with self._priority_lock if priority else self._operation_lock:
             if self.upgrade_state()["state"] != "idle":
                 raise MaintenanceBlockedError("设备处于离线升级维护状态，禁止新命令")
             yield
@@ -89,7 +90,7 @@ class MaintenanceManager:
         """管理员准备升级；validate 必须检查新鲜板端待机及未闭合会话。"""
         if not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?", target_version):
             raise ValueError("非法目标版本")
-        async with self._operation_lock:
+        async with self._operation_lock, self._priority_lock:
             if self.upgrade_state()["state"] != "idle":
                 raise MaintenanceBlockedError("已有维护操作，请先取消或恢复")
             await validate()

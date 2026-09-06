@@ -1,4 +1,5 @@
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { createPinia, setActivePinia } from 'pinia'
+import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import { defineComponent, nextTick, ref } from 'vue'
 import ConfirmDialog from '@/components/shared/ConfirmDialog.vue'
@@ -131,3 +132,5 @@ describe('modal keyboard boundary', () => {
     expect(document.activeElement).toBe(wrapper.get('#opener').element)
   })
 })
+
+beforeEach(() => setActivePinia(createPinia()))

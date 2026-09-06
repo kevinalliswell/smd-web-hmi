@@ -56,6 +56,11 @@ def test_initialized_environment_round_trips_custom_paths_and_opens_real_files(t
         "HOSTCOMM_MOCK",
         "HOSTCOMM_HOST",
         "HOSTCOMM_PORT",
+        "PROTOCOL_VERSION",
+        "HOSTCOMM_DEVICE_ID",
+        "HOSTCOMM_CONTROLLER_ID",
+        "HOSTCOMM_CONTROLLER_EPOCH",
+        "HOSTCOMM_PSK_FILE",
         "SMD_BOOTSTRAP_ADMIN_PASSWORD_FILE",
         "SMD_FRONTEND_DIST",
         "SMD_MAINTENANCE_FILE",
@@ -70,6 +75,17 @@ def test_initialized_environment_round_trips_custom_paths_and_opens_real_files(t
         assert password == data / "config/bootstrap-admin-password.txt"
         assert password.read_text(encoding="utf-8").strip()
         assert Path(os.environ["SMD_FRONTEND_DIST"]) == version / "frontend"
+        assert os.environ["PROTOCOL_VERSION"] == "2.0"
+        assert os.environ["HOSTCOMM_MOCK"] == "false"
+        assert all(
+            os.environ[key] == ""
+            for key in (
+                "HOSTCOMM_DEVICE_ID",
+                "HOSTCOMM_CONTROLLER_ID",
+                "HOSTCOMM_CONTROLLER_EPOCH",
+                "HOSTCOMM_PSK_FILE",
+            )
+        )
         with closing(sqlite3.connect(db)) as connection, connection:
             connection.execute("CREATE TABLE roundtrip(value TEXT)")
         assert db.is_file()

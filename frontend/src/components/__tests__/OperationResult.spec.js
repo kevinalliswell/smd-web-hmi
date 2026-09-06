@@ -1,9 +1,11 @@
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
+import { createPinia, setActivePinia } from 'pinia'
 import OperationResult from '@/components/command/OperationResult.vue'
 import { fetchOperation } from '@/api/commands'
-vi.mock('@/api/commands', () => ({ fetchOperation: vi.fn() }))
+vi.mock('@/api/commands', async (importOriginal) => ({ ...await importOriginal(), fetchOperation: vi.fn() }))
 describe('operation result query', () => {
+  beforeEach(() => setActivePinia(createPinia()))
   it('keeps unknown visible and only resolves after the backend reports acceptance', async () => {
     fetchOperation.mockResolvedValueOnce({ operation_status: 'unknown' }).mockResolvedValueOnce({ operation_status: 'accepted' })
     const wrapper = mount(OperationResult, { props: { operationId: 'a-stable-id' } })

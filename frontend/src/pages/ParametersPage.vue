@@ -4,11 +4,15 @@ import { useRole } from '@/composables/useRole'
 import { useDeviceStore } from '@/stores/device'
 import { fetchParameters, putParameters } from '@/api/parameters'
 import ConfirmDialog from '@/components/shared/ConfirmDialog.vue'
+import EngineeringProfile from '@/components/system/EngineeringProfile.vue'
 import OperationResult from '@/components/command/OperationResult.vue'
 
 const device = useDeviceStore()
 const { canConfigure } = useRole()
-const editable = computed(() => canConfigure())
+const parameterSnapshot = ref(null)
+const v2 = computed(() => device.isV2 || parameterSnapshot.value?.protocol_version === '2.0')
+const profile = computed(() => device.snapshot?._v2?.profile?.payload || parameterSnapshot.value?.safety_profile)
+const editable = computed(() => canConfigure() && !v2.value)
 
 const original = ref({}) // 设备当前参数（基线）
 const form = ref({}) // 编辑副本
@@ -25,7 +29,7 @@ function onOperationResolved(result) {
     banner.value = { type: 'ok', text: '参数已回读确认一致' }
     load()
   } else {
-    banner.value = { type: 'err', text: result.reason_code || '参数请求已被拒绝' }
+    banner.value = { type: 'err', text: result.wire_reconciled && result.operation_status === 'unknown' ? '已核查，参数执行结果仍未知，请重新读取设备参数' : result.reason_code || '参数请求已被拒绝' }
   }
 }
 
@@ -89,6 +93,7 @@ async function load() {
   banner.value = null
   try {
     const data = await fetchParameters()
+    parameterSnapshot.value = data
     if (!data || data.params == null) {
       offline.value = true
     } else {
@@ -174,8 +179,14 @@ onMounted(load)
       @resolved="onOperationResolved"
     />
 
+    <template v-if="v2">
+      <EngineeringProfile :profile="profile" :current="device.commQuality === 'online' && !device.dataStale" />
+      <p class="muted">工艺阶段请在实验配方中创建新版本，并通过设备校验、原子下发与回读确认。</p>
+      <RouterLink to="/recipes">管理实验配方</RouterLink>
+      <p v-if="parameterSnapshot?.active_recipe_digest" class="mono">当前设备配方摘要：{{ parameterSnapshot.active_recipe_digest }}</p>
+    </template>
     <div
-      v-if="loading"
+      v-else-if="loading"
       class="card muted"
     >
       读取参数中…

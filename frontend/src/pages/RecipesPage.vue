@@ -29,7 +29,7 @@ const canActivate = computed(
     saved.value &&
     !dirty.value &&
     verdict.value?.executable &&
-    device.canSetParameters &&
+    device.canActivateRecipe &&
     !locked.value,
 )
 function describe(error) {
@@ -122,7 +122,7 @@ function resolved(result) {
   message.value =
     result.operation_status === 'verified' && result.readback_ok !== false
       ? '设备已回读一致；启动时仍会核对版本与现场许可。'
-      : `配方激活未成功：${result.reason_code || '设备拒绝'}`
+      : result.wire_reconciled && result.operation_status === 'unknown' ? '已核查，配方激活执行结果仍未知；请重新校验设备执行版本。' : `配方激活未成功：${result.reason_code || '设备拒绝'}`
 }
 async function activate() {
   if (!canActivate.value) return
@@ -276,10 +276,10 @@ async function activate() {
         <p>标准偏离：{{ verdict.deviations?.join('；') || '无阶段偏离' }}</p>
       </div>
       <p
-        v-if="!device.canSetParameters"
+        v-if="!device.canActivateRecipe"
         class="muted"
       >
-        设备当前不允许修改参数；需连接正常、数据新鲜并满足后台状态许可后才能下发。
+        设备当前不允许激活配方；需连接正常、数据新鲜并满足后台状态许可后才能下发。
       </p>
     </form>
     <ConfirmDialog

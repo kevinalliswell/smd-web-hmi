@@ -4,14 +4,16 @@
 
 ## 项目状态
 
-当前处于开发与联调阶段。`dev@855c84d / 0.3.0-rc.1` 是整改前基线，本轮候选版本已推进到 `0.3.0-rc.2`（尚未创建发布标签）。M0文档与M1仓库/质量基线的有界工作已完成，不能代表整套设备已通过国标、干净断网Windows10/11现场或真机验收。已有功能与缺口见[验收证据基线](docs/verification.md)，后续进度统一记录在[任务清单](tasks/todo.md)。
+当前处于开发与联调阶段。`dev@855c84d / 0.3.0-rc.1` 是整改前基线，当前候选版本为 `0.3.0-rc.3`，新增 HostComm 2.0 上位机适配、离线配对和无执行器模拟器，保留1.0兼容入口。当前实现与验证见[rc.3 运行验证](docs/verification/2026-09-06-hostcomm-v2-runtime.md)，[rc.2 软件记录](docs/verification/2026-09-06-software.md)保留为历史证据。固件尚未开发，不能代表整套设备已通过国标、干净断网Windows10/11现场或真机验收。已有功能与缺口见[验收证据基线](docs/verification.md)，后续进度统一记录在[任务清单](tasks/todo.md)。
 
 | 项目 | 本轮软件实现 | 待验证边界 |
 |---|---|---|
 | 后台 | Python 3.13、FastAPI、SQLAlchemy、SQLite，单后台 | Windows10/11现场服务及24h |
 | 前端 | Vue 3、Vite、Pinia、Chart.js，Node24与API类型检查 | 双端现场交互、LAN证书信任 |
 | Windows | 固定WebView2薄壳、PyInstaller、NSIS、Windows Service、事务升级 | [PR65 Windows CI安装与服务证据](docs/verification/2026-09-06-software.md#最终集成软件验证)；干净断网Win10/11未验收 |
-| 试验 | 标准/非标版本配方、测定/冷却归档、质量指标与重复性 | 候选Mock已实现；固件冻结、国标符合性和M5未验收 |
+| 试验 | 标准/非标版本配方、测定/冷却归档、源日志补传、质量指标与重复性 | 2.0上位机与无执行器模拟器已有软件验证；真实固件、国标符合性和M5未验收 |
+
+发布状态与可下载候选包见 [GitHub Releases](https://github.com/kevinalliswell/smd-web-hmi/releases)；版本、提交与校验值以对应资产清单为准。
 
 详细设计、规范来源和维护入口见 [docs/README.md](docs/README.md)。工程协作规则见 [AGENTS.md](AGENTS.md)。
 
@@ -27,7 +29,7 @@ pip install --require-hashes -r requirements-dev.lock
 cp ../.env.example .env
 ```
 
-编辑 `backend/.env`：无设备开发设 `HOSTCOMM_MOCK=true`；真实设备设地址、至少 32 字节随机 JWT 密钥及首次管理员口令。启动前执行迁移：
+下列命令演示 **HostComm 1.0 兼容开发**：在 `backend/.env` 显式设置 `PROTOCOL_VERSION=1.0`、`HOSTCOMM_MOCK=true`。新协议开发使用 [HostComm 2.0 运行配置](docs/hostcomm/v2/runtime.md)和[无执行器模拟器入口](backend/app/hostcomm/v2_simulator/__main__.py)（`python -m app.hostcomm.v2_simulator --help`）；不得将1.0 Mock连接到2.0客户端。真实设备配置还须提供设备配对、地址、至少32字节随机JWT密钥及首次管理员口令。启动前执行迁移：
 
 ```bash
 alembic upgrade head
@@ -65,6 +67,6 @@ pytest -q --cov=app --cov-fail-under=80
 - [开发路线图](tasks/plan.md)及[待办清单](tasks/todo.md)
 - [实验要求与国标追踪](docs/experiment-spec.md)
 - [系统架构与公共接口](docs/上位机软件开发规格说明书.md)
-- [HostComm 契约与待冻结内容](docs/GB_T34211_HostComm上位机通信协议开发需求说明.md)
+- [HostComm 2.0 契约](docs/hostcomm/v2/README.md)与[运行、配对及恢复](docs/hostcomm/v2/runtime.md)；[1.0历史约定](docs/GB_T34211_HostComm上位机通信协议开发需求说明.md)
 - [发布、备份与升级](docs/发布与维护指南.md)及[Windows 交付说明](deploy/windows/README.md)
 - [变更记录](CHANGELOG.md)

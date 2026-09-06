@@ -6,13 +6,13 @@
 
 | 文件 | 作用 |
 |---|---|
-| [messages.py](messages.py) / [types.py](types.py) | 26 种消息的封闭字段集合、严格整数与跨字段约束 |
+| [messages.py](../../../backend/app/hostcomm/v2_contract/messages.py) / [types.py](../../../backend/app/hostcomm/v2_contract/types.py) | 26 种消息的封闭字段集合、严格整数与跨字段约束 |
 | [recipe.py](recipe.py) | 显式加热模式、固定点数值与末尾冷却的不可变配方模型 |
 | [message.schema.json](message.schema.json) | 从模型生成的 JSON Schema Draft 2020-12，按 type 区分消息 |
 | [recipe.schema.json](recipe.schema.json) | 规范配方字节所表达的结构 |
 | [log-record.schema.json](log-record.schema.json) | 持久日志内的 sample/event 原始记录结构 |
 | [vectors.json](vectors.json) | 冻结的规范 UTF-8 字节、SHA256、有效和非法输入 |
-| [codec.py](codec.py) | 严格解析、规范序列化、有界帧解码、配方分块校验和日志重组参考实现 |
+| [codec.py](../../../backend/app/hostcomm/v2_contract/codec.py) | 严格解析、规范序列化、有界帧解码、配方分块校验和日志重组参考实现 |
 
 在仓库根目录、安装现有 backend 开发依赖的 Python 3.13 环境运行：
 
@@ -52,3 +52,5 @@ Node 24 检查器使用独立的内置实现核对规范字节和固定 SHA256�
 ## 覆盖边界
 
 参考代码完成离线结构、字节、摘要、组装与完整性校验。它没有 TCP/TLS、配对密钥、硬件 I/O、真实计时器、持久化日志、租约状态机或安全执行器。3 次连续非法帧关闭连接、5 秒半帧超时、持久序号去重、ACK 窗口、断电原子激活、工程许可和控制队列公平性由将来的驱动/固件实现并单独验证。不能把这批离线测试计为 STM32、Windows 网络互操作或国标验收通过。
+
+Python 规范实现由 `backend/app/hostcomm/v2_contract` 统一维护，本目录旧导入路径保留为兼容包装；运行检查器会显式加载 backend，安装包从 app 包导入同一实现。Schema 和固定向量继续保留在本目录。

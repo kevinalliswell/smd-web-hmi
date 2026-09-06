@@ -5,11 +5,13 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import select, update
 
-from app.api.deps import DbDep, UserDep, get_current_user, get_hostcomm_client
+from app.api.deps import DbDep, UserDep, get_command_service, get_current_user, get_hostcomm_client
+from app.api.operation_api import OPERATION_ERRORS, operation_http_error
 from app.api.schemas import err, ok
 from app.api.validation import EventLimit, Page, PageSize
 from app.api.ws_manager import ws_manager
 from app.db.models import AlarmLog
+from app.db.v2_models import V2AlarmProjection
 from app.hostcomm.protocol import now_iso
 from app.services.command_service import audit_action
 
@@ -26,7 +28,7 @@ async def active_alarms(db: DbDep, limit: EventLimit = 500):
         .limit(limit)
     )
     rows = result.scalars().all()
-    return ok([_row(r) for r in rows])
+    return ok(await _rows(db, rows))
 
 
 @router.get("/history", dependencies=[Depends(get_current_user)])
@@ -35,7 +37,7 @@ async def alarm_history(db: DbDep, page: Page = 1, size: PageSize = 50):
     offset = (page - 1) * size
     result = await db.execute(select(AlarmLog).order_by(AlarmLog.id.desc()).limit(size).offset(offset))
     rows = result.scalars().all()
-    return ok([_row(r) for r in rows])
+    return ok(await _rows(db, rows))
 
 
 @router.post("/{alarm_id}/ack")
@@ -49,6 +51,9 @@ async def ack_alarm(alarm_id: int, request: Request, user: UserDep, db: DbDep):
     alarm = await db.get(AlarmLog, alarm_id)
     if alarm is None:
         raise HTTPException(status_code=404, detail=err("not_found", "报警不存在"))
+    mapping = await db.scalar(select(V2AlarmProjection).where(V2AlarmProjection.alarm_log_id == alarm_id))
+    if mapping is not None:
+        return await _ack_v2(alarm, mapping, request, user, db)
     if alarm.ack_time is not None:
         return ok(
             {
@@ -123,3 +128,75 @@ def _row(r: AlarmLog) -> dict:
         "ack_operator": r.ack_operator,
         "text": r.text,
     }
+
+
+async def _rows(db, rows):
+    ids = [row.id for row in rows]
+    bindings = (
+        {
+            row.alarm_log_id: row
+            for row in await db.scalars(select(V2AlarmProjection).where(V2AlarmProjection.alarm_log_id.in_(ids)))
+        }
+        if ids
+        else {}
+    )
+    result = []
+    for row in rows:
+        data = _row(row)
+        if row.id in bindings:
+            binding = bindings[row.id]
+            data.update(
+                wire_alarm_id=binding.alarm_id,
+                occurrence_seq=binding.occurrence_seq,
+                device_id=binding.device_id,
+                protocol_version="2.0",
+            )
+        result.append(data)
+    return result
+
+
+async def _ack_v2(alarm, mapping, request, user, db):
+    client = get_hostcomm_client(request)
+    if not client or getattr(client, "protocol_version", None) != "2.0" or client.device_id != mapping.device_id:
+        raise HTTPException(status_code=503, detail=err("v2_device_unavailable", "当前连接与报警来源设备不匹配"))
+    if mapping.acknowledged:
+        return ok(
+            {
+                "alarm_id": alarm.id,
+                "ack_time": alarm.ack_time,
+                "ack_operator": alarm.ack_operator,
+                "command": "already_acked",
+                "device_confirmed": True,
+            }
+        )
+    try:
+        result = await get_command_service(request).execute(
+            "ack_alarm",
+            {"alarm_id": mapping.alarm_id, "occurrence_seq": mapping.occurrence_seq},
+            operator_id=user.username,
+            role=user.role,
+            db_session=db,
+            client_ip=request.client.host if request.client else None,
+            operation_id=f"alarm-{alarm.id}-{user.username}",
+        )
+    except OPERATION_ERRORS as exc:
+        raise operation_http_error(exc) from exc
+    if result.get("wire_status") != "applied":
+        return ok({"alarm_id": alarm.id, "command": result.get("result"), "device_confirmed": False, **result})
+    await db.refresh(alarm)
+    alarm.ack_time = alarm.ack_time or now_iso()
+    alarm.ack_operator = alarm.ack_operator or user.username
+    await db.commit()
+    await ws_manager.broadcast(
+        "alarm_ack", {"alarm_id": alarm.id, "ack_time": alarm.ack_time, "ack_operator": alarm.ack_operator}
+    )
+    return ok(
+        {
+            "alarm_id": alarm.id,
+            "ack_time": alarm.ack_time,
+            "ack_operator": alarm.ack_operator,
+            "command": "accepted",
+            "device_confirmed": True,
+            **result,
+        }
+    )

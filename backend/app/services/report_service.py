@@ -20,14 +20,16 @@ from reportlab.lib.units import mm
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.cidfonts import UnicodeCIDFont
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
-from sqlalchemy import func, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
 from app.db.models import AlarmLog, ParameterSnapshot, ReportExport, SamplePoint, TestSession
+from app.db.v2_models import V2LogCursor, V2LogGap, V2SourceRecord
 from app.hostcomm.protocol import now_iso
+from app.hostcomm.v2_contract.types import SampleRef
 from app.services.snapshot_data import json_object, object_value
-from app.services.standard_metrics import MetricAccumulator, number
+from app.services.standard_metrics import MetricAccumulator, V2MetricAccumulator, number
 from app.services.test_id import InvalidTestIdError, validate_test_id
 
 SUPPORTED_FORMATS = {"html", "pdf", "xlsx"}
@@ -97,12 +99,81 @@ def compute_metrics(samples: list[SamplePoint], original_height_mm: float | None
     return reducer.finish()
 
 
+def _u64_at_most(column, value):
+    return or_(func.length(column) < len(value), and_(func.length(column) == len(value), column <= value))
+
+
+async def _v2_measurement_integrity(session, basis):
+    """Derive read-only evidence from validated cuts, never from a user-editable completion flag."""
+    if not isinstance(basis, dict):
+        return "unknown", None
+    if basis.get("outcome") in {"invalid", "aborted"}:
+        return "incomplete", None
+    try:
+        start, end = (SampleRef.model_validate(basis.get(key)) for key in ("measurement_start", "measurement_end"))
+    except (ValueError, TypeError):
+        return "unknown", None
+    if start.boot_id != end.boot_id or int(start.sample_seq) > int(end.sample_seq):
+        return "incomplete", None
+    boundaries = []
+    for reference in (start, end):
+        row = await session.scalar(
+            select(V2SourceRecord).where(
+                V2SourceRecord.device_id == basis.get("device_id"),
+                V2SourceRecord.run_id == basis.get("run_id"),
+                V2SourceRecord.record_type == "sample",
+                V2SourceRecord.boot_id == reference.boot_id,
+                V2SourceRecord.source_seq == reference.sample_seq,
+            )
+        )
+        if row is None or row.record_bytes is None or row.log_id is None or row.record_seq is None:
+            return "unknown", None
+        boundaries.append(row)
+    first, last = boundaries
+    if first.log_id != last.log_id or int(first.record_seq) > int(last.record_seq):
+        return "incomplete", None
+    evidence = {
+        "device_id": first.device_id,
+        "log_id": first.log_id,
+        "first_record_seq": first.record_seq,
+        "last_record_seq": last.record_seq,
+    }
+    cursor = await session.get(V2LogCursor, (first.device_id, first.log_id))
+    covered = (
+        cursor is not None
+        and cursor.verified_from_seq is not None
+        and cursor.verified_through_seq is not None
+        and int(cursor.verified_from_seq) <= int(first.record_seq)
+        and int(cursor.verified_through_seq) >= int(last.record_seq)
+    )
+    if not covered:
+        # An earlier reported gap remains audit evidence, but a later proven full
+        # cut of the same immutable log can fill it without deleting its history.
+        gap = await session.scalar(
+            select(V2LogGap.id)
+            .where(
+                V2LogGap.device_id == first.device_id,
+                V2LogGap.log_id == first.log_id,
+                _u64_at_most(V2LogGap.first_record_seq, last.record_seq),
+                (
+                    ~_u64_at_most(V2LogGap.last_record_seq, str(int(first.record_seq) - 1))
+                    if int(first.record_seq)
+                    else True
+                ),
+            )
+            .limit(1)
+        )
+        return "incomplete" if gap is not None else "unknown", evidence
+    evidence.update(verified_from_seq=cursor.verified_from_seq, verified_through_seq=cursor.verified_through_seq)
+    return "complete" if basis.get("measurement_complete") is True else "incomplete", evidence
+
+
 async def compute_metrics_from_database(
     session: AsyncSession,
     test_id: str,
     original_height_mm: float | None,
 ) -> dict[str, Any]:
-    """分批流式读取，避免把完整实验曲线载入内存；按接收序号处理时钟回拨。"""
+    """分批流式读取；v2 使用原始 sample 引用，v1 保留既有接收顺序。"""
     test = await session.scalar(select(TestSession).where(TestSession.test_id == test_id))
     basis, basis_valid = json_object(getattr(test, "measurement_basis_json", None))
     boundary = basis.get("measurement_end_sample_id")
@@ -113,10 +184,18 @@ async def compute_metrics_from_database(
         basis_valid, measurement_integrity = False, "unknown"
     recipe_raw = getattr(test, "recipe_snapshot_json", None)
     recipe, recipe_valid = json_object(recipe_raw if recipe_raw != "null" else None)
-    reducer = MetricAccumulator(
+    is_v2 = "v2" in basis
+    source_log_evidence = None
+    if is_v2:
+        measurement_integrity, source_log_evidence = await _v2_measurement_integrity(session, basis.get("v2"))
+    accumulator_type = V2MetricAccumulator if is_v2 else MetricAccumulator
+    v2_options = {"v2_basis": basis.get("v2"), "profile_snapshot": recipe.get("safety_profile")} if is_v2 else {}
+    reducer = accumulator_type(
         original_height_mm,
+        **v2_options,
         measurement_complete=basis_valid and getattr(test, "measurement_completed_at", None) is not None,
-        detector_verified=basis.get("detector_verified") is True,
+        # V2's fixed event contract is checked against every raw detector quality below.
+        detector_verified=is_v2 or basis.get("detector_verified") is True,
         data_complete=basis_valid and measurement_integrity == "complete",
         measurement_end_sample_id=boundary,
         test_id=test_id,
@@ -125,11 +204,20 @@ async def compute_metrics_from_database(
         reducer.limitations.add("malformed_measurement_basis")
     if not recipe_valid:
         reducer.limitations.add("malformed_recipe_snapshot")
+    # Decimal uint64 strings must not be cast to SQLite's signed 64-bit INTEGER.
+    # Boot identity is a grouping key; only proven same-boot boundaries enter v2 metrics.
+    ordering = (
+        [
+            SamplePoint.source_boot_id,
+            func.length(SamplePoint.source_sequence),
+            SamplePoint.source_sequence,
+            SamplePoint.id,
+        ]
+        if is_v2
+        else [SamplePoint.id]
+    )
     rows = await session.stream_scalars(
-        select(SamplePoint)
-        .where(SamplePoint.test_id == test_id)
-        .order_by(SamplePoint.id)
-        .execution_options(yield_per=512)
+        select(SamplePoint).where(SamplePoint.test_id == test_id).order_by(*ordering).execution_options(yield_per=512)
     )
     try:
         async for sample in rows:
@@ -137,6 +225,12 @@ async def compute_metrics_from_database(
     finally:
         await rows.close()
     result = reducer.finish()
+    if is_v2:
+        if result.pop("source_measurement_invalid"):
+            measurement_integrity = "incomplete"
+        elif measurement_integrity == "complete" and "freshness_profile_missing_or_invalid" in result["limitations"]:
+            measurement_integrity = "unknown"
+        result["measurement_source_log"] = source_log_evidence
     result.update(
         standard="GB/T 34211-2017",
         mode=getattr(test, "mode", "custom"),

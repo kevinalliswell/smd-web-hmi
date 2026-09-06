@@ -4,12 +4,14 @@ import { computed, onMounted, ref } from 'vue'
 import { useModalFocus } from '@/composables/useModalFocus'
 const { dialog, onDialogKeydown } = useModalFocus()
 import { requestConfirmToken, sendCommand } from '@/api/commands'
+import { useDeviceStore } from '@/stores/device'
 import { fetchNextTestId } from '@/api/tests'
 import RecipePicker from '@/components/recipes/RecipePicker.vue'
 import ConfirmDialog from '@/components/shared/ConfirmDialog.vue'
 import OperationResult from '@/components/command/OperationResult.vue'
 
 const emit = defineEmits(['close', 'done'])
+const device = useDeviceStore()
 const initialSuggestion = suggestTestId()
 const testId = ref(initialSuggestion)
 const originalHeightMm = ref('')
@@ -19,6 +21,11 @@ const recipe = ref(null)
 const error = ref('')
 const unknownOperationId = ref(null)
 function onOperationResolved(result) {
+  if (result.wire_reconciled && !['accepted', 'verified', 'rejected'].includes(result.operation_status)) {
+    error.value = '已核查，执行结果仍未知；新的操作须根据当前设备状态重新确认'
+    unknownOperationId.value = null
+    return
+  }
   if (result.operation_status === 'rejected') {
     error.value = result.reason_code || '设备已拒绝，请核查后重新确认'
     unknownOperationId.value = null
@@ -31,7 +38,7 @@ const submitting = ref(false)
 const confirming = ref(false)
 const canContinue = computed(() => {
   const height = Number(originalHeightMm.value)
-  return testId.value.trim() && Number.isFinite(height) && height > 0 && height <= 10000
+  return testId.value.trim() && Number.isFinite(height) && height > 0 && height <= 10000 && (!device.isV2 || (device.canStartTest && Boolean(recipe.value)))
 })
 
 function suggestTestId() {
@@ -60,7 +67,7 @@ function onStart() {
 }
 
 async function onConfirm() {
-  if (unknownOperationId.value || submitting.value) return
+  if (unknownOperationId.value || submitting.value || !canContinue.value) return
   error.value = ''
   submitting.value = true
   try {
@@ -135,7 +142,7 @@ async function onConfirm() {
         v-model="sampleLabel"
         maxlength="128"
       />
-      <details>
+      <details :open="device.isV2">
         <summary>选择已下发配方</summary>
         <RecipePicker @select="recipe = $event" />
         <p class="muted">支持配方的设备必须选择已回读一致的版本；旧设备留空使用固定流程。</p>
@@ -177,7 +184,7 @@ async function onConfirm() {
       busy-text="下发中…"
       danger
       :busy="submitting"
-      :confirm-disabled="Boolean(unknownOperationId)"
+      :confirm-disabled="Boolean(unknownOperationId) || !canContinue"
       :close-on-confirm="false"
       @confirm="onConfirm"
     >

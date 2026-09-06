@@ -1,3 +1,4 @@
+import { createPinia, setActivePinia } from 'pinia'
 vi.mock('@/api/recipes', () => ({ fetchRecipes: vi.fn().mockResolvedValue({ items: [], total: 0 }), fetchRecipeVersions: vi.fn() }))
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
@@ -90,3 +91,5 @@ describe('command confirmation modals', () => {
     expect(wrapper.text()).toContain('控制板拒绝停止')
   })
 })
+
+beforeEach(() => setActivePinia(createPinia()))

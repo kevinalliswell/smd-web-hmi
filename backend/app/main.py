@@ -43,6 +43,7 @@ from app.db.database import assert_schema_current, create_all, dispose_engine, g
 from app.db.models import UserAccount
 from app.hostcomm.client import HostCommClient, HostCommNotConnectedError, HostCommProtocolError, HostCommTimeoutError
 from app.hostcomm.protocol import now_iso
+from app.hostcomm.v2_transport import V2TransportError
 from app.services.background_jobs import background_jobs
 from app.services.cache import status_cache
 from app.services.gateway_lease import GatewayLease
@@ -52,6 +53,7 @@ from app.services.sampling_health import sampling_health
 from app.services.state_policy import enrich_status_snapshot
 from app.services.test_runtime import active_test
 from app.services.test_session_service import advance_test_session, reconcile_test_sessions
+from app.services.v2_operations import V2OperationError
 
 logger = get_logger("main")
 
@@ -188,13 +190,62 @@ def _build_hostcomm_client(settings, *, device_host: str | None = None) -> HostC
         )
         observed = (payload.get("state_machine") or {}).get("test_id")
         identity_changed = observed != last_device_identity
-        if status_cache.is_fresh and (active_test.needs_device_reconcile or identity_changed):
+        if payload.get("_v2_persisted"):
+            # Source evidence and run boundaries are already committed by the v2
+            # projector. A status read must neither create a sample nor run the
+            # legacy arrival-order lifecycle reducer.
+            run = (((payload.get("_v2") or {}).get("status") or {}).get("payload") or {}).get("run") or {}
+            if observed and not run.get("safe_complete"):
+                active_test.restore(observed, needs_device_reconcile=False)
+            else:
+                active_test.stop()
+            last_device_identity = observed
+        elif status_cache.is_fresh and (active_test.needs_device_reconcile or identity_changed):
             await _reconcile_test_runtime(payload)
             last_device_identity = observed
         await ws_manager.broadcast("status_update", payload)
-        await _persist_snapshot(payload)
+        if not payload.get("_v2_persisted"):
+            await _persist_snapshot(payload)
+
+    from app.db.cancellation import finish_db_work
+
+    @finish_db_work
+    async def alarm_notification(event):
+        from app.db.models import AlarmLog
+        from app.db.v2_models import V2AlarmProjection
+
+        async with get_sessionmaker()() as session:
+            binding = await session.get(
+                V2AlarmProjection, (client.device_id, event["alarm_id"], event["occurrence_seq"])
+            )
+            alarm = await session.get(AlarmLog, binding.alarm_log_id) if binding else None
+            if alarm is None:
+                return None
+            # Materialize committed projection before closing; broadcasting is outside DB work.
+            event_type = "alarm_clear" if not binding.active else "alarm_ack" if binding.acknowledged else "alarm_new"
+            return event_type, {
+                "alarm_id": alarm.id,
+                "alarm_code": alarm.alarm_code,
+                "level": alarm.level,
+                "text": alarm.text,
+                "occur_time": alarm.occur_time,
+                "clear_time": alarm.clear_time,
+                "ack_time": alarm.ack_time,
+                "ack_operator": alarm.ack_operator,
+                "wire_alarm_id": event["alarm_id"],
+                "occurrence_seq": event["occurrence_seq"],
+                "device_id": client.device_id,
+            }
 
     async def on_event(payload: dict) -> None:
+        if payload.get("_v2_persisted"):
+            if payload.get("kind") == "alarm":
+                notification = await alarm_notification(payload["payload"])
+                if notification:
+                    await ws_manager.broadcast(*notification)
+                    return
+            await ws_manager.broadcast("event", payload)
+            return
         # 事件落库（event_log / alarm_log，只追加）并按结果广播
         ws_type, ws_data = "event", payload
         try:
@@ -220,6 +271,25 @@ def _build_hostcomm_client(settings, *, device_host: str | None = None) -> HostC
             if active_test.active_test_id:
                 active_test.restore(active_test.active_test_id, needs_device_reconcile=True)
         await ws_manager.broadcast("comm_status", payload)
+
+    if getattr(settings, "protocol_version", "1.0") == "2.0":
+        from app.hostcomm.v2_client import V2Client
+
+        client = V2Client(
+            host,
+            settings.hostcomm_port,
+            factory=get_sessionmaker(),
+            device_id=settings.hostcomm_device_id,
+            controller_id=settings.hostcomm_controller_id,
+            controller_epoch=settings.hostcomm_controller_epoch,
+            psk_file=settings.hostcomm_psk_file,
+            mock=settings.hostcomm_mock,
+            client_version=__version__,
+            on_status=on_status,
+            on_event=on_event,
+            on_comm_status=on_comm_status,
+        )
+        return client
 
     client = HostCommClient(
         host=host,
@@ -393,7 +463,13 @@ def create_app() -> FastAPI:
         error = operation_http_error(exc)
         return JSONResponse(status_code=error.status_code, content=error.detail)
 
-    for error_class in (OperationError, MaintenanceBlockedError, HostCommProtocolError):
+    for error_class in (
+        OperationError,
+        MaintenanceBlockedError,
+        HostCommProtocolError,
+        V2TransportError,
+        V2OperationError,
+    ):
         app.add_exception_handler(error_class, _operation_error_handler)
 
     @app.get("/health", tags=["system"])

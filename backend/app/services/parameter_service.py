@@ -155,6 +155,8 @@ class ParameterService:
     ) -> dict[str, Any]:
         # 1. 非运行态校验（安全红线 8）
         check_permission("set_parameters", role)
+        if getattr(self._client, "protocol_version", None) == "2.0":
+            await self._client.preflight("set_parameters")
         current_state = self._cache.current_state
         check_state("set_parameters", current_state)
 
@@ -273,6 +275,12 @@ class ParameterService:
         if "safety_profile" in values:
             raise CommandError(403, "safety_profile_read_only", "板端安全配置只读，禁止通过参数入口修改")
         caps = list(getattr(self._client, "capabilities", []))
+        if getattr(self._client, "protocol_version", None) == "2.0":
+            if set(values) != {"recipe"}:
+                raise CommandError(422, "v2_parameters_read_only", "HostComm 2 只允许激活完整配方；工程配置只读")
+            snapshot = snapshot if snapshot is not None else await self.get_parameters()
+            await RecipeService(db_session, self._client, self._cache).validate_bundle(values["recipe"], snapshot)
+            return snapshot
         if "recipe" in values and "recipe_v1" not in caps:
             raise CommandError(409, "device_missing_recipe_v1", "设备未声明配方执行能力")
         if "recipe" not in values and "recipe_v1" not in caps:

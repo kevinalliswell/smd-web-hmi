@@ -18,8 +18,8 @@ from smd_desktop.bundle import build_manifest, verify_version
 def source_version():
     source = (ROOT / "backend/app/__init__.py").read_text(encoding="utf-8")
     backend = re.search(r'__version__\s*=\s*[\'"]([^\'"]+)', source).group(1)
-    frontend = json.loads((ROOT / "frontend/package.json").read_text())["version"]
-    lock = json.loads((ROOT / "frontend/package-lock.json").read_text())
+    frontend = json.loads((ROOT / "frontend/package.json").read_text(encoding="utf-8"))["version"]
+    lock = json.loads((ROOT / "frontend/package-lock.json").read_text(encoding="utf-8"))
     if lock["version"] != frontend or lock["packages"][""]["version"] != frontend:
         raise ValueError("package-lock version differs from package.json")
     tag = os.environ.get("GITHUB_REF_NAME") if os.environ.get("GITHUB_REF_TYPE") == "tag" else None
@@ -39,7 +39,7 @@ def sbom(root: Path, version: str, runtime: dict):
                 "properties": [{"name": "smd:inventory", "value": "python-freeze-environment"}],
             }
         )
-    packages = json.loads((ROOT / "frontend/package-lock.json").read_text())["packages"]
+    packages = json.loads((ROOT / "frontend/package-lock.json").read_text(encoding="utf-8"))["packages"]
     for path, item in sorted(packages.items()):
         if not path or "version" not in item:
             continue
@@ -81,10 +81,9 @@ def main():
     version = source_version()
     print(version)
     if args.bundle:
-        runtime = json.loads((ROOT / "desktop/webview2.lock.json").read_text())
+        runtime = json.loads((ROOT / "desktop/webview2.lock.json").read_text(encoding="utf-8"))
         sbom(args.bundle, version, runtime)
         from app.db.database import get_expected_schema_head
-        from app.hostcomm.protocol import PROTOCOL_VERSION
 
         build_manifest(
             args.bundle,
@@ -93,16 +92,17 @@ def main():
             webview2_version=runtime["version"],
             compatibility={
                 "database_revision": get_expected_schema_head(),
-                "hostcomm_version": PROTOCOL_VERSION,
-                "required_capabilities": ["status_snapshot", "command"],
-                "optional_capabilities": [
-                    "recipe_v1",
-                    "run_lifecycle_v1",
-                    "measurement_events_v1",
-                    "telemetry_sequence_v1",
-                ],
+                "hostcomm_version": "2.0",
+                "hostcomm_supported_versions": ["1.0", "2.0"],
+                "new_install_protocol": "2.0 (unpaired; explicit offline pairing required)",
+                "upgrade_protocol": "preserve existing configuration; no automatic protocol switch or downgrade",
+                "hostcomm_v2_design_revision": "2.0-design.1",
+                "hostcomm_v2_security": "TLS 1.3 external PSK / AES_128_GCM_SHA256 / secp256r1; Python 3.13",
+                "required_capabilities": ["durable_operations", "atomic_recipe", "sample_log", "alarm_log"],
                 "firmware_validation": "unverified: real firmware must pass the documented contract and M5 acceptance",
-                "windows_validation": "CI build only; clean offline Win10/11 acceptance required",
+                "windows_validation": (
+                    "CI build and installed-service smoke gated; clean offline Win10/11 acceptance required"
+                ),
             },
         )
 

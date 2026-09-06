@@ -12,8 +12,15 @@ function update(field, value) {
 function updateExit(field, value) {
   update('exit', { ...props.stage.exit, [field]: value })
 }
+function changeHeater(heater_mode) {
+  const stage = { ...props.stage, heater_mode }
+  if (heater_mode === 'off') stage.furnace_target_c = null
+  if (heater_mode !== 'ramp') stage.ramp_c_min = null
+  emit('change', stage)
+}
 function changeKind(kind) {
   const stage = { ...props.stage, kind }
+  if (kind !== 'gas') delete stage.heater_mode
   if (kind !== 'ramp') stage.ramp_c_min = null
   if (kind === 'cool') {
     stage.co_l_min = 0
@@ -47,14 +54,22 @@ const numeric = (event) => (event.target.value === '' ? null : Number(event.targ
           <option value="cool">冷却</option>
         </select></label
       >
+      <label v-if="stage.kind === 'gas'">
+        加热方式<select aria-label="加热方式" :value="stage.heater_mode || ''" required @change="changeHeater($event.target.value)">
+          <option disabled value="">未声明（旧版本，需明确选择）</option>
+          <option value="off">关闭加热</option>
+          <option value="ramp">按速率升温</option>
+          <option value="hold">保持目标温度</option>
+        </select>
+      </label>
       <label
         >炉温目标 (℃)<input
           :value="stage.furnace_target_c"
           type="number"
           min="0"
           step="any"
-          :required="['ramp', 'hold'].includes(stage.kind)"
-          :disabled="stage.kind === 'cool'"
+          :required="['ramp', 'hold'].includes(stage.kind) || (stage.kind === 'gas' && ['ramp', 'hold'].includes(stage.heater_mode))"
+          :disabled="stage.kind === 'cool' || (stage.kind === 'gas' && stage.heater_mode === 'off')"
           @input="update('furnace_target_c', numeric($event))"
       /></label>
       <label
@@ -63,8 +78,8 @@ const numeric = (event) => (event.target.value === '' ? null : Number(event.targ
           type="number"
           min="0.001"
           step="any"
-          :required="stage.kind === 'ramp'"
-          :disabled="stage.kind !== 'ramp'"
+          :required="stage.kind === 'ramp' || stage.heater_mode === 'ramp'"
+          :disabled="stage.kind !== 'ramp' && stage.heater_mode !== 'ramp'"
           @input="update('ramp_c_min', numeric($event))"
       /></label>
       <label
@@ -115,6 +130,9 @@ const numeric = (event) => (event.target.value === '' ? null : Number(event.targ
           required
           @input="updateExit('value', numeric($event))"
       /></label>
+      <label>
+        条件稳定时长 (s)<input aria-label="条件稳定时长 (s)" :value="stage.exit.stable_s" type="number" min="0" step="0.001" placeholder="未声明（按 0 秒校验）" @input="updateExit('stable_s', numeric($event))" />
+      </label>
       <label
         >阶段超时 (s)<input
           :value="stage.timeout_s"

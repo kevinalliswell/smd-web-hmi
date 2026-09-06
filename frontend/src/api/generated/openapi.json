@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "smd-web-hmi 后端",
-    "version": "0.3.0-rc.2"
+    "version": "0.3.0-rc.3"
   },
   "paths": {
     "/api/auth/login": {
@@ -278,6 +278,128 @@
             }
           }
         ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/commands/operations/{operation_id}/query": {
+      "post": {
+        "tags": [
+          "commands"
+        ],
+        "summary": "Query Device Operation",
+        "operationId": "query_device_operation_api_commands_operations__operation_id__query_post",
+        "parameters": [
+          {
+            "name": "operation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Operation Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/commands/operations/{operation_id}/reconcile": {
+      "post": {
+        "tags": [
+          "commands"
+        ],
+        "summary": "Reconcile Device Operation",
+        "operationId": "reconcile_device_operation_api_commands_operations__operation_id__reconcile_post",
+        "parameters": [
+          {
+            "name": "operation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Operation Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReconcileOperationRequest"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -3304,6 +3426,119 @@
         }
       }
     },
+    "/api/system/maintenance/source-logs": {
+      "post": {
+        "tags": [
+          "maintenance"
+        ],
+        "summary": "Recover Source Logs",
+        "operationId": "recover_source_logs_api_system_maintenance_source_logs_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecoverSourceLogsRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/system/maintenance/source-logs/{task_id}": {
+      "get": {
+        "tags": [
+          "maintenance"
+        ],
+        "summary": "Source Recovery Status",
+        "operationId": "source_recovery_status_api_system_maintenance_source_logs__task_id__get",
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Task Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/system/maintenance": {
       "get": {
         "tags": [
@@ -3691,6 +3926,18 @@
             "type": "number",
             "minimum": 0.0,
             "title": "Value"
+          },
+          "stable_s": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stable S"
           }
         },
         "additionalProperties": false,
@@ -3970,6 +4217,39 @@
           "version"
         ],
         "title": "RecipeSelection"
+      },
+      "ReconcileOperationRequest": {
+        "properties": {
+          "reason": {
+            "type": "string",
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "Reason"
+          }
+        },
+        "type": "object",
+        "required": [
+          "reason"
+        ],
+        "title": "ReconcileOperationRequest"
+      },
+      "RecoverSourceLogsRequest": {
+        "properties": {
+          "first_record_seq": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^(0|[1-9][0-9]{0,19})$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "First Record Seq"
+          }
+        },
+        "type": "object",
+        "title": "RecoverSourceLogsRequest"
       },
       "RepeatabilityRequest": {
         "properties": {
@@ -4381,6 +4661,22 @@
             "maximum": 604800.0,
             "exclusiveMinimum": 0.0,
             "title": "Timeout S"
+          },
+          "heater_mode": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "off",
+                  "ramp",
+                  "hold"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Heater Mode"
           }
         },
         "additionalProperties": false,
