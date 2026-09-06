@@ -207,42 +207,43 @@ def _build_hostcomm_client(settings, *, device_host: str | None = None) -> HostC
         if not payload.get("_v2_persisted"):
             await _persist_snapshot(payload)
 
+    from app.db.cancellation import finish_db_work
+
+    @finish_db_work
+    async def alarm_notification(event):
+        from app.db.models import AlarmLog
+        from app.db.v2_models import V2AlarmProjection
+
+        async with get_sessionmaker()() as session:
+            binding = await session.get(
+                V2AlarmProjection, (client.device_id, event["alarm_id"], event["occurrence_seq"])
+            )
+            alarm = await session.get(AlarmLog, binding.alarm_log_id) if binding else None
+            if alarm is None:
+                return None
+            # Materialize committed projection before closing; broadcasting is outside DB work.
+            event_type = "alarm_clear" if not binding.active else "alarm_ack" if binding.acknowledged else "alarm_new"
+            return event_type, {
+                "alarm_id": alarm.id,
+                "alarm_code": alarm.alarm_code,
+                "level": alarm.level,
+                "text": alarm.text,
+                "occur_time": alarm.occur_time,
+                "clear_time": alarm.clear_time,
+                "ack_time": alarm.ack_time,
+                "ack_operator": alarm.ack_operator,
+                "wire_alarm_id": event["alarm_id"],
+                "occurrence_seq": event["occurrence_seq"],
+                "device_id": client.device_id,
+            }
+
     async def on_event(payload: dict) -> None:
         if payload.get("_v2_persisted"):
             if payload.get("kind") == "alarm":
-                from app.db.models import AlarmLog
-                from app.db.v2_models import V2AlarmProjection
-
-                event = payload["payload"]
-                async with get_sessionmaker()() as session:
-                    binding = await session.get(
-                        V2AlarmProjection, (client.device_id, event["alarm_id"], event["occurrence_seq"])
-                    )
-                    alarm = await session.get(AlarmLog, binding.alarm_log_id) if binding else None
-                    if alarm:
-                        # Broadcast committed projection, not an old event's transition.
-                        event_type = (
-                            "alarm_clear"
-                            if not binding.active
-                            else "alarm_ack" if binding.acknowledged else "alarm_new"
-                        )
-                        await ws_manager.broadcast(
-                            event_type,
-                            {
-                                "alarm_id": alarm.id,
-                                "alarm_code": alarm.alarm_code,
-                                "level": alarm.level,
-                                "text": alarm.text,
-                                "occur_time": alarm.occur_time,
-                                "clear_time": alarm.clear_time,
-                                "ack_time": alarm.ack_time,
-                                "ack_operator": alarm.ack_operator,
-                                "wire_alarm_id": event["alarm_id"],
-                                "occurrence_seq": event["occurrence_seq"],
-                                "device_id": client.device_id,
-                            },
-                        )
-                        return
+                notification = await alarm_notification(payload["payload"])
+                if notification:
+                    await ws_manager.broadcast(*notification)
+                    return
             await ws_manager.broadcast("event", payload)
             return
         # 事件落库（event_log / alarm_log，只追加）并按结果广播

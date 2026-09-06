@@ -15,6 +15,7 @@ import uuid
 from sqlalchemy import select
 
 from app.core.logging import get_logger
+from app.db.cancellation import finish_db_work
 from app.db.recipe_models import RecipeVersion
 from app.db.v2_models import V2LogCursor, V2Operation, V2RecipeBinding, V2RunBinding
 from app.hostcomm.client import HostCommNotConnectedError, HostCommProtocolError, HostCommTimeoutError
@@ -167,10 +168,13 @@ class V2Client:
             fail("device_read_capacity", "设备读取请求繁忙，请稍后查询", 503)
 
     async def _on_connection(self, event):
+        if self._closed:
+            return
         self._ready = False
         self._status_frame = self._telemetry_frame = self._profile_frame = self.profile = None
         if self._recovery_task:
             self._recovery_task.cancel()
+            await asyncio.gather(self._recovery_task, return_exceptions=True)
         if self.on_comm_status:
             await self.on_comm_status(event)
         if event["status"] == "online":
@@ -279,10 +283,14 @@ class V2Client:
             # optional UI refresh into a disconnect that could hide a stop ACK.
 
     async def _archive_alarms(self):
-        async with self._write_lock, self.factory() as db, db.begin():
-            await self.archive.reconcile_alarms(db, self.alarms, boot_id=self.transport.boot_id)
+        await self._persist_alarms(self.alarms, self.transport.boot_id)
         if self.on_event:
             await self.on_event({"kind": "alarms_resynced", "_v2_persisted": True})
+
+    @finish_db_work
+    async def _persist_alarms(self, snapshot, boot_id):
+        async with self._write_lock, self.factory() as db, db.begin():
+            await self.archive.reconcile_alarms(db, snapshot, boot_id=boot_id)
 
     async def get_profile(self):
         frame = await self._request("get_profile", {})
@@ -312,6 +320,11 @@ class V2Client:
             ):
                 self.alarms = await read_alarm_snapshot(self.transport)
                 await self._archive_alarms()
+        await self._persist_status(frame)
+        return await self._publish()
+
+    @finish_db_work
+    async def _persist_status(self, frame):
         async with self._write_lock, self.factory() as db, db.begin():
             await self.archive.reconcile_status(
                 db,
@@ -319,7 +332,6 @@ class V2Client:
                 boot_id=frame["boot_id"],
                 received_at=self.transport.receipt_metadata(frame["msg_id"]).get("received_at"),
             )
-        return await self._publish()
 
     async def _publish(self):
         from app.hostcomm.v2_projection import project_status
@@ -339,31 +351,34 @@ class V2Client:
             telemetry_receipt=self.transport.receipt_metadata(sample["msg_id"]) if sample else None,
             alarm_snapshot=self.alarms,
         )
-        async with self.factory() as db:
-            binding = (
-                await db.get(V2RunBinding, (self.device_id, frame["payload"]["run"]["run_id"]))
-                if frame["payload"]["run"]["run_id"]
-                else None
-            )
-            snapshot.setdefault("state_machine", {})["test_id"] = binding.test_id if binding else None
+        snapshot.setdefault("state_machine", {})["test_id"] = await self._test_id_for_run(
+            frame["payload"]["run"]["run_id"]
+        )
         snapshot["_v2_persisted"] = True
         if self.on_status:
             await self.on_status(snapshot)
         return snapshot
 
-    async def refresh_operations(self):
+    @finish_db_work
+    async def _test_id_for_run(self, run_id):
         async with self.factory() as db:
-            ids = list(
-                await db.scalars(
-                    select(V2Operation.operation_id)
-                    .where(
-                        V2Operation.device_id == self.device_id,
-                        V2Operation.status.in_(["accepted", "unknown", "sent", "pending"]),
-                        V2Operation.reconciled == 0,
-                    )
-                    .limit(128)
-                )
+            binding = await db.get(V2RunBinding, (self.device_id, run_id)) if run_id else None
+            return binding.test_id if binding else None
+
+    @finish_db_work
+    async def _operation_ids(self, statuses, *, exclude_stop=False, limit=128):
+        async with self.factory() as db:
+            query = select(V2Operation.operation_id).where(
+                V2Operation.device_id == self.device_id,
+                V2Operation.status.in_(statuses),
+                V2Operation.reconciled == 0,
             )
+            if exclude_stop:
+                query = query.where(V2Operation.command != "stop_run")
+            return list(await db.scalars(query.limit(limit)))
+
+    async def refresh_operations(self):
+        ids = await self._operation_ids(["accepted", "unknown", "sent", "pending"])
         for operation_id in ids:
             await self.operations.query(operation_id)
 
@@ -385,17 +400,9 @@ class V2Client:
         if not self._ready:
             fail("device_recovery_pending", "设备会话或日志恢复尚未完成")
         await self.refresh_operations()
-        async with self.factory() as db:
-            unresolved = await db.scalar(
-                select(V2Operation.operation_id)
-                .where(
-                    V2Operation.device_id == self.device_id,
-                    V2Operation.command != "stop_run",
-                    V2Operation.status.in_(["pending", "sent", "accepted", "unknown", "result_expired", "not_found"]),
-                    V2Operation.reconciled == 0,
-                )
-                .limit(1)
-            )
+        unresolved = await self._operation_ids(
+            ["pending", "sent", "accepted", "unknown", "result_expired", "not_found"], exclude_stop=True, limit=1
+        )
         if unresolved:
             fail("operation_unresolved", "必须先查询并核查上一条设备操作")
         snapshot = await self.get_status()
@@ -530,6 +537,10 @@ class V2Client:
         compiled = compile_recipe(bundle, self.profile)
         if compiled.digest != status["active_recipe_digest"]:
             fail("active_recipe_mismatch", "设备配方摘要与本地编译版本不一致")
+        return await self._persist_run_binding(params, compiled)
+
+    @finish_db_work
+    async def _persist_run_binding(self, params, compiled):
         async with self._write_lock, self.factory() as db, db.begin():
             row = await db.scalar(select(V2RunBinding).where(V2RunBinding.test_id == params["test_id"]))
             if row is None:
@@ -564,23 +575,7 @@ class V2Client:
             compiled = compile_recipe(bundle, await self.get_profile())
         except (ValueError, KeyError) as exc:
             fail("recipe_not_executable", str(exc), 422)
-        async with self._write_lock, self.factory() as db, db.begin():
-            saved = await db.get(RecipeVersion, (bundle["recipe_id"], bundle["version"]))
-            if saved is None or saved.digest != compiled.source_digest:
-                fail("recipe_not_saved", "须先保存此配方版本")
-            binding = await db.get(V2RecipeBinding, (self.device_id, compiled.digest))
-            if binding is None:
-                db.add(
-                    V2RecipeBinding(
-                        device_id=self.device_id,
-                        recipe_digest=compiled.digest,
-                        recipe_id=bundle["recipe_id"],
-                        recipe_version=bundle["version"],
-                        source_digest=compiled.source_digest,
-                        recipe_json=compiled.data.decode(),
-                        created_at=now_iso(),
-                    )
-                )
+        await self._persist_recipe_binding(bundle, compiled)
         transfer_id = uuid.uuid4().hex
         reply = (
             await self._request(
@@ -632,6 +627,26 @@ class V2Client:
                 fail("recipe_activation_unconfirmed", "配方已受理，但尚未确认激活")
         return result
 
+    @finish_db_work
+    async def _persist_recipe_binding(self, bundle, compiled):
+        async with self._write_lock, self.factory() as db, db.begin():
+            saved = await db.get(RecipeVersion, (bundle["recipe_id"], bundle["version"]))
+            if saved is None or saved.digest != compiled.source_digest:
+                fail("recipe_not_saved", "须先保存此配方版本")
+            binding = await db.get(V2RecipeBinding, (self.device_id, compiled.digest))
+            if binding is None:
+                db.add(
+                    V2RecipeBinding(
+                        device_id=self.device_id,
+                        recipe_digest=compiled.digest,
+                        recipe_id=bundle["recipe_id"],
+                        recipe_version=bundle["version"],
+                        source_digest=compiled.source_digest,
+                        recipe_json=compiled.data.decode(),
+                        created_at=now_iso(),
+                    )
+                )
+
     @staticmethod
     def _check_upload(reply, transfer_id, recipe_digest, offset, status):
         if any(
@@ -672,20 +687,8 @@ class V2Client:
         await self.get_status()
         await self.get_profile()
         active = self._status_frame["payload"]["active_recipe_digest"]
-        values = {}
         wire = await self._read_recipe(active) if active else None
-        if wire:
-            async with self.factory() as db:
-                binding = await db.get(V2RecipeBinding, (self.device_id, active))
-                if binding and canonical_bytes(wire).decode() == binding.recipe_json:
-                    row = await db.get(RecipeVersion, (binding.recipe_id, binding.recipe_version))
-                    if row and row.digest == binding.source_digest:
-                        values["recipe"] = {
-                            "recipe_id": row.recipe_id,
-                            "version": row.version,
-                            "digest": row.digest,
-                            "definition": json.loads(row.definition_json),
-                        }
+        values = await self._bound_recipe(active, wire) if wire else {}
         return {
             "params": values,
             "parameter_crc": compute_param_crc(values),
@@ -696,22 +699,43 @@ class V2Client:
             "fw_version": self.transport.hello_payload["fw_version"],
         }
 
+    @finish_db_work
+    async def _bound_recipe(self, active, wire):
+        async with self.factory() as db:
+            binding = await db.get(V2RecipeBinding, (self.device_id, active))
+            if binding and canonical_bytes(wire).decode() == binding.recipe_json:
+                row = await db.get(RecipeVersion, (binding.recipe_id, binding.recipe_version))
+                if row and row.digest == binding.source_digest:
+                    return {
+                        "recipe": {
+                            "recipe_id": row.recipe_id,
+                            "version": row.version,
+                            "digest": row.digest,
+                            "definition": json.loads(row.definition_json),
+                        }
+                    }
+            return {}
+
+    @finish_db_work
+    async def _log_start(self, log_id):
+        async with self.factory() as db:
+            cursor = await db.get(V2LogCursor, (self.device_id, log_id))
+            scanned = getattr(cursor, "scanned_through_seq", None) if cursor else None
+            return int(scanned) + 1 if scanned else 1
+
     async def recover_logs(self, *, first_record_seq=None):
         async with self._log_lock:
             await self.get_status()
             catalog = self._status_frame["payload"]["log"]
             if catalog["newest_record_seq"] is None:
                 return
-            async with self.factory() as db:
-                cursor = await db.get(V2LogCursor, (self.device_id, catalog["log_id"]))
-                scanned = getattr(cursor, "scanned_through_seq", None) if cursor else None
-                first = int(scanned) + 1 if scanned else 1
-                if first_record_seq is not None:
-                    from pydantic import TypeAdapter
+            first = await self._log_start(catalog["log_id"])
+            if first_record_seq is not None:
+                from pydantic import TypeAdapter
 
-                    from app.hostcomm.v2_contract.types import U64
+                from app.hostcomm.v2_contract.types import U64
 
-                    first = max(1, int(TypeAdapter(U64).validate_python(first_record_seq)))
+                first = max(1, int(TypeAdapter(U64).validate_python(first_record_seq)))
             last = int(catalog["newest_record_seq"])
             while first <= last:
                 stop = min(last, first + 999)

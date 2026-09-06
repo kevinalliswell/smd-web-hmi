@@ -11,6 +11,7 @@ from pydantic import TypeAdapter
 from sqlalchemy import select, update
 from sqlalchemy.dialects.sqlite import insert
 
+from app.db.cancellation import finish_db_work
 from app.db.v2_models import V2ControllerIdentity, V2LogCursor, V2Operation, V2OperationReview
 from app.hostcomm.protocol import now_iso
 from app.hostcomm.v2_contract.codec import canonical_bytes, command_digest, digest
@@ -35,6 +36,7 @@ class V2OperationError(ValueError):
         super().__init__(f"{code}: {message}")
 
 
+@finish_db_work
 async def ensure_v2_identity(factory, device_id, controller_id=None, controller_epoch=None, *, write_lock=None):
     """Run before TLS construction. Existing pairing identity is never silently replaced."""
     _identifier(device_id)
@@ -102,6 +104,7 @@ class V2OperationCoordinator:
         self.controller_id, self.controller_epoch = controller_id, controller_epoch
         self.write_lock = write_lock or asyncio.Lock()
 
+    @finish_db_work
     async def initialize(self, *, recover=True, board_highwater=None) -> dict:
         identity = await ensure_v2_identity(
             self.factory, self.device_id, self.controller_id, self.controller_epoch, write_lock=self.write_lock
@@ -120,6 +123,7 @@ class V2OperationCoordinator:
             identity["last_seq"] = await self.reconcile_highwater(board_highwater)
         return identity
 
+    @finish_db_work
     async def reconcile_highwater(self, board_highwater: str) -> str:
         board = int(TypeAdapter(U64).validate_python(board_highwater))
         async with self.write_lock, self.factory() as db, db.begin():
@@ -134,11 +138,13 @@ class V2OperationCoordinator:
             row.last_seq = str(max(board, int(row.last_seq)))
             return row.last_seq
 
+    @finish_db_work
     async def get(self, operation_id: str) -> dict | None:
         async with self.factory() as db:
             row = await db.get(V2Operation, _identifier(operation_id))
             return operation_dict(row) if row and row.device_id == self.device_id else None
 
+    @finish_db_work
     async def _intent(self, command, params, actor, role, operation_id, lease_id, state_revision):
         business = digest({"command": command, "params": params, "actor": actor, "role": role})
         async with self.write_lock, self.factory() as db, db.begin():
@@ -213,6 +219,7 @@ class V2OperationCoordinator:
             db.add(row)
             return operation_dict(row), True
 
+    @finish_db_work
     async def _unknown(self, operation_id, reason, error=None):
         async with self.write_lock, self.factory() as db, db.begin():
             await db.execute(
@@ -234,18 +241,22 @@ class V2OperationCoordinator:
                     )
                 )
 
+    @finish_db_work
+    async def _mark_sent(self, identity):
+        async with self.write_lock, self.factory() as db, db.begin():
+            await db.execute(
+                update(V2Operation)
+                .where(V2Operation.operation_id == identity)
+                .values(status="sent", reason="outcome_pending", updated_at=now_iso())
+            )
+
     async def submit(self, command, params, *, actor, role, operation_id=None, lease_id=None, state_revision=None):
         identity = _identifier(operation_id or uuid.uuid4().hex)
         row, created = await self._intent(command, params, actor, role, identity, lease_id, state_revision)
         if not created:
             return row
         try:
-            async with self.write_lock, self.factory() as db, db.begin():
-                await db.execute(
-                    update(V2Operation)
-                    .where(V2Operation.operation_id == identity)
-                    .values(status="sent", reason="outcome_pending", updated_at=now_iso())
-                )
+            await self._mark_sent(identity)
             response = await self.transport.request("command", row["request"], msg_id=row["msg_id"])
             await self._record_result(row, response, "command_result")
         except asyncio.CancelledError:
@@ -255,6 +266,7 @@ class V2OperationCoordinator:
             await self._unknown(identity, getattr(exc, "code", "outcome_unknown"), getattr(exc, "payload", None))
         return await self.get(identity)
 
+    @finish_db_work
     async def _record_result(self, stored: dict, response: dict, expected_type: str):
         if response.get("type") != expected_type:
             raise V2OperationError("result_mismatch", "unexpected response type")
@@ -338,6 +350,11 @@ class V2OperationCoordinator:
             or (run.run_id is not None and run.safety_profile_digest != snapshot.profile_digest)
         ):
             raise V2OperationError("unsafe_recovery", "fresh snapshot does not prove safe recovery conditions")
+        await self._record_reconciliation(operation_id, actor, reason, frame)
+        return await self.get(operation_id)
+
+    @finish_db_work
+    async def _record_reconciliation(self, operation_id, actor, reason, frame):
         async with self.write_lock, self.factory() as db, db.begin():
             row = await db.get(V2Operation, operation_id)
             if (
@@ -368,4 +385,3 @@ class V2OperationCoordinator:
                     created_at=now_iso(),
                 )
             )
-        return await self.get(operation_id)

@@ -9,6 +9,7 @@ import json
 from pydantic import TypeAdapter
 from sqlalchemy import select, update
 
+from app.db.cancellation import finish_db_work
 from app.db.v2_models import V2LogChunk, V2LogCursor, V2LogGap, V2LogTransfer, V2SourceRecord
 from app.hostcomm.protocol import now_iso
 from app.hostcomm.v2_contract.codec import (
@@ -35,6 +36,7 @@ class V2SourceLogStore:
 
     on_record(db, record, origin) may append legacy archive rows inside this transaction.
     It MUST NOT commit, roll back, change live device state or infer an absent run_id.
+    It must perform only bounded database work; network I/O and broadcasts stay outside.
     Backfill callbacks run only after complete transfer validation, not on chunk arrival.
     """
 
@@ -44,6 +46,7 @@ class V2SourceLogStore:
         self.on_record = on_record
         self.write_lock = write_lock or asyncio.Lock()
 
+    @finish_db_work
     async def begin(self, request, *, request_msg_id=None, session_id=None, boot_id=None):
         query = LogRequest.model_validate(request).model_dump()
         bindings = (request_msg_id, session_id, boot_id)
@@ -95,6 +98,7 @@ class V2SourceLogStore:
             "committed_record_seq": row.committed_record_seq,
         }
 
+    @finish_db_work
     async def progress(self, transfer_id):
         async with self.factory() as db:
             row = await db.get(V2LogTransfer, transfer_id)
@@ -112,6 +116,7 @@ class V2SourceLogStore:
         ):
             raise ValueError("response request/session/boot mismatch")
 
+    @finish_db_work
     async def _fail(self, transfer_id):
         async with self.write_lock, self.factory() as db, db.begin():
             await db.execute(
@@ -124,6 +129,7 @@ class V2SourceLogStore:
                 .values(status="failed", updated_at=now_iso())
             )
 
+    @finish_db_work
     async def append_chunk(self, message):
         part = LogChunk.model_validate(_payload(message))
         try:
@@ -209,6 +215,7 @@ class V2SourceLogStore:
             await self._fail(part.transfer_id)
             raise
 
+    @finish_db_work
     async def finish(self, message):
         terminal = LogResult.model_validate(_payload(message))
         try:
@@ -356,6 +363,7 @@ class V2SourceLogStore:
             # Unknown runs may be linked later; a callback can explicitly defer projection.
             row.archived = 0 if archived is False else 1
 
+    @finish_db_work
     async def ingest_live(self, envelope):
         message = validate_message(envelope)
         if message.type not in {"telemetry", "event"}:
