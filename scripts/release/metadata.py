@@ -100,7 +100,9 @@ def main():
                 "hostcomm_v2_security": "TLS 1.3 external PSK / AES_128_GCM_SHA256 / secp256r1; Python 3.13",
                 "required_capabilities": ["durable_operations", "atomic_recipe", "sample_log", "alarm_log"],
                 "firmware_validation": "unverified: real firmware must pass the documented contract and M5 acceptance",
-                "windows_validation": "CI build only; clean offline Win10/11 acceptance required",
+                "windows_validation": (
+                    "CI build and installed-service smoke gated; clean offline Win10/11 acceptance required"
+                ),
             },
         )
 

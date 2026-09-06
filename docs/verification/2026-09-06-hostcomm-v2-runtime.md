@@ -10,6 +10,7 @@
 | 持久操作 | `backend/tests/test_v2_operations.py` | 写前意图、固定身份、完整 uint64 水位、重复/冲突、未知结果、重启查询与安全核查 |
 | 配方 | `backend/tests/test_v2_recipe_compiler.py`、`test_v2_client.py` | 精确整数转换、旧摘要保留、含糊加热拒绝、工程范围、原子激活及逐字节回读 |
 | 数据与报警 | `backend/tests/test_v2_source_logs.py`、`test_v2_archive.py` | 分块落盘后 ACK、摘要/缺口、补传去重、未知 run、原始边界、固定报警快照与历史事件不回退当前状态 |
+| 取消与数据库清理 | `backend/tests/test_v2_cancellation.py` | 在真实 SQLite 游标执行后注入重复取消；事务和游标释放后传播取消，后续独立写入成功，网络命令不受取消保护 |
 | 完整业务 | `backend/tests/test_v2_application.py` | REST → 生产回调 → 真实 TCP 模拟器 → SQLite；启动、停止后冷却、结束确认、丢回执查询不重发、满读槽和普通命令超时不阻塞停止、全局报警 |
 | 国标指标 | `backend/tests/test_v2_standard_metrics.py` | 源序排序、H600、首滴原事件、空设备 UTC、无滴落证据、源位置未知到补传完整、坏质量与缺口 |
 | 无执行器板端模型 | `backend/tests/test_hostcomm_v2_simulator.py` | 全部协议类型、租约、配方、状态、日志、故障注入、持久重启；不构成固件验收 |
@@ -46,6 +47,8 @@ node contracts/hostcomm/v2/verify-js.mjs
 ```
 
 前端使用 Node 24 执行 `npm run api:schema`、`types:check`、`typecheck`、`lint`、`test` 和 `build`。TLS 测试只在独立子进程中设置 OpenSSL 测试配置，不修改应用或整套 CI 的 TLS 配置。
+
+Windows 密钥验证同时检查实际文件所有者和 DACL。Python 3.13 私有目录中的 OWNER RIGHTS 仅解析为已经验证的受信所有者，不能作为宽授权豁免；真实 Windows ACL 测试继续要求拒绝 Everyone 读取。配对后的服务身份读取与候选包安装检查一同保存证据，不等同于真实控制板 TLS 握手通过。
 
 ## 仍未验收
 

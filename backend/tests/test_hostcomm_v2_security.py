@@ -7,6 +7,7 @@ import ssl
 import subprocess
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -118,6 +119,41 @@ def test_missing_psk_support_never_falls_back(key_file, monkeypatch):
     monkeypatch.setattr(ssl, "HAS_PSK", False, raising=False)
     with pytest.raises(V2SecurityError, match="PSK"):
         create_client_context(key_file, psk_identity("1" * 32, "2" * 32, "3" * 32))
+
+
+@pytest.mark.skipif(not getattr(ssl, "HAS_PSK", False), reason="Requires the real PSK context API")
+async def test_credential_load_evidence_is_local_only_and_not_repeated_for_network_retries(key_file, monkeypatch):
+    from app.hostcomm import v2_transport
+
+    notices = []
+    monkeypatch.setattr(
+        v2_transport, "logger", SimpleNamespace(info=lambda event, **fields: notices.append((event, fields)))
+    )
+
+    async def refused(*args, **kwargs):
+        raise ConnectionRefusedError("synthetic closed endpoint")
+
+    monkeypatch.setattr(v2_transport.asyncio, "open_connection", refused)
+    client = v2_transport.V2Transport(
+        "127.0.0.1",
+        1,
+        device_id="1" * 32,
+        controller_id="2" * 32,
+        controller_epoch="3" * 32,
+        psk_file=key_file,
+        client_version="credential-evidence-test",
+    )
+    for _ in range(2):
+        with pytest.raises(ConnectionRefusedError):
+            await client._open()
+    assert notices == [("v2.tls_credentials_loaded", {"device_id": "1" * 32, "handshake": "not_started"})]
+    assert not client.is_online
+    assert key_file.read_text(encoding="ascii").strip() not in str(notices)
+    key_file.write_text("invalid-key\n", encoding="ascii")
+    client.controller_epoch = "4" * 32
+    with pytest.raises(V2SecurityError):
+        await client._open()
+    assert len(notices) == 1  # A failed credential read cannot become successful evidence.
 
 
 @pytest.mark.skipif(not getattr(ssl, "HAS_PSK", False), reason="TLS-PSK runtime requires Python 3.13/OpenSSL PSK")

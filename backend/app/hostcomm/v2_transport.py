@@ -127,6 +127,7 @@ class V2Transport:
         self._connections = asyncio.Queue(maxsize=8)
         self.frames_received = self.invalid_frames = self.dropped_callbacks = 0
         self.last_error: str | None = None
+        self._credentials_notice_identity = None
 
     @property
     def is_online(self) -> bool:
@@ -230,6 +231,12 @@ class V2Transport:
                 "server_hostname": "",
                 "ssl_handshake_timeout": self.connect_timeout,
             }
+            credentials_identity = (identity, str(self.psk_file))
+            if self._credentials_notice_identity != credentials_identity:
+                # This proves only local credential/ACL/runtime loading; no TCP
+                # connection or authenticated device handshake has happened yet.
+                logger.info("v2.tls_credentials_loaded", device_id=self.device_id, handshake="not_started")
+                self._credentials_notice_identity = credentials_identity
         self._reader, self._writer = await asyncio.wait_for(
             asyncio.open_connection(self.host, self.port, limit=MAX_FRAME_BYTES + 1, **options), self.connect_timeout
         )

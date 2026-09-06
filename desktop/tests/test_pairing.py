@@ -63,6 +63,45 @@ def test_new_pairing_keeps_key_private_and_returns_only_material_paths(installat
         assert os.stat(settings["HOSTCOMM_PSK_FILE"]).st_mode & 0o077 == 0
 
 
+def test_private_write_refuses_before_any_secret_bytes_if_file_security_cannot_be_established(tmp_path, monkeypatch):
+    from smd_desktop import pairing
+
+    target = tmp_path / "existing.hex"
+    target.write_bytes(b"preserve previous bytes")
+
+    def refuse(path):
+        raise RuntimeError("cannot establish private file owner")
+
+    monkeypatch.setattr(pairing, "_private_fd", refuse, raising=False)
+    with pytest.raises(RuntimeError, match="private file owner"):
+        pairing._private_bytes(target, b"synthetic replacement secret")
+    assert target.read_bytes() == b"preserve previous bytes"
+    assert list(tmp_path.iterdir()) == [target]
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Requires actual Windows ownership and DACL enforcement")
+def test_pairing_files_have_administrators_owner_before_service_use(installation):
+    from smd_desktop import windows_powershell
+
+    from app.hostcomm.v2_security import load_psk
+
+    result = prepare(installation)
+    key = Path(result["psk_file"])
+    check = windows_powershell.run(
+        [
+            "-Command",
+            "(Get-Acl -LiteralPath $env:SMD_TEST_PAIRING_KEY).GetOwner("
+            "[System.Security.Principal.SecurityIdentifier]).Value",
+        ],
+        env={**os.environ, "SMD_TEST_PAIRING_KEY": str(key)},
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    assert check.stdout.strip() == "S-1-5-32-544"
+    assert len(load_psk(key)) == 32
+
+
 def test_replacement_requires_explicit_flag_and_preserves_epoch_watermark(installation):
     first = prepare(installation)
     data, database, _ = installation

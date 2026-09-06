@@ -19,6 +19,63 @@ from .single_instance import single_instance
 from .storage import atomic_json
 
 
+def _private_fd(path: Path) -> int:
+    """Create an empty file with verified access before the caller writes secrets."""
+    if os.name != "nt":
+        return os.open(path, os.O_CREAT | os.O_EXCL | os.O_RDWR, 0o600)
+    import ctypes
+    import msvcrt
+    from ctypes import wintypes
+
+    kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+    advapi = ctypes.WinDLL("advapi32", use_last_error=True)
+    pointer = ctypes.c_void_p
+    kernel.CreateFileW.argtypes = [
+        wintypes.LPCWSTR,
+        wintypes.DWORD,
+        wintypes.DWORD,
+        pointer,
+        wintypes.DWORD,
+        wintypes.DWORD,
+        wintypes.HANDLE,
+    ]
+    kernel.CreateFileW.restype = wintypes.HANDLE
+    kernel.CloseHandle.argtypes = [wintypes.HANDLE]
+    kernel.LocalFree.argtypes = [pointer]
+    advapi.ConvertStringSidToSidW.argtypes = [wintypes.LPCWSTR, ctypes.POINTER(pointer)]
+    advapi.ConvertStringSidToSidW.restype = wintypes.BOOL
+    advapi.SetSecurityInfo.argtypes = [wintypes.HANDLE, wintypes.DWORD, wintypes.DWORD] + [pointer] * 4
+    advapi.SetSecurityInfo.restype = wintypes.DWORD
+    # GENERIC_READ | GENERIC_WRITE | WRITE_OWNER; CREATE_NEW prevents replacing a
+    # pre-existing path. No sharing while ownership, DACL and contents are set.
+    handle = kernel.CreateFileW(str(path), 0xC0080000, 0, None, 1, 0x00200080, None)
+    if handle == pointer(-1).value:
+        raise ctypes.WinError(ctypes.get_last_error())
+    administrator = pointer()
+    fd = None
+    try:
+        if not advapi.ConvertStringSidToSidW("S-1-5-32-544", ctypes.byref(administrator)):
+            raise ctypes.WinError(ctypes.get_last_error())
+        # The creator's TokenOwner may be an individual administrator, which is
+        # not the later LocalService process identity. Use the stable group SID.
+        error = advapi.SetSecurityInfo(handle, 1, 1, administrator, None, None, None)
+        if error:
+            raise ctypes.WinError(error)
+        fd = msvcrt.open_osfhandle(handle, os.O_RDWR | os.O_BINARY)
+        handle = None  # The CRT descriptor now owns and closes this handle.
+        _windows_permissions(fd)
+        return fd
+    except BaseException:
+        if fd is not None:
+            os.close(fd)
+        raise
+    finally:
+        if handle is not None:
+            kernel.CloseHandle(handle)
+        if administrator.value:
+            kernel.LocalFree(administrator)
+
+
 def _private_folder(folder: Path):
     if folder.is_symlink():
         raise RuntimeError("Pairing directory cannot be a symlink")
@@ -26,13 +83,13 @@ def _private_folder(folder: Path):
     if os.name != "nt":
         os.chmod(folder, 0o700)
     probe = folder / (".acl-probe-" + uuid.uuid4().hex)
-    fd = os.open(probe, os.O_CREAT | os.O_EXCL | os.O_RDWR, 0o600)
+    fd = None
     try:
-        if os.name == "nt":
-            _windows_permissions(fd)  # Verify inherited ProgramData ACL before writing secrets.
+        fd = _private_fd(probe)  # Verify inherited ProgramData ACL before writing secrets.
     finally:
-        os.close(fd)
-        probe.unlink()
+        if fd is not None:
+            os.close(fd)
+        probe.unlink(missing_ok=True)
 
 
 def _private_text(path: Path, value: str):
@@ -44,7 +101,7 @@ def _private_bytes(path: Path, value: bytes):
     _private_folder(path.parent)
     temporary = path.with_name(f".{path.name}.{uuid.uuid4().hex}.tmp")
     try:
-        fd = os.open(temporary, os.O_CREAT | os.O_EXCL | os.O_WRONLY | getattr(os, "O_BINARY", 0), 0o600)
+        fd = _private_fd(temporary)
         with os.fdopen(fd, "wb") as output:
             output.write(value)
             output.flush()
