@@ -90,6 +90,17 @@ async def command(http, name, params, operation_id):
     )
 
 
+async def wait_alarm(http, wire_id, *, active=True):
+    """Wait for the committed REST projection, not an assumed disk/runner speed."""
+    for _ in range(400):
+        rows = (await http.get("/api/alarms/active")).json()["data"]
+        matched = next((row for row in rows if row.get("wire_alarm_id") == wire_id), None)
+        if (matched is not None) == active:
+            return matched
+        await asyncio.sleep(0.01)
+    pytest.fail(f"Alarm {wire_id} did not reach active={active}")
+
+
 async def test_full_application_continues_recording_until_safe_completion(system):
     http, client, sim, factory = system
     recipe = await deploy(http)
@@ -188,24 +199,17 @@ async def test_v2_generic_parameter_and_unsupported_command_do_not_reach_board(s
 
 async def test_global_alarm_uses_wire_occurrence_and_offline_ack_cannot_fake_board_confirmation(system):
     http, client, sim, factory = system
-    await sim.raise_alarm("clock_unsynced", severity="warning")
-    for _ in range(100):
-        alarms = (await http.get("/api/alarms/active")).json()["data"]
-        if alarms:
-            break
-        await asyncio.sleep(0.01)
-    assert len(alarms) == 1
-    alarm = alarms[0]
+    wire_id = await sim.raise_alarm("clock_unsynced", severity="warning")
+    alarm = await wait_alarm(http, wire_id)
     assert alarm["occurrence_seq"] == "1" and len(alarm["wire_alarm_id"]) == 32
     response = await http.post(f"/api/alarms/{alarm['id']}/ack")
     assert response.status_code == 200, response.text
     assert response.json()["data"]["device_confirmed"]
     await sim.clear_alarm(alarm["wire_alarm_id"])
-    await asyncio.sleep(0.05)
+    await wait_alarm(http, wire_id, active=False)
     assert not (await http.get("/api/alarms/active")).json()["data"]
-    await sim.raise_alarm("measurement_sensor_invalid", severity="warning")
-    await asyncio.sleep(0.05)
-    alarm = (await http.get("/api/alarms/active")).json()["data"][0]
+    wire_id = await sim.raise_alarm("measurement_sensor_invalid", severity="warning")
+    alarm = await wait_alarm(http, wire_id)
     await client.close()
     response = await http.post(f"/api/alarms/{alarm['id']}/ack")
     assert response.status_code == 503
@@ -225,9 +229,8 @@ async def test_stop_bypasses_a_lost_ordinary_receipt_at_both_http_and_wire_layer
     assert started.status_code == 200
     await sim.tick()
     await asyncio.sleep(0.05)
-    await sim.raise_alarm("clock_unsynced", severity="warning")
-    await asyncio.sleep(0.05)
-    alarm = (await http.get("/api/alarms/active")).json()["data"][0]
+    wire_id = await sim.raise_alarm("clock_unsynced", severity="warning")
+    alarm = await wait_alarm(http, wire_id)
     sim.drop_reply("command_result")
     pending = asyncio.create_task(http.post(f"/api/alarms/{alarm['id']}/ack"))
     try:
@@ -263,7 +266,11 @@ async def test_stop_uses_current_session_run_identity_when_all_read_slots_are_bu
     await client.get_status()
     sim.drop_reply("status_snapshot", count=4)
     reads = [asyncio.create_task(client.transport.request("get_status", {})) for _ in range(4)]
-    await asyncio.sleep(0.03)
+    for _ in range(100):
+        if sim._drop_replies["status_snapshot"] == 0:
+            break
+        await asyncio.sleep(0.01)
+    assert sim._drop_replies["status_snapshot"] == 0
     try:
         result = await asyncio.wait_for(command(http, "stop_test", {}, "busy-read-stop"), 1)
         assert result.status_code == 200, result.text
@@ -374,11 +381,10 @@ async def test_manual_source_scan_is_bounded_background_work(system):
 async def test_cleared_unacknowledged_alarm_can_be_confirmed_before_run_ack(system):
     http, client, sim, factory = system
     recipe = await deploy(http)
-    await sim.raise_alarm("clock_unsynced", severity="warning")
-    await asyncio.sleep(0.05)
-    alarm = (await http.get("/api/alarms/active")).json()["data"][0]
+    wire_id = await sim.raise_alarm("clock_unsynced", severity="warning")
+    alarm = await wait_alarm(http, wire_id)
     await sim.clear_alarm(alarm["wire_alarm_id"])
-    await asyncio.sleep(0.05)
+    await wait_alarm(http, wire_id, active=False)
     started = await command(
         http,
         "start_test",
