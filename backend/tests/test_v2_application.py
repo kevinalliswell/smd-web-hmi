@@ -2,6 +2,9 @@
 
 import asyncio
 import json
+import sqlite3
+from contextlib import closing
+from pathlib import Path
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -100,6 +103,17 @@ async def command(http, name, params, operation_id):
     )
 
 
+async def check_offline_pairing_evidence(client, factory, monkeypatch):
+    """Use the installed updater's guard against actual REST/board archive rows."""
+    monkeypatch.syspath_prepend(str(Path(__file__).resolve().parents[2] / "desktop"))
+    from smd_desktop.pairing import PairingTransaction
+
+    await client.close()
+    with closing(sqlite3.connect(factory.kw["bind"].url.database)) as connection:
+        PairingTransaction._guard(connection)
+        assert connection.total_changes == 0
+
+
 async def stop_with_pending_work(http, client, operation_id, pending, monkeypatch):
     """Measure the stop wire slot separately from durable HTTP audit commits."""
     request = client.transport.request
@@ -135,7 +149,7 @@ async def wait_alarm(http, wire_id, *, active=True):
     pytest.fail(f"Alarm {wire_id} did not reach active={active}")
 
 
-async def test_full_application_continues_recording_until_safe_completion(system):
+async def test_full_application_continues_recording_until_safe_completion(system, monkeypatch):
     http, client, sim, factory = system
     recipe = await deploy(http)
     result = await command(
@@ -184,6 +198,36 @@ async def test_full_application_continues_recording_until_safe_completion(system
     response = await command(http, "ack_run", {}, "ack-v2")
     assert response.status_code == 200, response.text
     assert sim.state.run["state"] == "idle"
+    await check_offline_pairing_evidence(client, factory, monkeypatch)
+
+
+async def test_rejected_start_allows_offline_pairing_without_fabricating_safe_completion(system, monkeypatch):
+    from app.hostcomm.v2_simulator.state import DeviceError
+
+    http, client, sim, factory = system
+    recipe = await deploy(http)
+    permission = sim.state._command_permission
+
+    def reject_start(session, payload, raw):
+        permission(session, payload, raw)
+        if payload["command"] == "start_run":
+            raise DeviceError("safety_condition_changed")
+
+    monkeypatch.setattr(sim.state, "_command_permission", reject_start)
+    response = await command(
+        http,
+        "start_test",
+        {"test_id": "NEVER-STARTED", "original_height_mm": 40, "recipe_id": recipe["recipe_id"], "recipe_version": 1},
+        "rejected-start-pairing",
+    )
+    assert response.status_code == 200, response.text
+    assert sim.state.run["state"] == "idle"
+    async with factory() as db:
+        run = await db.scalar(select(TestSession).where(TestSession.test_id == "NEVER-STARTED"))
+        assert run.phase == "start_rejected" and run.end_time is not None
+        assert run.safety_completed_at is None and run.measurement_completed_at is None
+        assert await db.scalar(select(func.count()).select_from(SamplePoint)) == 0
+    await check_offline_pairing_evidence(client, factory, monkeypatch)
 
 
 async def test_lost_receipt_is_queried_without_replaying_start_and_body_conflicts_reject(system):

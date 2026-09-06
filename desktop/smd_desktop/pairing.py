@@ -10,10 +10,15 @@ from contextlib import closing
 from pathlib import Path
 
 from dotenv import dotenv_values
+from pydantic import TypeAdapter
 
 from app.hostcomm.protocol import now_iso
+from app.hostcomm.v2_contract.codec import command_digest, digest
+from app.hostcomm.v2_contract.messages import OperationResult
+from app.hostcomm.v2_contract.types import Identifier
 from app.hostcomm.v2_security import _windows_permissions, load_psk, psk_identity
 from app.services.sqlite_backup import backup_sqlite
+from app.services.v2_operations import COMMAND_ADAPTER
 
 from .single_instance import single_instance
 from .storage import atomic_json
@@ -44,7 +49,11 @@ def _private_fd(path: Path) -> int:
     kernel.LocalFree.argtypes = [pointer]
     advapi.ConvertStringSidToSidW.argtypes = [wintypes.LPCWSTR, ctypes.POINTER(pointer)]
     advapi.ConvertStringSidToSidW.restype = wintypes.BOOL
-    advapi.SetSecurityInfo.argtypes = [wintypes.HANDLE, wintypes.DWORD, wintypes.DWORD] + [pointer] * 4
+    advapi.SetSecurityInfo.argtypes = [
+        wintypes.HANDLE,
+        wintypes.DWORD,
+        wintypes.DWORD,
+    ] + [pointer] * 4
     advapi.SetSecurityInfo.restype = wintypes.DWORD
     # GENERIC_READ | GENERIC_WRITE | WRITE_OWNER; CREATE_NEW prevents replacing a
     # pre-existing path. No sharing while ownership, DACL and contents are set.
@@ -111,7 +120,11 @@ def _private_bytes(path: Path, value: bytes):
             from ctypes import wintypes
 
             kernel = ctypes.WinDLL("kernel32", use_last_error=True)
-            kernel.MoveFileExW.argtypes = [wintypes.LPCWSTR, wintypes.LPCWSTR, wintypes.DWORD]
+            kernel.MoveFileExW.argtypes = [
+                wintypes.LPCWSTR,
+                wintypes.LPCWSTR,
+                wintypes.DWORD,
+            ]
             kernel.MoveFileExW.restype = wintypes.BOOL
             if not kernel.MoveFileExW(str(temporary), str(path), 0x1 | 0x8):
                 raise ctypes.WinError(ctypes.get_last_error())
@@ -124,6 +137,179 @@ def _private_bytes(path: Path, value: bytes):
                 os.close(directory)
     finally:
         temporary.unlink(missing_ok=True)
+
+
+def _rows(connection, query, parameters=()):
+    cursor = connection.execute(query, parameters)
+    names = [item[0] for item in cursor.description]
+    return [dict(zip(names, row)) for row in cursor.fetchall()]
+
+
+def _object(raw):
+    value = json.loads(raw)
+    if not isinstance(value, dict):
+        raise ValueError("Expected a stored object")
+    return value
+
+
+def _wire_evidence(row, device_ids):
+    """Retained terminal evidence, including identities and the exact request digest."""
+    try:
+        TypeAdapter(Identifier).validate_python(row["device_id"])
+        TypeAdapter(Identifier).validate_python(row["msg_id"])
+        request = COMMAND_ADAPTER.validate_json(row["request_json"]).model_dump()
+        result = OperationResult.model_validate_json(row["result_json"]).model_dump()
+        if row["device_id"] not in device_ids or row["status"] not in {
+            "applied",
+            "rejected",
+            "interrupted",
+        }:
+            return None
+        for key in (
+            "operation_id",
+            "controller_epoch",
+            "command_seq",
+            "request_digest",
+        ):
+            if request[key] != row[key] or result[key] != row[key]:
+                return None
+        if (
+            request["command"] != row["command"]
+            or result["status"] != row["status"]
+            or result["reason"] != row["reason"]
+            or command_digest(request) != row["request_digest"]
+            or digest(
+                {
+                    "command": row["command"],
+                    "params": request["params"],
+                    "actor": row["actor"],
+                    "role": row["role"],
+                }
+            )
+            != row["business_digest"]
+        ):
+            return None
+        return {**row, "request": request, "result": result}
+    except (ValueError, TypeError, KeyError):
+        return None
+
+
+def _linked_wire(outer, wires, epochs):
+    """The HTTP message is namespaced by its historical controller epoch, not today's pairing."""
+    commands = {
+        "start_test": "start_run",
+        "stop_test": "stop_run",
+        "set_parameters": "activate_recipe",
+        "ack_run": "ack_run",
+        "ack_alarm": "ack_alarm",
+        "reset_fault": "reset_fault",
+    }
+    try:
+        matches = [
+            wires[key] for epoch in epochs if (key := uuid.uuid5(uuid.UUID(hex=epoch), outer["msg_id"]).hex) in wires
+        ]
+        if len(matches) != 1:
+            return None
+        row = matches[0]
+        parameters = _object(outer["params_json"])
+        request_hash = hashlib.sha256(
+            json.dumps(
+                {"command": outer["command"], "params": parameters},
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+                allow_nan=False,
+            ).encode("utf-8")
+        ).hexdigest()
+        if (
+            commands.get(outer["command"]) != row["command"]
+            or outer["operator_id"] != row["actor"]
+            or outer["operator_role"] != row["role"]
+            or outer["request_hash"] != request_hash
+        ):
+            return None
+        for raw in (outer["result_json"], outer["device_result_json"]):
+            if raw:
+                summary = _object(raw)
+                if (
+                    summary.get("wire_operation_id", row["operation_id"]) != row["operation_id"]
+                    or summary.get("command_seq", row["command_seq"]) != row["command_seq"]
+                ):
+                    return None
+        return row
+    except (ValueError, TypeError, KeyError, AttributeError):
+        return None
+
+
+def _unstarted_reservation(connection, session, operations, wires, epochs):
+    """A rejected reservation never had a physical run; do not invent a safe-completion time."""
+    try:
+        if (
+            session["end_time"] is None
+            or session["phase"] != "start_rejected"
+            or not (session["end_reason"] or "").startswith("start_rejected:")
+            or any(
+                session[key] is not None
+                for key in (
+                    "measurement_completed_at",
+                    "safety_completed_at",
+                    "stop_requested_at",
+                )
+            )
+        ):
+            return False
+        snapshot = _object(session["recipe_snapshot_json"])
+        outer = operations.get(snapshot.get("operation_id"))
+        if (
+            not outer
+            or snapshot.get("protocol_version") != "2.0"
+            or outer["command"] != "start_test"
+            or outer["status"] != "rejected"
+        ):
+            return False
+        wire = _linked_wire(outer, wires, epochs)
+        if not wire or wire["command"] != "start_run" or wire["status"] != "rejected":
+            return False
+        params = wire["request"]["params"]
+        bindings = _rows(
+            connection,
+            "SELECT * FROM v2_run_binding WHERE test_id=?",
+            (session["test_id"],),
+        )
+        if len(bindings) != 1:
+            return False
+        binding = bindings[0]
+        if (
+            _object(outer["params_json"]).get("test_id") != session["test_id"]
+            or outer["operator_id"] != session["operator_id"]
+            or binding["device_id"] != wire["device_id"]
+            or binding["run_id"] != params["run_id"]
+            or binding["recipe_digest"] != params["recipe_digest"]
+            or binding["profile_digest"] != params["safety_profile_digest"]
+            or wire["result"]["run_id"] not in {None, params["run_id"]}
+        ):
+            return False
+        basis = _object(session["measurement_basis_json"])
+        v2 = basis.get("v2", {})
+        if (
+            basis.get("invalid_previous_basis")
+            or not isinstance(v2, dict)
+            or set(v2) - {"profile_snapshot", "profile_digest"}
+        ):
+            return False
+        if v2.get("profile_digest", binding["profile_digest"]) != binding["profile_digest"]:
+            return False
+        if connection.execute("SELECT 1 FROM sample_point WHERE test_id=? LIMIT 1", (session["test_id"],)).fetchone():
+            return False
+        return (
+            connection.execute(
+                "SELECT 1 FROM v2_source_record WHERE device_id=? AND run_id=? LIMIT 1",
+                (binding["device_id"], binding["run_id"]),
+            ).fetchone()
+            is None
+        )
+    except (ValueError, TypeError, KeyError):
+        return False
 
 
 class PairingTransaction:
@@ -156,23 +342,38 @@ class PairingTransaction:
     @staticmethod
     def _guard(connection):
         tables = {row[0] for row in connection.execute("SELECT name FROM sqlite_master WHERE type='table'")}
-        required = {"test_session", "operation", "v2_operation", "v2_controller_identity", "v2_run_binding"}
+        required = {
+            "test_session",
+            "operation",
+            "v2_operation",
+            "v2_controller_identity",
+            "v2_run_binding",
+            "sample_point",
+            "v2_source_record",
+        }
         if not required <= tables:
             raise RuntimeError("Upgrade the database schema before offline pairing")
         if connection.execute("PRAGMA quick_check").fetchone() != ("ok",):
             raise RuntimeError("Database integrity check failed")
-        if connection.execute(
-            "SELECT 1 FROM test_session WHERE end_time IS NULL OR "
-            "(safety_completed_at IS NULL AND test_id IN (SELECT test_id FROM v2_run_binding)) LIMIT 1"
-        ).fetchone():
-            raise RuntimeError("An experiment run lacks a proved safe closure")
-        if (
-            connection.execute("SELECT 1 FROM operation WHERE status NOT IN ('verified','rejected') LIMIT 1").fetchone()
-            or connection.execute(
-                "SELECT 1 FROM v2_operation WHERE status NOT IN ('applied','rejected','interrupted') LIMIT 1"
-            ).fetchone()
+        device_ids = {row[0] for row in connection.execute("SELECT device_id FROM v2_controller_identity")}
+        evidence = [_wire_evidence(row, device_ids) for row in _rows(connection, "SELECT * FROM v2_operation")]
+        if any(row is None for row in evidence):
+            raise RuntimeError("An unresolved command prevents pairing changes")
+        wires = {row["operation_id"]: row for row in evidence}
+        epochs = {row["controller_epoch"] for row in evidence}
+        operations = {row["operation_id"]: row for row in _rows(connection, "SELECT * FROM operation")}
+        if any(
+            row["status"] not in {"verified", "rejected"}
+            and not (row["status"] == "accepted" and _linked_wire(row, wires, epochs))
+            for row in operations.values()
         ):
             raise RuntimeError("An unresolved command prevents pairing changes")
+        for session in _rows(
+            connection,
+            "SELECT * FROM test_session WHERE end_time IS NULL OR (safety_completed_at IS NULL AND test_id IN (SELECT test_id FROM v2_run_binding))",
+        ):
+            if not _unstarted_reservation(connection, session, operations, wires, epochs):
+                raise RuntimeError("An experiment run lacks a proved safe closure")
 
     def _environment(self):
         if self.env_path.is_symlink() or not self.env_path.is_file():
@@ -183,7 +384,16 @@ class PairingTransaction:
             raise RuntimeError("The actual configured database must be an existing absolute regular file")
         return {key: value for key, value in values.items() if value is not None}, database.resolve()
 
-    def apply(self, *, device_id, reason, controller_id=None, controller_epoch=None, import_psk=None, replace=False):
+    def apply(
+        self,
+        *,
+        device_id,
+        reason,
+        controller_id=None,
+        controller_epoch=None,
+        import_psk=None,
+        replace=False,
+    ):
         if not reason.strip():
             raise RuntimeError("An offline maintenance reason is required")
         self._stopped()
@@ -367,7 +577,16 @@ class PairingTransaction:
 
     @staticmethod
     def _result(journal):
-        return {key: journal[key] for key in ("device_id", "controller_id", "controller_epoch", "psk_file", "folder")}
+        return {
+            key: journal[key]
+            for key in (
+                "device_id",
+                "controller_id",
+                "controller_epoch",
+                "psk_file",
+                "folder",
+            )
+        }
 
     def recover(self):
         self._stopped()

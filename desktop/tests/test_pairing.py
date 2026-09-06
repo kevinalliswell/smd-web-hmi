@@ -3,6 +3,7 @@
 import json
 import os
 import sqlite3
+import uuid
 from contextlib import closing
 from pathlib import Path
 
@@ -10,6 +11,13 @@ import pytest
 from dotenv import dotenv_values
 from smd_desktop.pairing import PairingTransaction
 from smd_desktop.single_instance import AlreadyRunning, single_instance
+from sqlalchemy import create_engine
+
+from app.db.models import Base
+from app.db.operation_models import Operation  # noqa: F401 — register the actual HTTP operation table.
+from app.hostcomm.v2_contract.codec import canonical_bytes, command_digest, digest
+
+NOW = "2026-09-06T00:00:00.000Z"
 
 
 class Platform:
@@ -25,19 +33,14 @@ def installation(tmp_path):
     data = tmp_path / "data"
     (data / "config").mkdir(parents=True)
     database = tmp_path / "actual.db"
-    with closing(sqlite3.connect(database)) as db, db:
-        db.executescript(
-            """
-            CREATE TABLE test_session (test_id TEXT, end_time TEXT, safety_completed_at TEXT);
-            CREATE TABLE operation (status TEXT);
-            CREATE TABLE v2_operation (status TEXT);
-            CREATE TABLE v2_controller_identity (device_id TEXT PRIMARY KEY, controller_id TEXT,
-                controller_epoch TEXT, last_seq TEXT, created_at TEXT);
-            CREATE TABLE v2_run_binding (device_id TEXT, run_id TEXT, test_id TEXT);
-        """
-        )
+    engine = create_engine(f"sqlite:///{database}")
+    with engine.begin() as connection:
+        connection.exec_driver_sql("BEGIN")
+        Base.metadata.create_all(connection)
+    engine.dispose()
     (data / "config/service.env").write_text(
-        f'SMD_DB_PATH={json.dumps(str(database))}\nSMD_JWT_SECRET="keep-me"\nHOSTCOMM_DEVICE_ID=""\n', encoding="utf-8"
+        f'SMD_DB_PATH={json.dumps(str(database))}\nSMD_JWT_SECRET="keep-me"\nHOSTCOMM_DEVICE_ID=""\n',
+        encoding="utf-8",
     )
     return data, database, Platform()
 
@@ -45,6 +48,198 @@ def installation(tmp_path):
 def prepare(installation, **kwargs):
     data, _, platform = installation
     return PairingTransaction(data, platform).apply(device_id="a" * 32, reason="offline commissioning", **kwargs)
+
+
+def insert(db, table, values):
+    db.execute(
+        f"INSERT INTO {table} ({','.join(values)}) VALUES ({','.join('?' for _ in values)})",
+        list(values.values()),
+    )
+
+
+def operation_evidence(installation, *, command="ack_alarm", status="applied", outer_status="accepted"):
+    """Seed the exact durable HTTP→UUID5→wire identities written by the runtime."""
+    _, database, _ = installation
+    epoch, device, run = "c" * 32, "a" * 32, "d" * 32
+    with closing(sqlite3.connect(database)) as db, db:
+        identity = db.execute(
+            "SELECT controller_epoch FROM v2_controller_identity WHERE device_id=?",
+            (device,),
+        ).fetchone()
+        if identity:
+            epoch = identity[0]
+        else:
+            insert(
+                db,
+                "v2_controller_identity",
+                {
+                    "device_id": device,
+                    "controller_id": "b" * 32,
+                    "controller_epoch": epoch,
+                    "last_seq": "1",
+                    "created_at": NOW,
+                },
+            )
+        outer_id, msg_id = "http-operation", "pc-cmd-pairing-proof"
+        wire_id = uuid.uuid5(uuid.UUID(hex=epoch), msg_id).hex
+        params = (
+            {
+                "run_id": run,
+                "recipe_digest": "e" * 64,
+                "safety_profile_digest": "f" * 64,
+            }
+            if command == "start_run"
+            else {"alarm_id": run, "occurrence_seq": "1"}
+        )
+        request = {
+            "operation_id": wire_id,
+            "controller_epoch": epoch,
+            "command_seq": "1",
+            "lease_id": "1" * 32,
+            "expected_boot_id": "2" * 32,
+            "expected_state_revision": "1",
+            "request_digest": "0" * 64,
+            "command": command,
+            "params": params,
+        }
+        request["request_digest"] = command_digest(request)
+        result = {
+            "operation_id": wire_id,
+            "controller_epoch": epoch,
+            "command_seq": "1",
+            "request_digest": request["request_digest"],
+            "result_boot_id": "2" * 32,
+            "status": status,
+            "reason": "ok" if status == "applied" else "state_conflict",
+            "state_revision": "2",
+            "run_id": None,
+            "lease_id": None,
+            "lease_expires_uptime_ms": None,
+        }
+        outer_command = "start_test" if command == "start_run" else command
+        outer_params = {"test_id": "RESERVED"} if command == "start_run" else {"alarm_id": 1}
+        insert(
+            db,
+            "operation",
+            {
+                "operation_id": outer_id,
+                "msg_id": msg_id,
+                "command": outer_command,
+                "operator_id": "admin",
+                "operator_role": "admin",
+                "request_hash": digest({"command": outer_command, "params": outer_params}),
+                "params_json": json.dumps(outer_params),
+                "status": outer_status,
+                "created_at": NOW,
+                "updated_at": NOW,
+            },
+        )
+        insert(
+            db,
+            "v2_operation",
+            {
+                "operation_id": wire_id,
+                "device_id": device,
+                "controller_epoch": epoch,
+                "command_seq": "1",
+                "msg_id": "3" * 32,
+                "command": command,
+                "business_digest": digest(
+                    {
+                        "command": command,
+                        "params": params,
+                        "actor": "admin",
+                        "role": "admin",
+                    }
+                ),
+                "request_digest": request["request_digest"],
+                "actor": "admin",
+                "role": "admin",
+                "status": status,
+                "reason": result["reason"],
+                "request_json": canonical_bytes(request).decode(),
+                "result_json": (
+                    canonical_bytes(result).decode() if status in {"applied", "rejected", "interrupted"} else None
+                ),
+                "reconciled": 0,
+                "created_at": NOW,
+                "updated_at": NOW,
+            },
+        )
+    return {
+        "operation_id": outer_id,
+        "wire_id": wire_id,
+        "request": request,
+        "result": result,
+        "run_id": run,
+    }
+
+
+def rejected_reservation(installation):
+    evidence = operation_evidence(installation, command="start_run", status="rejected", outer_status="rejected")
+    with closing(sqlite3.connect(installation[1])) as db, db:
+        insert(
+            db,
+            "test_session",
+            {
+                "test_id": "RESERVED",
+                "operator_id": "admin",
+                "start_time": NOW,
+                "end_time": NOW,
+                "end_reason": "start_rejected:state_conflict",
+                "phase": "start_rejected",
+                "recipe_snapshot_json": json.dumps(
+                    {
+                        "operation_id": evidence["operation_id"],
+                        "protocol_version": "2.0",
+                    }
+                ),
+                "measurement_basis_json": json.dumps(
+                    {
+                        "v2": {
+                            "profile_digest": "f" * 64,
+                            "profile_snapshot": {"profile_digest": "f" * 64},
+                        }
+                    }
+                ),
+            },
+        )
+        insert(
+            db,
+            "v2_run_binding",
+            {
+                "device_id": "a" * 32,
+                "run_id": evidence["run_id"],
+                "test_id": "RESERVED",
+                "recipe_digest": "e" * 64,
+                "profile_digest": "f" * 64,
+                "created_at": NOW,
+            },
+        )
+    return evidence
+
+
+@pytest.mark.parametrize("status", ["applied", "rejected", "interrupted"])
+def test_applied_wire_receipt_allows_repairing_an_accepted_http_operation(installation, status):
+    first = prepare(installation)
+    evidence = operation_evidence(installation, status=status)
+    second = prepare(installation, replace=True)
+    assert second["controller_epoch"] == first["controller_epoch"]
+    with closing(sqlite3.connect(installation[1])) as db:
+        assert db.execute(
+            "SELECT status FROM operation WHERE operation_id=?",
+            (evidence["operation_id"],),
+        ).fetchone() == ("accepted",)
+
+
+def test_rejected_unstarted_reservation_allows_repairing_without_fake_safe_completion(
+    installation,
+):
+    prepare(installation)
+    rejected_reservation(installation)
+    prepare(installation, replace=True)
+    with closing(sqlite3.connect(installation[1])) as db:
+        assert db.execute("SELECT phase,safety_completed_at FROM test_session").fetchone() == ("start_rejected", None)
 
 
 def test_new_pairing_keeps_key_private_and_returns_only_material_paths(installation, capsys):
@@ -58,7 +253,11 @@ def test_new_pairing_keeps_key_private_and_returns_only_material_paths(installat
     assert not (data / "maintenance.json").exists()
     with closing(sqlite3.connect(database)) as db:
         row = db.execute("SELECT controller_id,controller_epoch,last_seq FROM v2_controller_identity").fetchone()
-        assert row == (settings["HOSTCOMM_CONTROLLER_ID"], settings["HOSTCOMM_CONTROLLER_EPOCH"], "0")
+        assert row == (
+            settings["HOSTCOMM_CONTROLLER_ID"],
+            settings["HOSTCOMM_CONTROLLER_EPOCH"],
+            "0",
+        )
     if os.name != "nt":
         assert os.stat(settings["HOSTCOMM_PSK_FILE"]).st_mode & 0o077 == 0
 
@@ -121,9 +320,7 @@ def test_replacement_requires_explicit_flag_and_preserves_epoch_watermark(instal
 
 @pytest.mark.parametrize("row", ["unknown", "sent", "accepted"])
 def test_unresolved_command_refuses_even_explicit_replacement(installation, row):
-    _, database, _ = installation
-    with closing(sqlite3.connect(database)) as db, db:
-        db.execute("INSERT INTO v2_operation(status) VALUES (?)", (row,))
+    operation_evidence(installation, status=row, outer_status="rejected")
     with pytest.raises(RuntimeError, match="unresolved"):
         prepare(installation, replace=True)
 
@@ -135,7 +332,10 @@ def test_open_run_and_running_service_are_not_overridden(installation):
         prepare(installation)
     platform.running = False
     with closing(sqlite3.connect(database)) as db, db:
-        db.execute("INSERT INTO test_session(test_id) VALUES ('open')")
+        db.execute(
+            "INSERT INTO test_session(test_id,operator_id,start_time) VALUES ('open','admin',?)",
+            (NOW,),
+        )
     with pytest.raises(RuntimeError, match="run"):
         prepare(installation)
 
@@ -227,7 +427,10 @@ def test_pairing_and_recovery_read_unicode_journals_under_legacy_windows_locale(
     renamed = database.with_name("配对数据库.sqlite")
     database.rename(renamed)
     config = data / "config/service.env"
-    config.write_text(f"SMD_DB_PATH={json.dumps(str(renamed), ensure_ascii=False)}\n", encoding="utf-8")
+    config.write_text(
+        f"SMD_DB_PATH={json.dumps(str(renamed), ensure_ascii=False)}\n",
+        encoding="utf-8",
+    )
     original_read = Path.read_text
 
     def windows_read(path, encoding=None, errors=None, **kwargs):
@@ -242,3 +445,205 @@ def test_pairing_and_recovery_read_unicode_journals_under_legacy_windows_locale(
     journal = json.loads((data / "updates/pairing.json").read_text(encoding="utf-8"))
     assert journal["reason"] == "配对替换"
     assert not (data / "maintenance.json").exists()
+
+
+def test_terminal_history_remains_verifiable_after_explicit_epoch_rotation(
+    installation,
+):
+    first = prepare(installation)
+    evidence = operation_evidence(installation)
+    second = prepare(installation, replace=True, controller_epoch="e" * 32)
+    third = prepare(installation, replace=True)
+    assert second["controller_epoch"] == third["controller_epoch"] == "e" * 32
+    with closing(sqlite3.connect(installation[1])) as db:
+        assert db.execute(
+            "SELECT controller_epoch FROM v2_operation WHERE operation_id=?",
+            (evidence["wire_id"],),
+        ).fetchone() == (first["controller_epoch"],)
+
+
+@pytest.mark.parametrize(
+    "conflict",
+    [
+        "missing_wire",
+        "http_msg",
+        "wire_epoch",
+        "wire_device",
+        "wire_command",
+        "wire_actor",
+        "wire_role",
+        "wire_accepted",
+        "result_digest",
+        "result_id",
+        "request_bytes",
+        "outer_actor",
+        "outer_role",
+        "outer_hash",
+        "outer_pointer",
+    ],
+)
+def test_accepted_operation_requires_matching_terminal_wire_evidence(installation, conflict):
+    proof = operation_evidence(installation)
+    with closing(sqlite3.connect(installation[1])) as db, db:
+        changes = {
+            "missing_wire": ("DELETE FROM v2_operation", ()),
+            "http_msg": ("UPDATE operation SET msg_id=?", ("pc-cmd-other",)),
+            "wire_epoch": ("UPDATE v2_operation SET controller_epoch=?", ("4" * 32,)),
+            "wire_device": ("UPDATE v2_operation SET device_id=?", ("4" * 32,)),
+            "wire_command": ("UPDATE v2_operation SET command='ack_run'", ()),
+            "wire_actor": ("UPDATE v2_operation SET actor='other'", ()),
+            "wire_role": ("UPDATE v2_operation SET role='operator'", ()),
+            "wire_accepted": ("UPDATE v2_operation SET status='accepted'", ()),
+            "result_digest": (
+                "UPDATE v2_operation SET result_json=?",
+                (json.dumps({**proof["result"], "request_digest": "0" * 64}),),
+            ),
+            "result_id": (
+                "UPDATE v2_operation SET result_json=?",
+                (json.dumps({**proof["result"], "operation_id": "0" * 32}),),
+            ),
+            "request_bytes": (
+                "UPDATE v2_operation SET request_json=?",
+                (
+                    json.dumps(
+                        {
+                            **proof["request"],
+                            "params": {"alarm_id": "4" * 32, "occurrence_seq": "1"},
+                        }
+                    ),
+                ),
+            ),
+            "outer_actor": ("UPDATE operation SET operator_id='other'", ()),
+            "outer_role": ("UPDATE operation SET operator_role='operator'", ()),
+            "outer_hash": ("UPDATE operation SET request_hash=?", ("0" * 64,)),
+            "outer_pointer": (
+                "UPDATE operation SET result_json=?",
+                (
+                    json.dumps(
+                        {
+                            "result": "accepted",
+                            "wire_status": "applied",
+                            "wire_operation_id": "4" * 32,
+                        }
+                    ),
+                ),
+            ),
+        }
+        db.execute(*changes[conflict])
+        with pytest.raises(RuntimeError, match="unresolved"):
+            PairingTransaction._guard(db)
+
+
+@pytest.mark.parametrize(
+    "conflict",
+    [
+        "snapshot_identity",
+        "snapshot_json",
+        "missing_wire",
+        "wrong_run",
+        "wrong_device",
+        "result_run",
+        "phase_only",
+        "end_open",
+        "measurement",
+        "stop_requested",
+        "basis_state",
+        "basis_boundary",
+        "basis_json",
+        "sample",
+        "raw_source",
+        "interrupted",
+    ],
+)
+def test_rejected_start_exemption_refuses_unknown_or_observed_run_evidence(installation, conflict):
+    proof = rejected_reservation(installation)
+    with closing(sqlite3.connect(installation[1])) as db, db:
+        if conflict == "sample":
+            insert(
+                db,
+                "sample_point",
+                {
+                    "test_id": "RESERVED",
+                    "ts": NOW,
+                    "source": "hostcomm_v2_live",
+                    "burden_temp_v": 0,
+                    "delta_p_v": 0,
+                    "displacement_v": 0,
+                },
+            )
+        elif conflict == "raw_source":
+            insert(
+                db,
+                "v2_source_record",
+                {
+                    "device_id": "a" * 32,
+                    "record_type": "event",
+                    "boot_id": "2" * 32,
+                    "source_seq": "1",
+                    "run_id": proof["run_id"],
+                    "payload_bytes": b"{}",
+                    "archived": 0,
+                    "received_at": NOW,
+                },
+            )
+        else:
+            changes = {
+                "snapshot_identity": (
+                    "UPDATE test_session SET recipe_snapshot_json=?",
+                    (json.dumps({"operation_id": "other", "protocol_version": "2.0"}),),
+                ),
+                "snapshot_json": (
+                    "UPDATE test_session SET recipe_snapshot_json='broken'",
+                    (),
+                ),
+                "missing_wire": ("DELETE FROM v2_operation", ()),
+                "wrong_run": ("UPDATE v2_run_binding SET run_id=?", ("4" * 32,)),
+                "wrong_device": ("UPDATE v2_run_binding SET device_id=?", ("4" * 32,)),
+                "result_run": (
+                    "UPDATE v2_operation SET result_json=?",
+                    (json.dumps({**proof["result"], "run_id": "4" * 32}),),
+                ),
+                "phase_only": (
+                    "UPDATE test_session SET end_reason='start_not_sent'",
+                    (),
+                ),
+                "end_open": ("UPDATE test_session SET end_time=NULL", ()),
+                "measurement": (
+                    "UPDATE test_session SET measurement_completed_at=?",
+                    (NOW,),
+                ),
+                "stop_requested": (
+                    "UPDATE test_session SET stop_requested_at=?",
+                    (NOW,),
+                ),
+                "basis_state": (
+                    "UPDATE test_session SET measurement_basis_json=?",
+                    (json.dumps({"v2": {"state": "preparing"}}),),
+                ),
+                "basis_boundary": (
+                    "UPDATE test_session SET measurement_basis_json=?",
+                    (
+                        json.dumps(
+                            {
+                                "v2": {
+                                    "measurement_start": {
+                                        "boot_id": "2" * 32,
+                                        "sample_seq": "1",
+                                    }
+                                }
+                            }
+                        ),
+                    ),
+                ),
+                "basis_json": (
+                    "UPDATE test_session SET measurement_basis_json='broken'",
+                    (),
+                ),
+                "interrupted": (
+                    "UPDATE v2_operation SET status='interrupted', result_json=?",
+                    (json.dumps({**proof["result"], "status": "interrupted"}),),
+                ),
+            }
+            db.execute(*changes[conflict])
+        with pytest.raises(RuntimeError, match="run"):
+            PairingTransaction._guard(db)
