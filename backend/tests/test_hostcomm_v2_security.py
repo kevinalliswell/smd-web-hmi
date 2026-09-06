@@ -13,6 +13,7 @@ import pytest
 from app.hostcomm.v2_security import (
     OPENSSL_AES128_POLICY,
     V2SecurityError,
+    _validate_windows_acl,
     create_client_context,
     create_server_context,
     load_psk,
@@ -66,6 +67,14 @@ def test_key_file_rejects_broad_permissions_and_symlink(key_file):
 
 @pytest.mark.skipif(os.name != "nt", reason="Requires a real Windows file DACL")
 def test_windows_key_file_rejects_everyone_read_then_accepts_private_acl(key_file):
+    # Exercise OWNER RIGHTS explicitly, including Python versions whose mkdir
+    # does not yet install this ACE. It must resolve only to a verified owner.
+    subprocess.run(
+        ["icacls.exe", str(key_file), "/grant", "*S-1-3-4:F"],
+        check=True,
+        capture_output=True,
+        timeout=10,
+    )
     assert load_psk(key_file) == bytes.fromhex("37" * 32)
     subprocess.run(
         ["icacls.exe", str(key_file), "/grant", "*S-1-1-0:R"],
@@ -84,6 +93,25 @@ def test_windows_key_file_rejects_everyone_read_then_accepts_private_acl(key_fil
             timeout=10,
         )
     assert load_psk(key_file) == bytes.fromhex("37" * 32)
+
+
+@pytest.mark.parametrize("owner", ["S-1-5-21-100-200-300-1001", "S-1-5-18", "S-1-5-32-544", "S-1-5-80-1-2-3-4-5"])
+def test_owner_rights_accepts_only_verified_operator_system_admin_or_service_owner(owner):
+    allowed = {"S-1-5-21-100-200-300-1001", "S-1-5-18", "S-1-5-32-544", "S-1-5-80-1-2-3-4-5"}
+    _validate_windows_acl(owner, allowed, [("S-1-3-4", 0x1F01FF), ("S-1-5-32-544", 0x1F01FF)])
+
+
+@pytest.mark.parametrize("grants", [[], [("S-1-3-4", 0x1F01FF)], [("S-1-5-32-544", 0x1F01FF)]])
+def test_untrusted_owner_cannot_use_owner_rights_or_replace_a_private_dacl(grants):
+    # A foreign owner can replace even an otherwise administrator-only DACL.
+    with pytest.raises(V2SecurityError, match="owner is outside"):
+        _validate_windows_acl("S-1-5-21-100-200-300-1002", {"S-1-5-32-544"}, grants)
+
+
+@pytest.mark.parametrize("principal", ["S-1-1-0", "S-1-5-11", "S-1-5-32-545", "S-1-5-80-9-8-7-6-5"])
+def test_trusted_owner_does_not_authorize_broad_groups_or_an_unrelated_service(principal):
+    with pytest.raises(V2SecurityError, match="ACL grants access"):
+        _validate_windows_acl("S-1-5-32-544", {"S-1-5-32-544"}, [("S-1-3-4", 0x1F01FF), (principal, 0x120089)])
 
 
 def test_missing_psk_support_never_falls_back(key_file, monkeypatch):

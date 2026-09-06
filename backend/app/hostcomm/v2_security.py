@@ -7,6 +7,7 @@ import os
 import re
 import ssl
 import stat
+from collections.abc import Iterable
 from pathlib import Path
 
 OPENSSL_AES128_POLICY = """openssl_conf = openssl_init
@@ -30,6 +31,21 @@ def psk_identity(device_id: str, controller_id: str, controller_epoch: str) -> s
     if any(not re.fullmatch(r"[0-9a-f]{32}", value) for value in (device_id, controller_id, controller_epoch)):
         raise V2SecurityError("Pairing identifiers must be full lowercase UUID hex")
     return f"smd2/{device_id}/{controller_id}/{controller_epoch}"
+
+
+def _validate_windows_acl(owner: str, allowed: set[str], grants: Iterable[tuple[str, int]]) -> None:
+    # Owners can normally replace a DACL, so a trusted grant list alone is not
+    # sufficient if an unrelated identity owns the key file.
+    if owner not in allowed:
+        raise V2SecurityError("Pairing-file owner is outside its service and administrators")
+    for principal, mask in grants:
+        # Python 3.13 mkdir(mode=0o700) creates an inheritable OWNER RIGHTS ACE.
+        # S-1-3-4 denotes this object's actual owner, not a universally trusted
+        # group. Resolve it only after validating the owner returned for this FD.
+        if principal == "S-1-3-4":
+            principal = owner
+        if mask & 0xD00D01BF and principal not in allowed:
+            raise V2SecurityError("Pairing-file ACL grants access outside its service and administrators")
 
 
 def _windows_permissions(fd: int) -> None:
@@ -133,15 +149,16 @@ def _windows_permissions(fd: int) -> None:
                 allowed.add(sid)
     finally:
         kernel.CloseHandle(token)
-    dacl, descriptor = pointer(), pointer()
+    owner, dacl, descriptor = pointer(), pointer(), pointer()
     code = advapi.GetSecurityInfo(
-        msvcrt.get_osfhandle(fd), 1, 4, None, None, ctypes.byref(dacl), None, ctypes.byref(descriptor)
+        msvcrt.get_osfhandle(fd), 1, 5, ctypes.byref(owner), None, ctypes.byref(dacl), None, ctypes.byref(descriptor)
     )
-    if code or not dacl.value:
+    if code or not owner.value or not dacl.value:
         if descriptor.value:
             kernel.LocalFree(descriptor)
-        raise V2SecurityError("Pairing file requires a restricted DACL")
+        raise V2SecurityError("Pairing file requires an identified owner and restricted DACL")
     try:
+        grants = []
         ace_count = ctypes.c_ushort.from_address(dacl.value + 4).value
         for index in range(ace_count):
             ace = pointer()
@@ -153,8 +170,8 @@ def _windows_permissions(fd: int) -> None:
             if kind != 0:
                 raise V2SecurityError("Pairing-file ACL contains an unsupported access grant")
             mask = wintypes.DWORD.from_address(ace.value + 4).value
-            if mask & 0xD00D01BF and sid_text(ace.value + 8) not in allowed:
-                raise V2SecurityError("Pairing-file ACL grants access outside its service and administrators")
+            grants.append((sid_text(ace.value + 8), mask))
+        _validate_windows_acl(sid_text(owner), allowed, grants)
     finally:
         kernel.LocalFree(descriptor)
 
