@@ -211,3 +211,27 @@ def test_junction_is_rejected_without_following_or_changing_target(powershell, t
     )
     assert result.returncode == 0, result.stderr
     assert (program / "service.exe").read_bytes() == b"program fixture"
+
+
+def test_retired_tree_removes_service_ownership_and_access(powershell, tmp_path, trees):
+    data, _, backup = trees
+    retired = backup / "retired-data"
+    result = run(
+        powershell,
+        tmp_path,
+        f"$file={literal(data / 'config/service.env')}\n"
+        "Invoke-ResetNative (Join-Path $env:SystemRoot 'System32/icacls.exe') @($file,'/setowner','*S-1-5-19','/Q')\n"
+        "$acl=Get-Acl -LiteralPath $file\n"
+        "$sid=New-Object Security.Principal.SecurityIdentifier('S-1-5-19')\n"
+        "if ($acl.GetOwner([Security.Principal.SecurityIdentifier]).Value -ne $sid.Value) { throw 'Fixture owner not set' }\n"
+        "$acl.AddAccessRule((New-Object Security.AccessControl.FileSystemAccessRule($sid,'FullControl','Allow')))\n"
+        "Set-Acl -LiteralPath $file -AclObject $acl\n"
+        f"Move-RetiredTree -Source {literal(data)} -Destination {literal(retired)}\n"
+        f"$acl=Get-Acl -LiteralPath {literal(retired / 'config/service.env')}\n"
+        "if ($acl.GetOwner([Security.Principal.SecurityIdentifier]).Value -ne 'S-1-5-32-544') { throw 'Owner retained' }\n"
+        "foreach ($rule in $acl.GetAccessRules($true,$true,[Security.Principal.SecurityIdentifier])) {\n"
+        "if ($rule.IdentityReference.Value -notin @('S-1-5-18','S-1-5-32-544')) { throw 'Service access retained' } }",
+    )
+    assert result.returncode == 0, result.stderr
+    assert not data.exists()
+    assert (retired / "config/service.env").read_text(encoding="utf-8") == "private fixture\n"

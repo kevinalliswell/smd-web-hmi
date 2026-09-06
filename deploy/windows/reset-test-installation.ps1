@@ -176,10 +176,13 @@ function Protect-ResetTree([string]$Path) {
     Assert-NoReparse $Path
     New-PrivateDirectory $Path
     foreach ($Child in @(Get-ChildItem -LiteralPath $Path -Force)) {
+        Invoke-ResetNative (Join-Path $env:SystemRoot 'System32/icacls.exe') @($Child.FullName,'/setowner','*S-1-5-32-544','/T','/Q')
         Invoke-ResetNative (Join-Path $env:SystemRoot 'System32/icacls.exe') @($Child.FullName,'/reset','/T','/Q')
     }
     foreach ($Item in @((Get-Item -LiteralPath $Path -Force)) + @(Get-ChildItem -LiteralPath $Path -Force -Recurse)) {
-        $Rules = (Get-Acl -LiteralPath $Item.FullName).GetAccessRules($true,$true,[Security.Principal.SecurityIdentifier])
+        $Acl = Get-Acl -LiteralPath $Item.FullName
+        if ($Acl.GetOwner([Security.Principal.SecurityIdentifier]).Value -notin @('S-1-5-18','S-1-5-32-544')) { Stop-ResetError 'A backup file retained an unexpected owner' }
+        $Rules = $Acl.GetAccessRules($true,$true,[Security.Principal.SecurityIdentifier])
         foreach ($Rule in $Rules) {
             if ($Rule.AccessControlType -eq 'Allow' -and $Rule.IdentityReference.Value -notin @('S-1-5-18','S-1-5-32-544')) { Stop-ResetError 'A backup file retained an unexpected access grant' }
         }
@@ -238,6 +241,10 @@ function Export-ResetMetadata($Plan, [string]$BackupDir) {
     $Reg = Join-Path $env:SystemRoot 'System32/reg.exe'
     Invoke-ResetNative $Reg @('export','HKLM\Software\SmdHmi',(Join-Path $Metadata 'product.reg'),'/y')
     Invoke-ResetNative $Reg @('export','HKLM\Software\Microsoft\Windows\CurrentVersion\Uninstall\SmdHmi',(Join-Path $Metadata 'uninstall.reg'),'/y')
+    Invoke-ResetNative $Reg @('export','HKLM\SYSTEM\CurrentControlSet\Services\SmdHmi',(Join-Path $Metadata 'service.reg'),'/y')
+    $ServiceSecurity = & (Join-Path $env:SystemRoot 'System32/sc.exe') sdshow SmdHmi 2>&1
+    if ($LASTEXITCODE -ne 0) { Stop-ResetError 'The service security descriptor could not be saved' }
+    [IO.File]::WriteAllText((Join-Path $Metadata 'service-sddl.txt'),($ServiceSecurity -join "`r`n"),[Text.Encoding]::UTF8)
     $Xml = Export-ScheduledTask -TaskName 'SmdHmi-Recover' -TaskPath '\'
     [IO.File]::WriteAllText((Join-Path $Metadata 'recovery-task.xml'),$Xml,[Text.Encoding]::Unicode)
     Write-ResetJson (Join-Path $Metadata 'service.json') ($Plan.service | Select-Object Name,DisplayName,StartName,StartMode,State,PathName,ProcessId)
