@@ -8,15 +8,18 @@ from pathlib import Path
 
 import pytest
 
+from tests.v2_test_support import private_test_directory
+
 
 @pytest.mark.skipif(not getattr(ssl, "HAS_PSK", False), reason="TLS-PSK requires Python 3.13/OpenSSL")
 def test_real_tls_recipe_run_stop_cooling_and_source_log_recovery(tmp_path):
     # OPENSSL_CONF must be set before ssl/OpenSSL initializes in a fresh process.
     from app.hostcomm.v2_security import OPENSSL_AES128_POLICY
 
-    policy = tmp_path / "openssl.cnf"
+    directory = private_test_directory(tmp_path)
+    policy = directory / "openssl.cnf"
     policy.write_text(OPENSSL_AES128_POLICY, encoding="ascii")
-    key = tmp_path / "synthetic-pairing.psk"
+    key = directory / "synthetic-pairing.psk"
     key.write_text("37" * 32 + "\n", encoding="ascii")
     key.chmod(0o600)
     environment = {**os.environ, "OPENSSL_CONF": str(policy)}
@@ -25,7 +28,7 @@ def test_real_tls_recipe_run_stop_cooling_and_source_log_recovery(tmp_path):
     backend = Path(__file__).resolve().parents[1]
     environment["PYTHONPATH"] = str(backend)
     completed = subprocess.run(
-        [sys.executable, str(Path(__file__).resolve()), "--child", str(tmp_path)],
+        [sys.executable, str(Path(__file__).resolve()), "--child", str(directory)],
         cwd=backend,
         env=environment,
         capture_output=True,

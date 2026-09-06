@@ -19,6 +19,7 @@ from app.hostcomm.v2_security import (
     psk_identity,
     verify_tls,
 )
+from tests.v2_test_support import private_test_directory
 
 
 @pytest.mark.skipif(sys.version_info < (3, 13), reason="Python 3.11 verifies only the explicit legacy baseline")
@@ -37,7 +38,7 @@ def test_release_python_has_required_tls_psk_capability():
 
 @pytest.fixture
 def key_file(tmp_path):
-    path = tmp_path / "pairing.psk"
+    path = private_test_directory(tmp_path) / "pairing.psk"
     path.write_text("37" * 32 + "\n", encoding="ascii")
     path.chmod(0o600)
     return path
@@ -61,6 +62,28 @@ def test_key_file_rejects_broad_permissions_and_symlink(key_file):
     link.symlink_to(key_file)
     with pytest.raises(V2SecurityError):
         load_psk(link)
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Requires a real Windows file DACL")
+def test_windows_key_file_rejects_everyone_read_then_accepts_private_acl(key_file):
+    assert load_psk(key_file) == bytes.fromhex("37" * 32)
+    subprocess.run(
+        ["icacls.exe", str(key_file), "/grant", "*S-1-1-0:R"],
+        check=True,
+        capture_output=True,
+        timeout=10,
+    )
+    try:
+        with pytest.raises(V2SecurityError, match="ACL grants access"):
+            load_psk(key_file)
+    finally:
+        subprocess.run(
+            ["icacls.exe", str(key_file), "/remove:g", "*S-1-1-0"],
+            check=True,
+            capture_output=True,
+            timeout=10,
+        )
+    assert load_psk(key_file) == bytes.fromhex("37" * 32)
 
 
 def test_missing_psk_support_never_falls_back(key_file, monkeypatch):
@@ -91,9 +114,9 @@ def test_real_tls13_psk_roundtrip_or_authentication_rejection(key_file, tmp_path
                 "-subj",
                 "/CN=localhost",
                 "-keyout",
-                str(tmp_path / "server.key"),
+                str(key_file.with_name("server.key")),
                 "-out",
-                str(tmp_path / "server.crt"),
+                str(key_file.with_name("server.crt")),
             ],
             check=True,
             capture_output=True,
