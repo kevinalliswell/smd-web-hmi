@@ -16,8 +16,9 @@ jobs:
       - run: pip install --require-hashes -r backend/requirements-dev.lock
       - run: python scripts/release/metadata.py && python scripts/release/check_locks.py
       - run: python scripts/check_docs.py
-      - run: black --config backend/pyproject.toml --check backend/app backend/tests desktop scripts/release
-      - run: isort --settings-path backend/pyproject.toml --check-only backend/app backend/tests desktop scripts/release
+      - run: python scripts/check_hostcomm_contract.py
+      - run: black --config backend/pyproject.toml --check backend/app backend/tests desktop scripts/release contracts scripts/check_hostcomm_contract.py
+      - run: isort --settings-path backend/pyproject.toml --check-only backend/app backend/tests desktop scripts/release contracts scripts/check_hostcomm_contract.py
   backend:
     strategy:
       fail-fast: false
@@ -71,6 +72,9 @@ jobs:
           node-version: '24'
           cache: npm
           cache-dependency-path: frontend/package-lock.json
+      - name: Cross-language HostComm canonical bytes
+        working-directory: .
+        run: node contracts/hostcomm/v2/verify-js.mjs
       - uses: actions/setup-python@v5
         with:
           python-version: '3.13'

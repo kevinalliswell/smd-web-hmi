@@ -1,0 +1,5507 @@
+{
+  "$defs": {
+    "AckAlarm": {
+      "additionalProperties": false,
+      "properties": {
+        "alarm_id": {
+          "pattern": "^[0-9a-f]{32}$",
+          "title": "Alarm Id",
+          "type": "string"
+        },
+        "occurrence_seq": {
+          "pattern": "^(0|[1-9][0-9]{0,19})$",
+          "title": "Occurrence Seq",
+          "type": "string"
+        }
+      },
+      "required": [
+        "alarm_id",
+        "occurrence_seq"
+      ],
+      "title": "AckAlarm",
+      "type": "object"
+    },
+    "AckRun": {
+      "additionalProperties": false,
+      "properties": {
+        "run_id": {
+          "pattern": "^[0-9a-f]{32}$",
+          "title": "Run Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "run_id"
+      ],
+      "title": "AckRun",
+      "type": "object"
+    },
+    "AcquireLease": {
+      "additionalProperties": false,
+      "properties": {
+        "lease_ms": {
+          "const": 8000,
+          "title": "Lease Ms",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "lease_ms"
+      ],
+      "title": "AcquireLease",
+      "type": "object"
+    },
+    "ActivateRecipe": {
+      "additionalProperties": false,
+      "properties": {
+        "expected_active_digest": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Expected Active Digest"
+        },
+        "recipe_digest": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Recipe Digest",
+          "type": "string"
+        },
+        "transfer_id": {
+          "pattern": "^[0-9a-f]{32}$",
+          "title": "Transfer Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "transfer_id",
+        "recipe_digest",
+        "expected_active_digest"
+      ],
+      "title": "ActivateRecipe",
+      "type": "object"
+    },
+    "AlarmEvent": {
+      "additionalProperties": false,
+      "properties": {
+        "acknowledged": {
+          "title": "Acknowledged",
+          "type": "boolean"
+        },
+        "active": {
+          "title": "Active",
+          "type": "boolean"
+        },
+        "alarm_id": {
+          "pattern": "^[0-9a-f]{32}$",
+          "title": "Alarm Id",
+          "type": "string"
+        },
+        "code": {
+          "enum": [
+            "emergency_stop",
+            "co_leak",
+            "exhaust_lost",
+            "furnace_overtemperature",
+            "burden_overtemperature",
+            "temperature_sensor_invalid",
+            "measurement_sensor_invalid",
+            "n2_mfc_fault",
+            "co_mfc_fault",
+            "gas_supply_lost",
+            "actuator_feedback_fault",
+            "lease_lost",
+            "storage_unavailable",
+            "log_capacity_low",
+            "log_capacity_exhausted",
+            "recipe_stage_timeout",
+            "clock_unsynced",
+            "engineering_profile_invalid"
+          ],
+          "title": "Code",
+          "type": "string"
+        },
+        "event_id": {
+          "pattern": "^[0-9a-f]{32}$",
+          "title": "Event Id",
+          "type": "string"
+        },
+        "event_seq": {
+          "pattern": "^(0|[1-9][0-9]{0,19})$",
+          "title": "Event Seq",
+          "type": "string"
+        },
+        "event_timestamp": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{3}Z$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Event Timestamp"
+        },
+        "event_uptime_ms": {
+          "pattern": "^(0|[1-9][0-9]{0,19})$",
+          "title": "Event Uptime Ms",
+          "type": "string"
+        },
+        "kind": {
+          "const": "alarm",
+          "title": "Kind",
+          "type": "string"
+        },
+        "occurrence_seq": {
+          "pattern": "^(0|[1-9][0-9]{0,19})$",
+          "title": "Occurrence Seq",
+          "type": "string"
+        },
+        "run_id": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{32}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Run Id"
+        },
+        "sample": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SampleRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "severity": {
+          "enum": [
+            "info",
+            "warning",
+            "trip"
+          ],
+          "title": "Severity",
+          "type": "string"
+        },
+        "transition": {
+          "enum": [
+            "raised",
+            "acknowledged",
+            "cleared"
+          ],
+          "title": "Transition",
+          "type": "string"
+        }
+      },
+      "required": [
+        "event_id",
+        "event_seq",
+        "run_id",
+        "event_uptime_ms",
+        "event_timestamp",
+        "kind",
+        "alarm_id",
+        "occurrence_seq",
+        "code",
+        "transition",
+        "severity",
+        "active",
+        "acknowledged",
+        "sample"
+      ],
+      "title": "AlarmEvent",
+      "type": "object"
+    },
+    "AlarmOccurrence": {
+      "additionalProperties": false,
+      "properties": {
+        "acknowledged": {
+          "title": "Acknowledged",
+          "type": "boolean"
+        },
+        "active": {
+          "title": "Active",
+          "type": "boolean"
+        },
+        "alarm_id": {
+          "pattern": "^[0-9a-f]{32}$",
+          "title": "Alarm Id",
+          "type": "string"
+        },
+        "code": {
+          "enum": [
+            "emergency_stop",
+            "co_leak",
+            "exhaust_lost",
+            "furnace_overtemperature",
+            "burden_overtemperature",
+            "temperature_sensor_invalid",
+            "measurement_sensor_invalid",
+            "n2_mfc_fault",
+            "co_mfc_fault",
+            "gas_supply_lost",
+            "actuator_feedback_fault",
+            "lease_lost",
+            "storage_unavailable",
+            "log_capacity_low",
+            "log_capacity_exhausted",
+            "recipe_stage_timeout",
+            "clock_unsynced",
+            "engineering_profile_invalid"
+          ],
+          "title": "Code",
+          "type": "string"
+        },
+        "occurrence_seq": {
+          "pattern": "^(0|[1-9][0-9]{0,19})$",
+          "title": "Occurrence Seq",
+          "type": "string"
+        },
+        "raised_boot_id": {
+          "pattern": "^[0-9a-f]{32}$",
+          "title": "Raised Boot Id",
+          "type": "string"
+        },
+        "raised_event_seq": {
+          "pattern": "^(0|[1-9][0-9]{0,19})$",
+          "title": "Raised Event Seq",
+          "type": "string"
+        },
+        "raised_sample": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SampleRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "raised_timestamp": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{3}Z$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Raised Timestamp"
+        },
+        "raised_uptime_ms": {
+          "pattern": "^(0|[1-9][0-9]{0,19})$",
+          "title": "Raised Uptime Ms",
+          "type": "string"
+        },
+        "severity": {
+          "enum": [
+            "info",
+            "warning",
+            "trip"
+          ],
+          "title": "Severity",
+          "type": "string"
+        }
+      },
+      "required": [
+        "alarm_id",
+        "occurrence_seq",
+        "code",
+        "severity",
+        "active",
+        "acknowledged",
+        "raised_boot_id",
+        "raised_event_seq",
+        "raised_sample",
+        "raised_timestamp",
+        "raised_uptime_ms"
+      ],
+      "title": "AlarmOccurrence",
+      "type": "object"
+    },
+    "AlarmsQuery": {
+      "additionalProperties": false,
+      "properties": {
+        "expected_revision": {
+          "anyOf": [
+            {
+              "pattern": "^(0|[1-9][0-9]{0,19})$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Expected Revision"
+        },
+        "limit": {
+          "const": 16,
+          "title": "Limit",
+          "type": "integer"
+        },
+        "page_offset": {
+          "maximum": 9007199254740991,
+          "minimum": 0,
+          "title": "Page Offset",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "expected_revision",
+        "page_offset",
+        "limit"
+      ],
+      "title": "AlarmsQuery",
+      "type": "object"
+    },
+    "AlarmsSnapshot": {
+      "additionalProperties": false,
+      "properties": {
+        "items": {
+          "items": {
+            "$ref": "#/$defs/AlarmOccurrence"
+          },
+          "maxItems": 16,
+          "title": "Items",
+          "type": "array"
+        },
+        "next_offset": {
+          "anyOf": [
+            {
+              "maximum": 9007199254740991,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Next Offset"
+        },
+        "page_offset": {
+          "maximum": 9007199254740991,
+          "minimum": 0,
+          "title": "Page Offset",
+          "type": "integer"
+        },
+        "revision": {
+          "pattern": "^(0|[1-9][0-9]{0,19})$",
+          "title": "Revision",
+          "type": "string"
+        }
+      },
+      "required": [
+        "revision",
+        "page_offset",
+        "items",
+        "next_offset"
+      ],
+      "title": "AlarmsSnapshot",
+      "type": "object"
+    },
+    "ChannelFreshness": {
+      "additionalProperties": false,
+      "properties": {
+        "burden_mc": {
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "title": "Burden Mc",
+          "type": "integer"
+        },
+        "co_measured_ml_min": {
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "title": "Co Measured Ml Min",
+          "type": "integer"
+        },
+        "co_setpoint_ml_min": {
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "title": "Co Setpoint Ml Min",
+          "type": "integer"
+        },
+        "displacement_um": {
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "title": "Displacement Um",
+          "type": "integer"
+        },
+        "drip_mass_mg": {
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "title": "Drip Mass Mg",
+          "type": "integer"
+        },
+        "furnace_mc": {
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "title": "Furnace Mc",
+          "type": "integer"
+        },
+        "furnace_setpoint_mc": {
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "title": "Furnace Setpoint Mc",
+          "type": "integer"
+        },
+        "n2_measured_ml_min": {
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "title": "N2 Measured Ml Min",
+          "type": "integer"
+        },
+        "n2_setpoint_ml_min": {
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "title": "N2 Setpoint Ml Min",
+          "type": "integer"
+        },
+        "pressure_drop_pa": {
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "title": "Pressure Drop Pa",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "furnace_mc",
+        "burden_mc",
+        "furnace_setpoint_mc",
+        "pressure_drop_pa",
+        "displacement_um",
+        "drip_mass_mg",
+        "n2_measured_ml_min",
+        "n2_setpoint_ml_min",
+        "co_measured_ml_min",
+        "co_setpoint_ml_min"
+      ],
+      "title": "ChannelFreshness",
+      "type": "object"
+    },
+    "CommandAckAlarm": {
+      "additionalProperties": false,
+      "properties": {
+        "command": {
+          "const": "ack_alarm",
+          "title": "Command",
+          "type": "string"
+        },
+        "command_seq": {
+          "pattern": "^(0|[1-9][0-9]{0,19})$",
+          "title": "Command Seq",
+          "type": "string"
+        },
+        "controller_epoch": {
+          "pattern": "^[0-9a-f]{32}$",
+          "title": "Controller Epoch",
+          "type": "string"
+        },
+        "expected_boot_id": {
+          "pattern": "^[0-9a-f]{32}$",
+          "title": "Expected Boot Id",
+          "type": "string"
+        },
+        "expected_state_revision": {
+          "anyOf": [
+            {
+              "pattern": "^(0|[1-9][0-9]{0,19})$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Expected State Revision"
+        },
+        "lease_id": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{32}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Lease Id"
+        },
+        "operation_id": {
+          "pattern": "^[0-9a-f]{32}$",
+          "title": "Operation Id",
+          "type": "string"
+        },
+        "params": {
+          "$ref": "#/$defs/AckAlarm"
+        },
+        "request_digest": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Request Digest",
+          "type": "string"
+        }
+      },
+      "required": [
+        "operation_id",
+        "controller_epoch",
+        "command_seq",
+        "lease_id",
+        "expected_boot_id",
+        "expected_state_revision",
+        "request_digest",
+        "command",
+        "params"
+      ],
+      "title": "CommandAckAlarm",
+      "type": "object"
+    },
+    "CommandAckRun": {
+      "additionalProperties": false,
+      "properties": {
+        "command": {
+          "const": "ack_run",
+          "title": "Command",
+          "type": "string"
+        },
+        "command_seq": {
+          "pattern": "^(0|[1-9][0-9]{0,19})$",
+          "title": "Command Seq",
+          "type": "string"
+        },
+        "controller_epoch": {
+          "pattern": "^[0-9a-f]{32}$",
+          "title": "Controller Epoch",
+          "type": "string"
+        },
+        "expected_boot_id": {
+          "pattern": "^[0-9a-f]{32}$",
+          "title": "Expected Boot Id",
+          "type": "string"
+        },
+        "expected_state_revision": {
+          "anyOf": [
+            {
+              "pattern": "^(0|[1-9][0-9]{0,19})$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Expected State Revision"
+        },
+        "lease_id": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{32}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Lease Id"
+        },
+        "operation_id": {
+          "pattern": "^[0-9a-f]{32}$",
+          "title": "Operation Id",
+          "type": "string"
+        },
+        "params": {
+          "$ref": "#/$defs/AckRun"
+        },
+        "request_digest": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Request Digest",
+          "type": "string"
+        }
+      },
+      "required": [
+        "operation_id",
+        "controller_epoch",
+        "command_seq",
+        "lease_id",
+        "expected_boot_id",
+        "expected_state_revision",
+        "request_digest",
+        "command",
+        "params"
+      ],
+      "title": "CommandAckRun",
+      "type": "object"
+    },
+    "CommandAcquireLease": {
+      "additionalProperties": false,
+      "properties": {
+        "command": {
+          "const": "acquire_lease",
+          "title": "Command",
+          "type": "string"
+        },
+        "command_seq": {
+          "pattern": "^(0|[1-9][0-9]{0,19})$",
+          "title": "Command Seq",
+          "type": "string"
+        },
+        "controller_epoch": {
+          "pattern": "^[0-9a-f]{32}$",
+          "title": "Controller Epoch",
+          "type": "string"
+        },
+        "expected_boot_id": {
+          "pattern": "^[0-9a-f]{32}$",
+          "title": "Expected Boot Id",
+          "type": "string"
+        },
+        "expected_state_revision": {
+          "anyOf": [
+            {
+              "pattern": "^(0|[1-9][0-9]{0,19})$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Expected State Revision"
+        },
+        "lease_id": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{32}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Lease Id"
+        },
+        "operation_id": {
+          "pattern": "^[0-9a-f]{32}$",
+          "title": "Operation Id",
+          "type": "string"
+        },
+        "params": {
+          "$ref": "#/$defs/AcquireLease"
+        },
+        "request_digest": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Request Digest",
+          "type": "string"
+        }
+      },
+      "required": [
+        "operation_id",
+        "controller_epoch",
+        "command_seq",
+        "lease_id",
+        "expected_boot_id",
+        "expected_state_revision",
+        "request_digest",
+        "command",
+        "params"
+      ],
+      "title": "CommandAcquireLease",
+      "type": "object"
+    },
+    "CommandActivateRecipe": {
+      "additionalProperties": false,
+      "properties": {
+        "command": {
+          "const": "activate_recipe",
+          "title": "Command",
+          "type": "string"
+        },
+        "command_seq": {
+          "pattern": "^(0|[1-9][0-9]{0,19})$",
+          "title": "Command Seq",
+          "type": "string"
+        },
+        "controller_epoch": {
+          "pattern": "^[0-9a-f]{32}$",
+          "title": "Controller Epoch",
+          "type": "string"
+        },
+        "expected_boot_id": {
+          "pattern": "^[0-9a-f]{32}$",
+          "title": "Expected Boot Id",
+          "type": "string"
+        },
+        "expected_state_revision": {
+          "anyOf": [
+            {
+              "pattern": "^(0|[1-9][0-9]{0,19})$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Expected State Revision"
+        },
+        "lease_id": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{32}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Lease Id"
+        },
+        "operation_id": {
+          "pattern": "^[0-9a-f]{32}$",
+          "title": "Operation Id",
+          "type": "string"
+        },
+        "params": {
+          "$ref": "#/$defs/ActivateRecipe"
+        },
+        "request_digest": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Request Digest",
+          "type": "string"
+        }
+      },
+      "required": [
+        "operation_id",
+        "controller_epoch",
+        "command_seq",
+        "lease_id",
+        "expected_boot_id",
+        "expected_state_revision",
+        "request_digest",
+        "command",
+        "params"
+      ],
+      "title": "CommandActivateRecipe",
+      "type": "object"
+    },
+    "CommandReleaseLease": {
+      "additionalProperties": false,
+      "properties": {
+        "command": {
+          "const": "release_lease",
+          "title": "Command",
+          "type": "string"
+        },
+        "command_seq": {
+          "pattern": "^(0|[1-9][0-9]{0,19})$",
+          "title": "Command Seq",
+          "type": "string"
+        },
+        "controller_epoch": {
+          "pattern": "^[0-9a-f]{32}$",
+          "title": "Controller Epoch",
+          "type": "string"
+        },
+        "expected_boot_id": {
+          "pattern": "^[0-9a-f]{32}$",
+          "title": "Expected Boot Id",
+          "type": "string"
+        },
+        "expected_state_revision": {
+          "anyOf": [
+            {
+              "pattern": "^(0|[1-9][0-9]{0,19})$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Expected State Revision"
+        },
+        "lease_id": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{32}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Lease Id"
+        },
+        "operation_id": {
+          "pattern": "^[0-9a-f]{32}$",
+          "title": "Operation Id",
+          "type": "string"
+        },
+        "params": {
+          "$ref": "#/$defs/ReleaseLease"
+        },
+        "request_digest": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Request Digest",
+          "type": "string"
+        }
+      },
+      "required": [
+        "operation_id",
+        "controller_epoch",
+        "command_seq",
+        "lease_id",
+        "expected_boot_id",
+        "expected_state_revision",
+        "request_digest",
+        "command",
+        "params"
+      ],
+      "title": "CommandReleaseLease",
+      "type": "object"
+    },
+    "CommandResetFault": {
+      "additionalProperties": false,
+      "properties": {
+        "command": {
+          "const": "reset_fault",
+          "title": "Command",
+          "type": "string"
+        },
+        "command_seq": {
+          "pattern": "^(0|[1-9][0-9]{0,19})$",
+          "title": "Command Seq",
+          "type": "string"
+        },
+        "controller_epoch": {
+          "pattern": "^[0-9a-f]{32}$",
+          "title": "Controller Epoch",
+          "type": "string"
+        },
+        "expected_boot_id": {
+          "pattern": "^[0-9a-f]{32}$",
+          "title": "Expected Boot Id",
+          "type": "string"
+        },
+        "expected_state_revision": {
+          "anyOf": [
+            {
+              "pattern": "^(0|[1-9][0-9]{0,19})$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Expected State Revision"
+        },
+        "lease_id": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{32}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Lease Id"
+        },
+        "operation_id": {
+          "pattern": "^[0-9a-f]{32}$",
+          "title": "Operation Id",
+          "type": "string"
+        },
+        "params": {
+          "$ref": "#/$defs/ResetFault"
+        },
+        "request_digest": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Request Digest",
+          "type": "string"
+        }
+      },
+      "required": [
+        "operation_id",
+        "controller_epoch",
+        "command_seq",
+        "lease_id",
+        "expected_boot_id",
+        "expected_state_revision",
+        "request_digest",
+        "command",
+        "params"
+      ],
+      "title": "CommandResetFault",
+      "type": "object"
+    },
+    "CommandStartRun": {
+      "additionalProperties": false,
+      "properties": {
+        "command": {
+          "const": "start_run",
+          "title": "Command",
+          "type": "string"
+        },
+        "command_seq": {
+          "pattern": "^(0|[1-9][0-9]{0,19})$",
+          "title": "Command Seq",
+          "type": "string"
+        },
+        "controller_epoch": {
+          "pattern": "^[0-9a-f]{32}$",
+          "title": "Controller Epoch",
+          "type": "string"
+        },
+        "expected_boot_id": {
+          "pattern": "^[0-9a-f]{32}$",
+          "title": "Expected Boot Id",
+          "type": "string"
+        },
+        "expected_state_revision": {
+          "anyOf": [
+            {
+              "pattern": "^(0|[1-9][0-9]{0,19})$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Expected State Revision"
+        },
+        "lease_id": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{32}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Lease Id"
+        },
+        "operation_id": {
+          "pattern": "^[0-9a-f]{32}$",
+          "title": "Operation Id",
+          "type": "string"
+        },
+        "params": {
+          "$ref": "#/$defs/StartRun"
+        },
+        "request_digest": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Request Digest",
+          "type": "string"
+        }
+      },
+      "required": [
+        "operation_id",
+        "controller_epoch",
+        "command_seq",
+        "lease_id",
+        "expected_boot_id",
+        "expected_state_revision",
+        "request_digest",
+        "command",
+        "params"
+      ],
+      "title": "CommandStartRun",
+      "type": "object"
+    },
+    "CommandStopRun": {
+      "additionalProperties": false,
+      "properties": {
+        "command": {
+          "const": "stop_run",
+          "title": "Command",
+          "type": "string"
+        },
+        "command_seq": {
+          "pattern": "^(0|[1-9][0-9]{0,19})$",
+          "title": "Command Seq",
+          "type": "string"
+        },
+        "controller_epoch": {
+          "pattern": "^[0-9a-f]{32}$",
+          "title": "Controller Epoch",
+          "type": "string"
+        },
+        "expected_boot_id": {
+          "pattern": "^[0-9a-f]{32}$",
+          "title": "Expected Boot Id",
+          "type": "string"
+        },
+        "expected_state_revision": {
+          "anyOf": [
+            {
+              "pattern": "^(0|[1-9][0-9]{0,19})$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Expected State Revision"
+        },
+        "lease_id": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{32}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Lease Id"
+        },
+        "operation_id": {
+          "pattern": "^[0-9a-f]{32}$",
+          "title": "Operation Id",
+          "type": "string"
+        },
+        "params": {
+          "$ref": "#/$defs/StopRun"
+        },
+        "request_digest": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Request Digest",
+          "type": "string"
+        }
+      },
+      "required": [
+        "operation_id",
+        "controller_epoch",
+        "command_seq",
+        "lease_id",
+        "expected_boot_id",
+        "expected_state_revision",
+        "request_digest",
+        "command",
+        "params"
+      ],
+      "title": "CommandStopRun",
+      "type": "object"
+    },
+    "Empty": {
+      "additionalProperties": false,
+      "properties": {},
+      "title": "Empty",
+      "type": "object"
+    },
+    "Error": {
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "enum": [
+            "invalid_frame",
+            "unsupported_version",
+            "unsupported_capability",
+            "identity_mismatch",
+            "stale_session",
+            "boot_mismatch",
+            "lease_required",
+            "state_conflict",
+            "busy",
+            "operation_conflict",
+            "result_expired",
+            "profile_unapproved",
+            "profile_mismatch",
+            "recipe_invalid",
+            "digest_mismatch",
+            "offset_mismatch",
+            "storage_unavailable",
+            "range_unavailable",
+            "internal_error",
+            "permission_denied"
+          ],
+          "title": "Code",
+          "type": "string"
+        },
+        "message": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Message",
+          "type": "string"
+        },
+        "retryable": {
+          "title": "Retryable",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "code",
+        "message",
+        "retryable"
+      ],
+      "title": "Error",
+      "type": "object"
+    },
+    "FirstDripEvent": {
+      "additionalProperties": false,
+      "properties": {
+        "burden_mc": {
+          "$ref": "#/$defs/Point"
+        },
+        "event_id": {
+          "pattern": "^[0-9a-f]{32}$",
+          "title": "Event Id",
+          "type": "string"
+        },
+        "event_seq": {
+          "pattern": "^(0|[1-9][0-9]{0,19})$",
+          "title": "Event Seq",
+          "type": "string"
+        },
+        "event_timestamp": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{3}Z$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Event Timestamp"
+        },
+        "event_uptime_ms": {
+          "pattern": "^(0|[1-9][0-9]{0,19})$",
+          "title": "Event Uptime Ms",
+          "type": "string"
+        },
+        "is_valid": {
+          "title": "Is Valid",
+          "type": "boolean"
+        },
+        "kind": {
+          "const": "first_drip",
+          "title": "Kind",
+          "type": "string"
+        },
+        "run_id": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{32}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Run Id"
+        },
+        "sample": {
+          "$ref": "#/$defs/SampleRef"
+        }
+      },
+      "required": [
+        "event_id",
+        "event_seq",
+        "run_id",
+        "event_uptime_ms",
+        "event_timestamp",
+        "kind",
+        "sample",
+        "burden_mc",
+        "is_valid"
+      ],
+      "title": "FirstDripEvent",
+      "type": "object"
+    },
+    "FlowReference": {
+      "additionalProperties": false,
+      "properties": {
+        "gas_model": {
+          "enum": [
+            "dry_ideal",
+            "vendor_calibrated"
+          ],
+          "title": "Gas Model",
+          "type": "string"
+        },
+        "pressure_pa": {
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "title": "Pressure Pa",
+          "type": "integer"
+        },
+        "source": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Source",
+          "type": "string"
+        },
+        "temperature_mk": {
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "title": "Temperature Mk",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "temperature_mk",
+        "pressure_pa",
+        "gas_model",
+        "source"
+      ],
+      "title": "FlowReference",
+      "type": "object"
+    },
+    "Heartbeat": {
+      "additionalProperties": false,
+      "properties": {
+        "lease_id": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{32}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Lease Id"
+        }
+      },
+      "required": [
+        "lease_id"
+      ],
+      "title": "Heartbeat",
+      "type": "object"
+    },
+    "HeartbeatAck": {
+      "additionalProperties": false,
+      "properties": {
+        "lease_expires_uptime_ms": {
+          "anyOf": [
+            {
+              "pattern": "^(0|[1-9][0-9]{0,19})$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Lease Expires Uptime Ms"
+        },
+        "lease_id": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{32}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Lease Id"
+        },
+        "state_revision": {
+          "pattern": "^(0|[1-9][0-9]{0,19})$",
+          "title": "State Revision",
+          "type": "string"
+        }
+      },
+      "required": [
+        "lease_id",
+        "lease_expires_uptime_ms",
+        "state_revision"
+      ],
+      "title": "HeartbeatAck",
+      "type": "object"
+    },
+    "Hello": {
+      "additionalProperties": false,
+      "properties": {
+        "client_name": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Client Name",
+          "type": "string"
+        },
+        "client_version": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Client Version",
+          "type": "string"
+        },
+        "controller_epoch": {
+          "pattern": "^[0-9a-f]{32}$",
+          "title": "Controller Epoch",
+          "type": "string"
+        },
+        "controller_id": {
+          "pattern": "^[0-9a-f]{32}$",
+          "title": "Controller Id",
+          "type": "string"
+        },
+        "design_revision": {
+          "const": "2.0-design.1",
+          "title": "Design Revision",
+          "type": "string"
+        },
+        "expected_device_id": {
+          "pattern": "^[0-9a-f]{32}$",
+          "title": "Expected Device Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "design_revision",
+        "controller_id",
+        "controller_epoch",
+        "expected_device_id",
+        "client_name",
+        "client_version"
+      ],
+      "title": "Hello",
+      "type": "object"
+    },
+    "HelloAck": {
+      "additionalProperties": false,
+      "properties": {
+        "capabilities": {
+          "items": {
+            "enum": [
+              "durable_operations",
+              "atomic_recipe",
+              "sample_log",
+              "alarm_log"
+            ],
+            "type": "string"
+          },
+          "maxItems": 4,
+          "minItems": 1,
+          "title": "Capabilities",
+          "type": "array"
+        },
+        "control_ready": {
+          "title": "Control Ready",
+          "type": "boolean"
+        },
+        "controller_epoch": {
+          "pattern": "^[0-9a-f]{32}$",
+          "title": "Controller Epoch",
+          "type": "string"
+        },
+        "design_revision": {
+          "const": "2.0-design.1",
+          "title": "Design Revision",
+          "type": "string"
+        },
+        "device_id": {
+          "pattern": "^[0-9a-f]{32}$",
+          "title": "Device Id",
+          "type": "string"
+        },
+        "fw_version": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Fw Version",
+          "type": "string"
+        },
+        "granted_role": {
+          "enum": [
+            "control",
+            "diagnostic"
+          ],
+          "title": "Granted Role",
+          "type": "string"
+        },
+        "hw_version": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Hw Version",
+          "type": "string"
+        },
+        "last_command_seq": {
+          "pattern": "^(0|[1-9][0-9]{0,19})$",
+          "title": "Last Command Seq",
+          "type": "string"
+        },
+        "profile_digest": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Profile Digest",
+          "type": "string"
+        }
+      },
+      "required": [
+        "design_revision",
+        "device_id",
+        "controller_epoch",
+        "fw_version",
+        "hw_version",
+        "capabilities",
+        "profile_digest",
+        "last_command_seq",
+        "control_ready",
+        "granted_role"
+      ],
+      "title": "HelloAck",
+      "type": "object"
+    },
+    "Limits": {
+      "additionalProperties": false,
+      "properties": {
+        "co_max_ml_min": {
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "title": "Co Max Ml Min",
+          "type": "integer"
+        },
+        "co_min_furnace_mc": {
+          "maximum": 9007199254740991,
+          "minimum": 0,
+          "title": "Co Min Furnace Mc",
+          "type": "integer"
+        },
+        "cooling_timeout_ms": {
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "title": "Cooling Timeout Ms",
+          "type": "integer"
+        },
+        "minimum_n2_ml_min": {
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "title": "Minimum N2 Ml Min",
+          "type": "integer"
+        },
+        "n2_max_ml_min": {
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "title": "N2 Max Ml Min",
+          "type": "integer"
+        },
+        "purge_duration_ms": {
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "title": "Purge Duration Ms",
+          "type": "integer"
+        },
+        "ramp_max_mc_per_min": {
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "title": "Ramp Max Mc Per Min",
+          "type": "integer"
+        },
+        "safe_end_burden_mc": {
+          "exclusiveMinimum": 0,
+          "maximum": 200000,
+          "title": "Safe End Burden Mc",
+          "type": "integer"
+        },
+        "temperature_max_mc": {
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "title": "Temperature Max Mc",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "temperature_max_mc",
+        "ramp_max_mc_per_min",
+        "n2_max_ml_min",
+        "co_max_ml_min",
+        "co_min_furnace_mc",
+        "safe_end_burden_mc",
+        "minimum_n2_ml_min",
+        "purge_duration_ms",
+        "cooling_timeout_ms"
+      ],
+      "title": "Limits",
+      "type": "object"
+    },
+    "LogAck": {
+      "additionalProperties": false,
+      "properties": {
+        "chunk_digest": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Chunk Digest",
+          "type": "string"
+        },
+        "chunk_index": {
+          "maximum": 9007199254740991,
+          "minimum": 0,
+          "title": "Chunk Index",
+          "type": "integer"
+        },
+        "committed_record_seq": {
+          "anyOf": [
+            {
+              "pattern": "^(0|[1-9][0-9]{0,19})$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Committed Record Seq"
+        },
+        "log_id": {
+          "pattern": "^[0-9a-f]{32}$",
+          "title": "Log Id",
+          "type": "string"
+        },
+        "next_offset": {
+          "maximum": 9007199254740991,
+          "minimum": 0,
+          "title": "Next Offset",
+          "type": "integer"
+        },
+        "transfer_id": {
+          "pattern": "^[0-9a-f]{32}$",
+          "title": "Transfer Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "transfer_id",
+        "log_id",
+        "chunk_index",
+        "chunk_digest",
+        "next_offset",
+        "committed_record_seq"
+      ],
+      "title": "LogAck",
+      "type": "object"
+    },
+    "LogCatalog": {
+      "additionalProperties": false,
+      "properties": {
+        "log_id": {
+          "pattern": "^[0-9a-f]{32}$",
+          "title": "Log Id",
+          "type": "string"
+        },
+        "newest_record_seq": {
+          "anyOf": [
+            {
+              "pattern": "^(0|[1-9][0-9]{0,19})$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Newest Record Seq"
+        },
+        "oldest_record_seq": {
+          "anyOf": [
+            {
+              "pattern": "^(0|[1-9][0-9]{0,19})$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Oldest Record Seq"
+        }
+      },
+      "required": [
+        "log_id",
+        "oldest_record_seq",
+        "newest_record_seq"
+      ],
+      "title": "LogCatalog",
+      "type": "object"
+    },
+    "LogChunk": {
+      "additionalProperties": false,
+      "properties": {
+        "chunk_digest": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Chunk Digest",
+          "type": "string"
+        },
+        "chunk_index": {
+          "maximum": 9007199254740991,
+          "minimum": 0,
+          "title": "Chunk Index",
+          "type": "integer"
+        },
+        "data_b64": {
+          "maxLength": 2048,
+          "minLength": 4,
+          "pattern": "^[A-Za-z0-9+/]+={0,2}$",
+          "title": "Data B64",
+          "type": "string"
+        },
+        "log_id": {
+          "pattern": "^[0-9a-f]{32}$",
+          "title": "Log Id",
+          "type": "string"
+        },
+        "offset": {
+          "maximum": 9007199254740991,
+          "minimum": 0,
+          "title": "Offset",
+          "type": "integer"
+        },
+        "snapshot_highwater": {
+          "pattern": "^(0|[1-9][0-9]{0,19})$",
+          "title": "Snapshot Highwater",
+          "type": "string"
+        },
+        "transfer_id": {
+          "pattern": "^[0-9a-f]{32}$",
+          "title": "Transfer Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "transfer_id",
+        "log_id",
+        "chunk_index",
+        "snapshot_highwater",
+        "offset",
+        "data_b64",
+        "chunk_digest"
+      ],
+      "title": "LogChunk",
+      "type": "object"
+    },
+    "LogRange": {
+      "additionalProperties": false,
+      "properties": {
+        "first_record_seq": {
+          "pattern": "^(0|[1-9][0-9]{0,19})$",
+          "title": "First Record Seq",
+          "type": "string"
+        },
+        "last_record_seq": {
+          "pattern": "^(0|[1-9][0-9]{0,19})$",
+          "title": "Last Record Seq",
+          "type": "string"
+        },
+        "log_id": {
+          "pattern": "^[0-9a-f]{32}$",
+          "title": "Log Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "log_id",
+        "first_record_seq",
+        "last_record_seq"
+      ],
+      "title": "LogRange",
+      "type": "object"
+    },
+    "LogRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "max_bytes": {
+          "maximum": 16777216,
+          "minimum": 1,
+          "title": "Max Bytes",
+          "type": "integer"
+        },
+        "max_records": {
+          "maximum": 10000,
+          "minimum": 1,
+          "title": "Max Records",
+          "type": "integer"
+        },
+        "requested": {
+          "$ref": "#/$defs/LogRange"
+        },
+        "transfer_id": {
+          "pattern": "^[0-9a-f]{32}$",
+          "title": "Transfer Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "transfer_id",
+        "requested",
+        "max_records",
+        "max_bytes"
+      ],
+      "title": "LogRequest",
+      "type": "object"
+    },
+    "LogResult": {
+      "additionalProperties": false,
+      "properties": {
+        "available_first_seq": {
+          "anyOf": [
+            {
+              "pattern": "^(0|[1-9][0-9]{0,19})$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Available First Seq"
+        },
+        "available_last_seq": {
+          "anyOf": [
+            {
+              "pattern": "^(0|[1-9][0-9]{0,19})$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Available Last Seq"
+        },
+        "byte_length": {
+          "maximum": 9007199254740991,
+          "minimum": 0,
+          "title": "Byte Length",
+          "type": "integer"
+        },
+        "content_digest": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Content Digest",
+          "type": "string"
+        },
+        "missing": {
+          "items": {
+            "$ref": "#/$defs/MissingRange"
+          },
+          "maxItems": 32,
+          "title": "Missing",
+          "type": "array"
+        },
+        "record_count": {
+          "maximum": 9007199254740991,
+          "minimum": 0,
+          "title": "Record Count",
+          "type": "integer"
+        },
+        "requested": {
+          "$ref": "#/$defs/LogRange"
+        },
+        "snapshot_highwater": {
+          "pattern": "^(0|[1-9][0-9]{0,19})$",
+          "title": "Snapshot Highwater",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "complete",
+            "partial",
+            "unavailable"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "transfer_id": {
+          "pattern": "^[0-9a-f]{32}$",
+          "title": "Transfer Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "transfer_id",
+        "requested",
+        "snapshot_highwater",
+        "available_first_seq",
+        "available_last_seq",
+        "status",
+        "byte_length",
+        "content_digest",
+        "record_count",
+        "missing"
+      ],
+      "title": "LogResult",
+      "type": "object"
+    },
+    "Measurements": {
+      "additionalProperties": false,
+      "properties": {
+        "burden_mc": {
+          "$ref": "#/$defs/Point"
+        },
+        "co_measured_ml_min": {
+          "$ref": "#/$defs/Point"
+        },
+        "co_setpoint_ml_min": {
+          "$ref": "#/$defs/Point"
+        },
+        "displacement_um": {
+          "$ref": "#/$defs/Point"
+        },
+        "drip_mass_mg": {
+          "$ref": "#/$defs/Point"
+        },
+        "furnace_mc": {
+          "$ref": "#/$defs/Point"
+        },
+        "furnace_setpoint_mc": {
+          "$ref": "#/$defs/Point"
+        },
+        "n2_measured_ml_min": {
+          "$ref": "#/$defs/Point"
+        },
+        "n2_setpoint_ml_min": {
+          "$ref": "#/$defs/Point"
+        },
+        "pressure_drop_pa": {
+          "$ref": "#/$defs/Point"
+        }
+      },
+      "required": [
+        "furnace_mc",
+        "burden_mc",
+        "furnace_setpoint_mc",
+        "pressure_drop_pa",
+        "displacement_um",
+        "drip_mass_mg",
+        "n2_measured_ml_min",
+        "n2_setpoint_ml_min",
+        "co_measured_ml_min",
+        "co_setpoint_ml_min"
+      ],
+      "title": "Measurements",
+      "type": "object"
+    },
+    "MessageAlarmsSnapshot": {
+      "additionalProperties": false,
+      "properties": {
+        "boot_id": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{32}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Boot Id"
+        },
+        "msg_id": {
+          "pattern": "^[0-9a-f]{32}$",
+          "title": "Msg Id",
+          "type": "string"
+        },
+        "payload": {
+          "$ref": "#/$defs/AlarmsSnapshot"
+        },
+        "protocol_version": {
+          "const": "2.0",
+          "title": "Protocol Version",
+          "type": "string"
+        },
+        "reply_to": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{32}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Reply To"
+        },
+        "session_id": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{32}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Session Id"
+        },
+        "timestamp": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{3}Z$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Timestamp"
+        },
+        "type": {
+          "const": "alarms_snapshot",
+          "title": "Type",
+          "type": "string"
+        },
+        "uptime_ms": {
+          "pattern": "^(0|[1-9][0-9]{0,19})$",
+          "title": "Uptime Ms",
+          "type": "string"
+        }
+      },
+      "required": [
+        "protocol_version",
+        "msg_id",
+        "reply_to",
+        "session_id",
+        "boot_id",
+        "timestamp",
+        "uptime_ms",
+        "type",
+        "payload"
+      ],
+      "title": "MessageAlarmsSnapshot",
+      "type": "object"
+    },
+    "MessageCommand": {
+      "additionalProperties": false,
+      "properties": {
+        "boot_id": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{32}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Boot Id"
+        },
+        "msg_id": {
+          "pattern": "^[0-9a-f]{32}$",
+          "title": "Msg Id",
+          "type": "string"
+        },
+        "payload": {
+          "discriminator": {
+            "mapping": {
+              "ack_alarm": "#/$defs/CommandAckAlarm",
+              "ack_run": "#/$defs/CommandAckRun",
+              "acquire_lease": "#/$defs/CommandAcquireLease",
+              "activate_recipe": "#/$defs/CommandActivateRecipe",
+              "release_lease": "#/$defs/CommandReleaseLease",
+              "reset_fault": "#/$defs/CommandResetFault",
+              "start_run": "#/$defs/CommandStartRun",
+              "stop_run": "#/$defs/CommandStopRun"
+            },
+            "propertyName": "command"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/$defs/CommandAcquireLease"
+            },
+            {
+              "$ref": "#/$defs/CommandReleaseLease"
+            },
+            {
+              "$ref": "#/$defs/CommandStartRun"
+            },
+            {
+              "$ref": "#/$defs/CommandStopRun"
+            },
+            {
+              "$ref": "#/$defs/CommandActivateRecipe"
+            },
+            {
+              "$ref": "#/$defs/CommandAckRun"
+            },
+            {
+              "$ref": "#/$defs/CommandAckAlarm"
+            },
+            {
+              "$ref": "#/$defs/CommandResetFault"
+            }
+          ],
+          "title": "Payload"
+        },
+        "protocol_version": {
+          "const": "2.0",
+          "title": "Protocol Version",
+          "type": "string"
+        },
+        "reply_to": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{32}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Reply To"
+        },
+        "session_id": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{32}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Session Id"
+        },
+        "timestamp": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{3}Z$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Timestamp"
+        },
+        "type": {
+          "const": "command",
+          "title": "Type",
+          "type": "string"
+        },
+        "uptime_ms": {
+          "pattern": "^(0|[1-9][0-9]{0,19})$",
+          "title": "Uptime Ms",
+          "type": "string"
+        }
+      },
+      "required": [
+        "protocol_version",
+        "msg_id",
+        "reply_to",
+        "session_id",
+        "boot_id",
+        "timestamp",
+        "uptime_ms",
+        "type",
+        "payload"
+      ],
+      "title": "MessageCommand",
+      "type": "object"
+    },
+    "MessageCommandResult": {
+      "additionalProperties": false,
+      "properties": {
+        "boot_id": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{32}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Boot Id"
+        },
+        "msg_id": {
+          "pattern": "^[0-9a-f]{32}$",
+          "title": "Msg Id",
+          "type": "string"
+        },
+        "payload": {
+          "$ref": "#/$defs/OperationResult"
+        },
+        "protocol_version": {
+          "const": "2.0",
+          "title": "Protocol Version",
+          "type": "string"
+        },
+        "reply_to": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{32}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Reply To"
+        },
+        "session_id": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{32}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Session Id"
+        },
+        "timestamp": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{3}Z$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Timestamp"
+        },
+        "type": {
+          "const": "command_result",
+          "title": "Type",
+          "type": "string"
+        },
+        "uptime_ms": {
+          "pattern": "^(0|[1-9][0-9]{0,19})$",
+          "title": "Uptime Ms",
+          "type": "string"
+        }
+      },
+      "required": [
+        "protocol_version",
+        "msg_id",
+        "reply_to",
+        "session_id",
+        "boot_id",
+        "timestamp",
+        "uptime_ms",
+        "type",
+        "payload"
+      ],
+      "title": "MessageCommandResult",
+      "type": "object"
+    },
+    "MessageError": {
+      "additionalProperties": false,
+      "properties": {
+        "boot_id": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{32}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Boot Id"
+        },
+        "msg_id": {
+          "pattern": "^[0-9a-f]{32}$",
+          "title": "Msg Id",
+          "type": "string"
+        },
+        "payload": {
+          "$ref": "#/$defs/Error"
+        },
+        "protocol_version": {
+          "const": "2.0",
+          "title": "Protocol Version",
+          "type": "string"
+        },
+        "reply_to": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{32}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Reply To"
+        },
+        "session_id": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{32}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Session Id"
+        },
+        "timestamp": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{3}Z$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Timestamp"
+        },
+        "type": {
+          "const": "error",
+          "title": "Type",
+          "type": "string"
+        },
+        "uptime_ms": {
+          "pattern": "^(0|[1-9][0-9]{0,19})$",
+          "title": "Uptime Ms",
+          "type": "string"
+        }
+      },
+      "required": [
+        "protocol_version",
+        "msg_id",
+        "reply_to",
+        "session_id",
+        "boot_id",
+        "timestamp",
+        "uptime_ms",
+        "type",
+        "payload"
+      ],
+      "title": "MessageError",
+      "type": "object"
+    },
+    "MessageEvent": {
+      "additionalProperties": false,
+      "properties": {
+        "boot_id": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{32}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Boot Id"
+        },
+        "msg_id": {
+          "pattern": "^[0-9a-f]{32}$",
+          "title": "Msg Id",
+          "type": "string"
+        },
+        "payload": {
+          "discriminator": {
+            "mapping": {
+              "alarm": "#/$defs/AlarmEvent",
+              "first_drip": "#/$defs/FirstDripEvent",
+              "operation_changed": "#/$defs/OperationChangedEvent",
+              "run_changed": "#/$defs/RunChangedEvent"
+            },
+            "propertyName": "kind"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/$defs/FirstDripEvent"
+            },
+            {
+              "$ref": "#/$defs/RunChangedEvent"
+            },
+            {
+              "$ref": "#/$defs/AlarmEvent"
+            },
+            {
+              "$ref": "#/$defs/OperationChangedEvent"
+            }
+          ],
+          "title": "Payload"
+        },
+        "protocol_version": {
+          "const": "2.0",
+          "title": "Protocol Version",
+          "type": "string"
+        },
+        "reply_to": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{32}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Reply To"
+        },
+        "session_id": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{32}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Session Id"
+        },
+        "timestamp": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{3}Z$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Timestamp"
+        },
+        "type": {
+          "const": "event",
+          "title": "Type",
+          "type": "string"
+        },
+        "uptime_ms": {
+          "pattern": "^(0|[1-9][0-9]{0,19})$",
+          "title": "Uptime Ms",
+          "type": "string"
+        }
+      },
+      "required": [
+        "protocol_version",
+        "msg_id",
+        "reply_to",
+        "session_id",
+        "boot_id",
+        "timestamp",
+        "uptime_ms",
+        "type",
+        "payload"
+      ],
+      "title": "MessageEvent",
+      "type": "object"
+    },
+    "MessageGetAlarms": {
+      "additionalProperties": false,
+      "properties": {
+        "boot_id": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{32}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Boot Id"
+        },
+        "msg_id": {
+          "pattern": "^[0-9a-f]{32}$",
+          "title": "Msg Id",
+          "type": "string"
+        },
+        "payload": {
+          "$ref": "#/$defs/AlarmsQuery"
+        },
+        "protocol_version": {
+          "const": "2.0",
+          "title": "Protocol Version",
+          "type": "string"
+        },
+        "reply_to": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{32}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Reply To"
+        },
+        "session_id": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{32}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Session Id"
+        },
+        "timestamp": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{3}Z$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Timestamp"
+        },
+        "type": {
+          "const": "get_alarms",
+          "title": "Type",
+          "type": "string"
+        },
+        "uptime_ms": {
+          "pattern": "^(0|[1-9][0-9]{0,19})$",
+          "title": "Uptime Ms",
+          "type": "string"
+        }
+      },
+      "required": [
+        "protocol_version",
+        "msg_id",
+        "reply_to",
+        "session_id",
+        "boot_id",
+        "timestamp",
+        "uptime_ms",
+        "type",
+        "payload"
+      ],
+      "title": "MessageGetAlarms",
+      "type": "object"
+    },
+    "MessageGetOperation": {
+      "additionalProperties": false,
+      "properties": {
+        "boot_id": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{32}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Boot Id"
+        },
+        "msg_id": {
+          "pattern": "^[0-9a-f]{32}$",
+          "title": "Msg Id",
+          "type": "string"
+        },
+        "payload": {
+          "$ref": "#/$defs/OperationQuery"
+        },
+        "protocol_version": {
+          "const": "2.0",
+          "title": "Protocol Version",
+          "type": "string"
+        },
+        "reply_to": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{32}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Reply To"
+        },
+        "session_id": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{32}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Session Id"
+        },
+        "timestamp": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{3}Z$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Timestamp"
+        },
+        "type": {
+          "const": "get_operation",
+          "title": "Type",
+          "type": "string"
+        },
+        "uptime_ms": {
+          "pattern": "^(0|[1-9][0-9]{0,19})$",
+          "title": "Uptime Ms",
+          "type": "string"
+        }
+      },
+      "required": [
+        "protocol_version",
+        "msg_id",
+        "reply_to",
+        "session_id",
+        "boot_id",
+        "timestamp",
+        "uptime_ms",
+        "type",
+        "payload"
+      ],
+      "title": "MessageGetOperation",
+      "type": "object"
+    },
+    "MessageGetProfile": {
+      "additionalProperties": false,
+      "properties": {
+        "boot_id": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{32}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Boot Id"
+        },
+        "msg_id": {
+          "pattern": "^[0-9a-f]{32}$",
+          "title": "Msg Id",
+          "type": "string"
+        },
+        "payload": {
+          "$ref": "#/$defs/Empty"
+        },
+        "protocol_version": {
+          "const": "2.0",
+          "title": "Protocol Version",
+          "type": "string"
+        },
+        "reply_to": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{32}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Reply To"
+        },
+        "session_id": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{32}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Session Id"
+        },
+        "timestamp": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{3}Z$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Timestamp"
+        },
+        "type": {
+          "const": "get_profile",
+          "title": "Type",
+          "type": "string"
+        },
+        "uptime_ms": {
+          "pattern": "^(0|[1-9][0-9]{0,19})$",
+          "title": "Uptime Ms",
+          "type": "string"
+        }
+      },
+      "required": [
+        "protocol_version",
+        "msg_id",
+        "reply_to",
+        "session_id",
+        "boot_id",
+        "timestamp",
+        "uptime_ms",
+        "type",
+        "payload"
+      ],
+      "title": "MessageGetProfile",
+      "type": "object"
+    },
+    "MessageGetRecipe": {
+      "additionalProperties": false,
+      "properties": {
+        "boot_id": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{32}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Boot Id"
+        },
+        "msg_id": {
+          "pattern": "^[0-9a-f]{32}$",
+          "title": "Msg Id",
+          "type": "string"
+        },
+        "payload": {
+          "$ref": "#/$defs/RecipeQuery"
+        },
+        "protocol_version": {
+          "const": "2.0",
+          "title": "Protocol Version",
+          "type": "string"
+        },
+        "reply_to": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{32}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Reply To"
+        },
+        "session_id": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{32}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Session Id"
+        },
+        "timestamp": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{3}Z$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Timestamp"
+        },
+        "type": {
+          "const": "get_recipe",
+          "title": "Type",
+          "type": "string"
+        },
+        "uptime_ms": {
+          "pattern": "^(0|[1-9][0-9]{0,19})$",
+          "title": "Uptime Ms",
+          "type": "string"
+        }
+      },
+      "required": [
+        "protocol_version",
+        "msg_id",
+        "reply_to",
+        "session_id",
+        "boot_id",
+        "timestamp",
+        "uptime_ms",
+        "type",
+        "payload"
+      ],
+      "title": "MessageGetRecipe",
+      "type": "object"
+    },
+    "MessageGetStatus": {
+      "additionalProperties": false,
+      "properties": {
+        "boot_id": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{32}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Boot Id"
+        },
+        "msg_id": {
+          "pattern": "^[0-9a-f]{32}$",
+          "title": "Msg Id",
+          "type": "string"
+        },
+        "payload": {
+          "$ref": "#/$defs/Empty"
+        },
+        "protocol_version": {
+          "const": "2.0",
+          "title": "Protocol Version",
+          "type": "string"
+        },
+        "reply_to": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{32}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Reply To"
+        },
+        "session_id": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{32}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Session Id"
+        },
+        "timestamp": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{3}Z$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Timestamp"
+        },
+        "type": {
+          "const": "get_status",
+          "title": "Type",
+          "type": "string"
+        },
+        "uptime_ms": {
+          "pattern": "^(0|[1-9][0-9]{0,19})$",
+          "title": "Uptime Ms",
+          "type": "string"
+        }
+      },
+      "required": [
+        "protocol_version",
+        "msg_id",
+        "reply_to",
+        "session_id",
+        "boot_id",
+        "timestamp",
+        "uptime_ms",
+        "type",
+        "payload"
+      ],
+      "title": "MessageGetStatus",
+      "type": "object"
+    },
+    "MessageHeartbeat": {
+      "additionalProperties": false,
+      "properties": {
+        "boot_id": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{32}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Boot Id"
+        },
+        "msg_id": {
+          "pattern": "^[0-9a-f]{32}$",
+          "title": "Msg Id",
+          "type": "string"
+        },
+        "payload": {
+          "$ref": "#/$defs/Heartbeat"
+        },
+        "protocol_version": {
+          "const": "2.0",
+          "title": "Protocol Version",
+          "type": "string"
+        },
+        "reply_to": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{32}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Reply To"
+        },
+        "session_id": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{32}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Session Id"
+        },
+        "timestamp": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{3}Z$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Timestamp"
+        },
+        "type": {
+          "const": "heartbeat",
+          "title": "Type",
+          "type": "string"
+        },
+        "uptime_ms": {
+          "pattern": "^(0|[1-9][0-9]{0,19})$",
+          "title": "Uptime Ms",
+          "type": "string"
+        }
+      },
+      "required": [
+        "protocol_version",
+        "msg_id",
+        "reply_to",
+        "session_id",
+        "boot_id",
+        "timestamp",
+        "uptime_ms",
+        "type",
+        "payload"
+      ],
+      "title": "MessageHeartbeat",
+      "type": "object"
+    },
+    "MessageHeartbeatAck": {
+      "additionalProperties": false,
+      "properties": {
+        "boot_id": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{32}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Boot Id"
+        },
+        "msg_id": {
+          "pattern": "^[0-9a-f]{32}$",
+          "title": "Msg Id",
+          "type": "string"
+        },
+        "payload": {
+          "$ref": "#/$defs/HeartbeatAck"
+        },
+        "protocol_version": {
+          "const": "2.0",
+          "title": "Protocol Version",
+          "type": "string"
+        },
+        "reply_to": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{32}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Reply To"
+        },
+        "session_id": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{32}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Session Id"
+        },
+        "timestamp": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{3}Z$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Timestamp"
+        },
+        "type": {
+          "const": "heartbeat_ack",
+          "title": "Type",
+          "type": "string"
+        },
+        "uptime_ms": {
+          "pattern": "^(0|[1-9][0-9]{0,19})$",
+          "title": "Uptime Ms",
+          "type": "string"
+        }
+      },
+      "required": [
+        "protocol_version",
+        "msg_id",
+        "reply_to",
+        "session_id",
+        "boot_id",
+        "timestamp",
+        "uptime_ms",
+        "type",
+        "payload"
+      ],
+      "title": "MessageHeartbeatAck",
+      "type": "object"
+    },
+    "MessageHello": {
+      "additionalProperties": false,
+      "properties": {
+        "boot_id": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{32}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Boot Id"
+        },
+        "msg_id": {
+          "pattern": "^[0-9a-f]{32}$",
+          "title": "Msg Id",
+          "type": "string"
+        },
+        "payload": {
+          "$ref": "#/$defs/Hello"
+        },
+        "protocol_version": {
+          "const": "2.0",
+          "title": "Protocol Version",
+          "type": "string"
+        },
+        "reply_to": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{32}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Reply To"
+        },
+        "session_id": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{32}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Session Id"
+        },
+        "timestamp": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{3}Z$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Timestamp"
+        },
+        "type": {
+          "const": "hello",
+          "title": "Type",
+          "type": "string"
+        },
+        "uptime_ms": {
+          "pattern": "^(0|[1-9][0-9]{0,19})$",
+          "title": "Uptime Ms",
+          "type": "string"
+        }
+      },
+      "required": [
+        "protocol_version",
+        "msg_id",
+        "reply_to",
+        "session_id",
+        "boot_id",
+        "timestamp",
+        "uptime_ms",
+        "type",
+        "payload"
+      ],
+      "title": "MessageHello",
+      "type": "object"
+    },
+    "MessageHelloAck": {
+      "additionalProperties": false,
+      "properties": {
+        "boot_id": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{32}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Boot Id"
+        },
+        "msg_id": {
+          "pattern": "^[0-9a-f]{32}$",
+          "title": "Msg Id",
+          "type": "string"
+        },
+        "payload": {
+          "$ref": "#/$defs/HelloAck"
+        },
+        "protocol_version": {
+          "const": "2.0",
+          "title": "Protocol Version",
+          "type": "string"
+        },
+        "reply_to": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{32}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Reply To"
+        },
+        "session_id": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{32}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Session Id"
+        },
+        "timestamp": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{3}Z$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Timestamp"
+        },
+        "type": {
+          "const": "hello_ack",
+          "title": "Type",
+          "type": "string"
+        },
+        "uptime_ms": {
+          "pattern": "^(0|[1-9][0-9]{0,19})$",
+          "title": "Uptime Ms",
+          "type": "string"
+        }
+      },
+      "required": [
+        "protocol_version",
+        "msg_id",
+        "reply_to",
+        "session_id",
+        "boot_id",
+        "timestamp",
+        "uptime_ms",
+        "type",
+        "payload"
+      ],
+      "title": "MessageHelloAck",
+      "type": "object"
+    },
+    "MessageLogAck": {
+      "additionalProperties": false,
+      "properties": {
+        "boot_id": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{32}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Boot Id"
+        },
+        "msg_id": {
+          "pattern": "^[0-9a-f]{32}$",
+          "title": "Msg Id",
+          "type": "string"
+        },
+        "payload": {
+          "$ref": "#/$defs/LogAck"
+        },
+        "protocol_version": {
+          "const": "2.0",
+          "title": "Protocol Version",
+          "type": "string"
+        },
+        "reply_to": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{32}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Reply To"
+        },
+        "session_id": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{32}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Session Id"
+        },
+        "timestamp": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{3}Z$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Timestamp"
+        },
+        "type": {
+          "const": "log_ack",
+          "title": "Type",
+          "type": "string"
+        },
+        "uptime_ms": {
+          "pattern": "^(0|[1-9][0-9]{0,19})$",
+          "title": "Uptime Ms",
+          "type": "string"
+        }
+      },
+      "required": [
+        "protocol_version",
+        "msg_id",
+        "reply_to",
+        "session_id",
+        "boot_id",
+        "timestamp",
+        "uptime_ms",
+        "type",
+        "payload"
+      ],
+      "title": "MessageLogAck",
+      "type": "object"
+    },
+    "MessageLogChunk": {
+      "additionalProperties": false,
+      "properties": {
+        "boot_id": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{32}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Boot Id"
+        },
+        "msg_id": {
+          "pattern": "^[0-9a-f]{32}$",
+          "title": "Msg Id",
+          "type": "string"
+        },
+        "payload": {
+          "$ref": "#/$defs/LogChunk"
+        },
+        "protocol_version": {
+          "const": "2.0",
+          "title": "Protocol Version",
+          "type": "string"
+        },
+        "reply_to": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{32}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Reply To"
+        },
+        "session_id": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{32}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Session Id"
+        },
+        "timestamp": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{3}Z$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Timestamp"
+        },
+        "type": {
+          "const": "log_chunk",
+          "title": "Type",
+          "type": "string"
+        },
+        "uptime_ms": {
+          "pattern": "^(0|[1-9][0-9]{0,19})$",
+          "title": "Uptime Ms",
+          "type": "string"
+        }
+      },
+      "required": [
+        "protocol_version",
+        "msg_id",
+        "reply_to",
+        "session_id",
+        "boot_id",
+        "timestamp",
+        "uptime_ms",
+        "type",
+        "payload"
+      ],
+      "title": "MessageLogChunk",
+      "type": "object"
+    },
+    "MessageLogRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "boot_id": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{32}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Boot Id"
+        },
+        "msg_id": {
+          "pattern": "^[0-9a-f]{32}$",
+          "title": "Msg Id",
+          "type": "string"
+        },
+        "payload": {
+          "$ref": "#/$defs/LogRequest"
+        },
+        "protocol_version": {
+          "const": "2.0",
+          "title": "Protocol Version",
+          "type": "string"
+        },
+        "reply_to": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{32}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Reply To"
+        },
+        "session_id": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{32}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Session Id"
+        },
+        "timestamp": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{3}Z$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Timestamp"
+        },
+        "type": {
+          "const": "log_request",
+          "title": "Type",
+          "type": "string"
+        },
+        "uptime_ms": {
+          "pattern": "^(0|[1-9][0-9]{0,19})$",
+          "title": "Uptime Ms",
+          "type": "string"
+        }
+      },
+      "required": [
+        "protocol_version",
+        "msg_id",
+        "reply_to",
+        "session_id",
+        "boot_id",
+        "timestamp",
+        "uptime_ms",
+        "type",
+        "payload"
+      ],
+      "title": "MessageLogRequest",
+      "type": "object"
+    },
+    "MessageLogResult": {
+      "additionalProperties": false,
+      "properties": {
+        "boot_id": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{32}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Boot Id"
+        },
+        "msg_id": {
+          "pattern": "^[0-9a-f]{32}$",
+          "title": "Msg Id",
+          "type": "string"
+        },
+        "payload": {
+          "$ref": "#/$defs/LogResult"
+        },
+        "protocol_version": {
+          "const": "2.0",
+          "title": "Protocol Version",
+          "type": "string"
+        },
+        "reply_to": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{32}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Reply To"
+        },
+        "session_id": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{32}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Session Id"
+        },
+        "timestamp": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{3}Z$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Timestamp"
+        },
+        "type": {
+          "const": "log_result",
+          "title": "Type",
+          "type": "string"
+        },
+        "uptime_ms": {
+          "pattern": "^(0|[1-9][0-9]{0,19})$",
+          "title": "Uptime Ms",
+          "type": "string"
+        }
+      },
+      "required": [
+        "protocol_version",
+        "msg_id",
+        "reply_to",
+        "session_id",
+        "boot_id",
+        "timestamp",
+        "uptime_ms",
+        "type",
+        "payload"
+      ],
+      "title": "MessageLogResult",
+      "type": "object"
+    },
+    "MessageOperationSnapshot": {
+      "additionalProperties": false,
+      "properties": {
+        "boot_id": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{32}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Boot Id"
+        },
+        "msg_id": {
+          "pattern": "^[0-9a-f]{32}$",
+          "title": "Msg Id",
+          "type": "string"
+        },
+        "payload": {
+          "$ref": "#/$defs/OperationResult"
+        },
+        "protocol_version": {
+          "const": "2.0",
+          "title": "Protocol Version",
+          "type": "string"
+        },
+        "reply_to": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{32}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Reply To"
+        },
+        "session_id": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{32}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Session Id"
+        },
+        "timestamp": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{3}Z$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Timestamp"
+        },
+        "type": {
+          "const": "operation_snapshot",
+          "title": "Type",
+          "type": "string"
+        },
+        "uptime_ms": {
+          "pattern": "^(0|[1-9][0-9]{0,19})$",
+          "title": "Uptime Ms",
+          "type": "string"
+        }
+      },
+      "required": [
+        "protocol_version",
+        "msg_id",
+        "reply_to",
+        "session_id",
+        "boot_id",
+        "timestamp",
+        "uptime_ms",
+        "type",
+        "payload"
+      ],
+      "title": "MessageOperationSnapshot",
+      "type": "object"
+    },
+    "MessageProfileSnapshot": {
+      "additionalProperties": false,
+      "properties": {
+        "boot_id": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{32}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Boot Id"
+        },
+        "msg_id": {
+          "pattern": "^[0-9a-f]{32}$",
+          "title": "Msg Id",
+          "type": "string"
+        },
+        "payload": {
+          "$ref": "#/$defs/ProfileSnapshot"
+        },
+        "protocol_version": {
+          "const": "2.0",
+          "title": "Protocol Version",
+          "type": "string"
+        },
+        "reply_to": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{32}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Reply To"
+        },
+        "session_id": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{32}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Session Id"
+        },
+        "timestamp": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{3}Z$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Timestamp"
+        },
+        "type": {
+          "const": "profile_snapshot",
+          "title": "Type",
+          "type": "string"
+        },
+        "uptime_ms": {
+          "pattern": "^(0|[1-9][0-9]{0,19})$",
+          "title": "Uptime Ms",
+          "type": "string"
+        }
+      },
+      "required": [
+        "protocol_version",
+        "msg_id",
+        "reply_to",
+        "session_id",
+        "boot_id",
+        "timestamp",
+        "uptime_ms",
+        "type",
+        "payload"
+      ],
+      "title": "MessageProfileSnapshot",
+      "type": "object"
+    },
+    "MessageRecipeBegin": {
+      "additionalProperties": false,
+      "properties": {
+        "boot_id": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{32}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Boot Id"
+        },
+        "msg_id": {
+          "pattern": "^[0-9a-f]{32}$",
+          "title": "Msg Id",
+          "type": "string"
+        },
+        "payload": {
+          "$ref": "#/$defs/RecipeBegin"
+        },
+        "protocol_version": {
+          "const": "2.0",
+          "title": "Protocol Version",
+          "type": "string"
+        },
+        "reply_to": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{32}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Reply To"
+        },
+        "session_id": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{32}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Session Id"
+        },
+        "timestamp": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{3}Z$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Timestamp"
+        },
+        "type": {
+          "const": "recipe_begin",
+          "title": "Type",
+          "type": "string"
+        },
+        "uptime_ms": {
+          "pattern": "^(0|[1-9][0-9]{0,19})$",
+          "title": "Uptime Ms",
+          "type": "string"
+        }
+      },
+      "required": [
+        "protocol_version",
+        "msg_id",
+        "reply_to",
+        "session_id",
+        "boot_id",
+        "timestamp",
+        "uptime_ms",
+        "type",
+        "payload"
+      ],
+      "title": "MessageRecipeBegin",
+      "type": "object"
+    },
+    "MessageRecipeChunk": {
+      "additionalProperties": false,
+      "properties": {
+        "boot_id": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{32}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Boot Id"
+        },
+        "msg_id": {
+          "pattern": "^[0-9a-f]{32}$",
+          "title": "Msg Id",
+          "type": "string"
+        },
+        "payload": {
+          "$ref": "#/$defs/RecipeChunk"
+        },
+        "protocol_version": {
+          "const": "2.0",
+          "title": "Protocol Version",
+          "type": "string"
+        },
+        "reply_to": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{32}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Reply To"
+        },
+        "session_id": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{32}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Session Id"
+        },
+        "timestamp": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{3}Z$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Timestamp"
+        },
+        "type": {
+          "const": "recipe_chunk",
+          "title": "Type",
+          "type": "string"
+        },
+        "uptime_ms": {
+          "pattern": "^(0|[1-9][0-9]{0,19})$",
+          "title": "Uptime Ms",
+          "type": "string"
+        }
+      },
+      "required": [
+        "protocol_version",
+        "msg_id",
+        "reply_to",
+        "session_id",
+        "boot_id",
+        "timestamp",
+        "uptime_ms",
+        "type",
+        "payload"
+      ],
+      "title": "MessageRecipeChunk",
+      "type": "object"
+    },
+    "MessageRecipeSnapshot": {
+      "additionalProperties": false,
+      "properties": {
+        "boot_id": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{32}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Boot Id"
+        },
+        "msg_id": {
+          "pattern": "^[0-9a-f]{32}$",
+          "title": "Msg Id",
+          "type": "string"
+        },
+        "payload": {
+          "$ref": "#/$defs/RecipeSnapshot"
+        },
+        "protocol_version": {
+          "const": "2.0",
+          "title": "Protocol Version",
+          "type": "string"
+        },
+        "reply_to": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{32}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Reply To"
+        },
+        "session_id": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{32}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Session Id"
+        },
+        "timestamp": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{3}Z$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Timestamp"
+        },
+        "type": {
+          "const": "recipe_snapshot",
+          "title": "Type",
+          "type": "string"
+        },
+        "uptime_ms": {
+          "pattern": "^(0|[1-9][0-9]{0,19})$",
+          "title": "Uptime Ms",
+          "type": "string"
+        }
+      },
+      "required": [
+        "protocol_version",
+        "msg_id",
+        "reply_to",
+        "session_id",
+        "boot_id",
+        "timestamp",
+        "uptime_ms",
+        "type",
+        "payload"
+      ],
+      "title": "MessageRecipeSnapshot",
+      "type": "object"
+    },
+    "MessageRecipeTransferResult": {
+      "additionalProperties": false,
+      "properties": {
+        "boot_id": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{32}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Boot Id"
+        },
+        "msg_id": {
+          "pattern": "^[0-9a-f]{32}$",
+          "title": "Msg Id",
+          "type": "string"
+        },
+        "payload": {
+          "$ref": "#/$defs/RecipeTransferResult"
+        },
+        "protocol_version": {
+          "const": "2.0",
+          "title": "Protocol Version",
+          "type": "string"
+        },
+        "reply_to": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{32}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Reply To"
+        },
+        "session_id": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{32}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Session Id"
+        },
+        "timestamp": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{3}Z$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Timestamp"
+        },
+        "type": {
+          "const": "recipe_transfer_result",
+          "title": "Type",
+          "type": "string"
+        },
+        "uptime_ms": {
+          "pattern": "^(0|[1-9][0-9]{0,19})$",
+          "title": "Uptime Ms",
+          "type": "string"
+        }
+      },
+      "required": [
+        "protocol_version",
+        "msg_id",
+        "reply_to",
+        "session_id",
+        "boot_id",
+        "timestamp",
+        "uptime_ms",
+        "type",
+        "payload"
+      ],
+      "title": "MessageRecipeTransferResult",
+      "type": "object"
+    },
+    "MessageStatusSnapshot": {
+      "additionalProperties": false,
+      "properties": {
+        "boot_id": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{32}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Boot Id"
+        },
+        "msg_id": {
+          "pattern": "^[0-9a-f]{32}$",
+          "title": "Msg Id",
+          "type": "string"
+        },
+        "payload": {
+          "$ref": "#/$defs/StatusSnapshot"
+        },
+        "protocol_version": {
+          "const": "2.0",
+          "title": "Protocol Version",
+          "type": "string"
+        },
+        "reply_to": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{32}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Reply To"
+        },
+        "session_id": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{32}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Session Id"
+        },
+        "timestamp": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{3}Z$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Timestamp"
+        },
+        "type": {
+          "const": "status_snapshot",
+          "title": "Type",
+          "type": "string"
+        },
+        "uptime_ms": {
+          "pattern": "^(0|[1-9][0-9]{0,19})$",
+          "title": "Uptime Ms",
+          "type": "string"
+        }
+      },
+      "required": [
+        "protocol_version",
+        "msg_id",
+        "reply_to",
+        "session_id",
+        "boot_id",
+        "timestamp",
+        "uptime_ms",
+        "type",
+        "payload"
+      ],
+      "title": "MessageStatusSnapshot",
+      "type": "object"
+    },
+    "MessageTelemetry": {
+      "additionalProperties": false,
+      "properties": {
+        "boot_id": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{32}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Boot Id"
+        },
+        "msg_id": {
+          "pattern": "^[0-9a-f]{32}$",
+          "title": "Msg Id",
+          "type": "string"
+        },
+        "payload": {
+          "$ref": "#/$defs/Telemetry"
+        },
+        "protocol_version": {
+          "const": "2.0",
+          "title": "Protocol Version",
+          "type": "string"
+        },
+        "reply_to": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{32}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Reply To"
+        },
+        "session_id": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{32}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Session Id"
+        },
+        "timestamp": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{3}Z$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Timestamp"
+        },
+        "type": {
+          "const": "telemetry",
+          "title": "Type",
+          "type": "string"
+        },
+        "uptime_ms": {
+          "pattern": "^(0|[1-9][0-9]{0,19})$",
+          "title": "Uptime Ms",
+          "type": "string"
+        }
+      },
+      "required": [
+        "protocol_version",
+        "msg_id",
+        "reply_to",
+        "session_id",
+        "boot_id",
+        "timestamp",
+        "uptime_ms",
+        "type",
+        "payload"
+      ],
+      "title": "MessageTelemetry",
+      "type": "object"
+    },
+    "MissingRange": {
+      "additionalProperties": false,
+      "properties": {
+        "first_record_seq": {
+          "pattern": "^(0|[1-9][0-9]{0,19})$",
+          "title": "First Record Seq",
+          "type": "string"
+        },
+        "last_record_seq": {
+          "pattern": "^(0|[1-9][0-9]{0,19})$",
+          "title": "Last Record Seq",
+          "type": "string"
+        },
+        "log_id": {
+          "pattern": "^[0-9a-f]{32}$",
+          "title": "Log Id",
+          "type": "string"
+        },
+        "reason": {
+          "enum": [
+            "retention_expired",
+            "not_recorded",
+            "storage_fault",
+            "log_unknown"
+          ],
+          "title": "Reason",
+          "type": "string"
+        }
+      },
+      "required": [
+        "log_id",
+        "first_record_seq",
+        "last_record_seq",
+        "reason"
+      ],
+      "title": "MissingRange",
+      "type": "object"
+    },
+    "OperationChangedEvent": {
+      "additionalProperties": false,
+      "properties": {
+        "command_seq": {
+          "pattern": "^(0|[1-9][0-9]{0,19})$",
+          "title": "Command Seq",
+          "type": "string"
+        },
+        "controller_epoch": {
+          "pattern": "^[0-9a-f]{32}$",
+          "title": "Controller Epoch",
+          "type": "string"
+        },
+        "event_id": {
+          "pattern": "^[0-9a-f]{32}$",
+          "title": "Event Id",
+          "type": "string"
+        },
+        "event_seq": {
+          "pattern": "^(0|[1-9][0-9]{0,19})$",
+          "title": "Event Seq",
+          "type": "string"
+        },
+        "event_timestamp": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{3}Z$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Event Timestamp"
+        },
+        "event_uptime_ms": {
+          "pattern": "^(0|[1-9][0-9]{0,19})$",
+          "title": "Event Uptime Ms",
+          "type": "string"
+        },
+        "kind": {
+          "const": "operation_changed",
+          "title": "Kind",
+          "type": "string"
+        },
+        "operation_id": {
+          "pattern": "^[0-9a-f]{32}$",
+          "title": "Operation Id",
+          "type": "string"
+        },
+        "run_id": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{32}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Run Id"
+        }
+      },
+      "required": [
+        "event_id",
+        "event_seq",
+        "run_id",
+        "event_uptime_ms",
+        "event_timestamp",
+        "kind",
+        "controller_epoch",
+        "operation_id",
+        "command_seq"
+      ],
+      "title": "OperationChangedEvent",
+      "type": "object"
+    },
+    "OperationQuery": {
+      "additionalProperties": false,
+      "properties": {
+        "command_seq": {
+          "pattern": "^(0|[1-9][0-9]{0,19})$",
+          "title": "Command Seq",
+          "type": "string"
+        },
+        "controller_epoch": {
+          "pattern": "^[0-9a-f]{32}$",
+          "title": "Controller Epoch",
+          "type": "string"
+        },
+        "operation_id": {
+          "pattern": "^[0-9a-f]{32}$",
+          "title": "Operation Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "controller_epoch",
+        "operation_id",
+        "command_seq"
+      ],
+      "title": "OperationQuery",
+      "type": "object"
+    },
+    "OperationResult": {
+      "additionalProperties": false,
+      "properties": {
+        "command_seq": {
+          "pattern": "^(0|[1-9][0-9]{0,19})$",
+          "title": "Command Seq",
+          "type": "string"
+        },
+        "controller_epoch": {
+          "pattern": "^[0-9a-f]{32}$",
+          "title": "Controller Epoch",
+          "type": "string"
+        },
+        "lease_expires_uptime_ms": {
+          "anyOf": [
+            {
+              "pattern": "^(0|[1-9][0-9]{0,19})$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Lease Expires Uptime Ms"
+        },
+        "lease_id": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{32}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Lease Id"
+        },
+        "operation_id": {
+          "pattern": "^[0-9a-f]{32}$",
+          "title": "Operation Id",
+          "type": "string"
+        },
+        "reason": {
+          "pattern": "^[a-z][a-z0-9_]{0,63}$",
+          "title": "Reason",
+          "type": "string"
+        },
+        "request_digest": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Request Digest"
+        },
+        "result_boot_id": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{32}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Result Boot Id"
+        },
+        "run_id": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{32}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Run Id"
+        },
+        "state_revision": {
+          "pattern": "^(0|[1-9][0-9]{0,19})$",
+          "title": "State Revision",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "accepted",
+            "applied",
+            "rejected",
+            "interrupted",
+            "unknown",
+            "result_expired",
+            "not_found"
+          ],
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "controller_epoch",
+        "operation_id",
+        "command_seq",
+        "result_boot_id",
+        "request_digest",
+        "status",
+        "reason",
+        "state_revision",
+        "run_id",
+        "lease_id",
+        "lease_expires_uptime_ms"
+      ],
+      "title": "OperationResult",
+      "type": "object"
+    },
+    "Point": {
+      "additionalProperties": false,
+      "properties": {
+        "age_ms": {
+          "maximum": 9007199254740991,
+          "minimum": 0,
+          "title": "Age Ms",
+          "type": "integer"
+        },
+        "quality": {
+          "enum": [
+            "good",
+            "invalid",
+            "stale",
+            "unavailable",
+            "uncalibrated"
+          ],
+          "title": "Quality",
+          "type": "string"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Value"
+        }
+      },
+      "required": [
+        "value",
+        "quality",
+        "age_ms"
+      ],
+      "title": "Point",
+      "type": "object"
+    },
+    "ProfileSnapshot": {
+      "additionalProperties": false,
+      "properties": {
+        "approved": {
+          "title": "Approved",
+          "type": "boolean"
+        },
+        "engineering_config_digest": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Engineering Config Digest",
+          "type": "string"
+        },
+        "gas_reference": {
+          "$ref": "#/$defs/FlowReference"
+        },
+        "limits": {
+          "$ref": "#/$defs/Limits"
+        },
+        "profile_digest": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Profile Digest",
+          "type": "string"
+        },
+        "profile_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Profile Id",
+          "type": "string"
+        },
+        "resources": {
+          "$ref": "#/$defs/Resources"
+        },
+        "rules_reference": {
+          "anyOf": [
+            {
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Rules Reference"
+        }
+      },
+      "required": [
+        "profile_id",
+        "engineering_config_digest",
+        "profile_digest",
+        "approved",
+        "rules_reference",
+        "gas_reference",
+        "limits",
+        "resources"
+      ],
+      "title": "ProfileSnapshot",
+      "type": "object"
+    },
+    "RecipeBegin": {
+      "additionalProperties": false,
+      "properties": {
+        "byte_length": {
+          "exclusiveMinimum": 0,
+          "maximum": 65536,
+          "title": "Byte Length",
+          "type": "integer"
+        },
+        "lease_id": {
+          "pattern": "^[0-9a-f]{32}$",
+          "title": "Lease Id",
+          "type": "string"
+        },
+        "recipe_digest": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Recipe Digest",
+          "type": "string"
+        },
+        "transfer_id": {
+          "pattern": "^[0-9a-f]{32}$",
+          "title": "Transfer Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "transfer_id",
+        "lease_id",
+        "recipe_digest",
+        "byte_length"
+      ],
+      "title": "RecipeBegin",
+      "type": "object"
+    },
+    "RecipeChunk": {
+      "additionalProperties": false,
+      "properties": {
+        "data_b64": {
+          "maxLength": 2048,
+          "minLength": 4,
+          "pattern": "^[A-Za-z0-9+/]+={0,2}$",
+          "title": "Data B64",
+          "type": "string"
+        },
+        "offset": {
+          "maximum": 65535,
+          "minimum": 0,
+          "title": "Offset",
+          "type": "integer"
+        },
+        "transfer_id": {
+          "pattern": "^[0-9a-f]{32}$",
+          "title": "Transfer Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "transfer_id",
+        "offset",
+        "data_b64"
+      ],
+      "title": "RecipeChunk",
+      "type": "object"
+    },
+    "RecipeQuery": {
+      "additionalProperties": false,
+      "properties": {
+        "offset": {
+          "maximum": 65535,
+          "minimum": 0,
+          "title": "Offset",
+          "type": "integer"
+        },
+        "recipe_digest": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Recipe Digest",
+          "type": "string"
+        }
+      },
+      "required": [
+        "recipe_digest",
+        "offset"
+      ],
+      "title": "RecipeQuery",
+      "type": "object"
+    },
+    "RecipeSnapshot": {
+      "additionalProperties": false,
+      "properties": {
+        "active": {
+          "title": "Active",
+          "type": "boolean"
+        },
+        "byte_length": {
+          "exclusiveMinimum": 0,
+          "maximum": 65536,
+          "title": "Byte Length",
+          "type": "integer"
+        },
+        "data_b64": {
+          "maxLength": 2048,
+          "minLength": 4,
+          "pattern": "^[A-Za-z0-9+/]+={0,2}$",
+          "title": "Data B64",
+          "type": "string"
+        },
+        "offset": {
+          "maximum": 65535,
+          "minimum": 0,
+          "title": "Offset",
+          "type": "integer"
+        },
+        "recipe_digest": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Recipe Digest",
+          "type": "string"
+        }
+      },
+      "required": [
+        "recipe_digest",
+        "byte_length",
+        "offset",
+        "data_b64",
+        "active"
+      ],
+      "title": "RecipeSnapshot",
+      "type": "object"
+    },
+    "RecipeTransferResult": {
+      "additionalProperties": false,
+      "properties": {
+        "next_offset": {
+          "maximum": 65536,
+          "minimum": 0,
+          "title": "Next Offset",
+          "type": "integer"
+        },
+        "reason": {
+          "pattern": "^[a-z][a-z0-9_]{0,63}$",
+          "title": "Reason",
+          "type": "string"
+        },
+        "recipe_digest": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Recipe Digest",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "receiving",
+            "validated",
+            "rejected",
+            "expired"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "transfer_id": {
+          "pattern": "^[0-9a-f]{32}$",
+          "title": "Transfer Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "transfer_id",
+        "recipe_digest",
+        "status",
+        "next_offset",
+        "reason"
+      ],
+      "title": "RecipeTransferResult",
+      "type": "object"
+    },
+    "ReleaseLease": {
+      "additionalProperties": false,
+      "properties": {
+        "reason": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Reason",
+          "type": "string"
+        }
+      },
+      "required": [
+        "reason"
+      ],
+      "title": "ReleaseLease",
+      "type": "object"
+    },
+    "ResetFault": {
+      "additionalProperties": false,
+      "properties": {
+        "fault_revision": {
+          "pattern": "^(0|[1-9][0-9]{0,19})$",
+          "title": "Fault Revision",
+          "type": "string"
+        },
+        "reason": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Reason",
+          "type": "string"
+        }
+      },
+      "required": [
+        "fault_revision",
+        "reason"
+      ],
+      "title": "ResetFault",
+      "type": "object"
+    },
+    "Resources": {
+      "additionalProperties": false,
+      "properties": {
+        "channel_freshness_ms": {
+          "$ref": "#/$defs/ChannelFreshness"
+        },
+        "command_result_slots": {
+          "maximum": 65536,
+          "minimum": 128,
+          "title": "Command Result Slots",
+          "type": "integer"
+        },
+        "command_unresolved_slots": {
+          "maximum": 65536,
+          "minimum": 1,
+          "title": "Command Unresolved Slots",
+          "type": "integer"
+        },
+        "default_sample_period_ms": {
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "title": "Default Sample Period Ms",
+          "type": "integer"
+        },
+        "max_chunk_bytes": {
+          "const": 1536,
+          "title": "Max Chunk Bytes",
+          "type": "integer"
+        },
+        "max_frame_bytes": {
+          "const": 8192,
+          "title": "Max Frame Bytes",
+          "type": "integer"
+        },
+        "max_recipe_bytes": {
+          "const": 65536,
+          "title": "Max Recipe Bytes",
+          "type": "integer"
+        },
+        "max_sample_rate_millihz": {
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "title": "Max Sample Rate Millihz",
+          "type": "integer"
+        },
+        "max_stages": {
+          "maximum": 64,
+          "minimum": 1,
+          "title": "Max Stages",
+          "type": "integer"
+        },
+        "sample_log_capacity_bytes": {
+          "maximum": 9007199254740991,
+          "minimum": 0,
+          "title": "Sample Log Capacity Bytes",
+          "type": "integer"
+        },
+        "sample_log_durable": {
+          "title": "Sample Log Durable",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "max_frame_bytes",
+        "max_recipe_bytes",
+        "max_chunk_bytes",
+        "max_stages",
+        "max_sample_rate_millihz",
+        "default_sample_period_ms",
+        "channel_freshness_ms",
+        "sample_log_capacity_bytes",
+        "sample_log_durable",
+        "command_result_slots",
+        "command_unresolved_slots"
+      ],
+      "title": "Resources",
+      "type": "object"
+    },
+    "RunChangedEvent": {
+      "additionalProperties": false,
+      "properties": {
+        "event_id": {
+          "pattern": "^[0-9a-f]{32}$",
+          "title": "Event Id",
+          "type": "string"
+        },
+        "event_seq": {
+          "pattern": "^(0|[1-9][0-9]{0,19})$",
+          "title": "Event Seq",
+          "type": "string"
+        },
+        "event_timestamp": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{3}Z$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Event Timestamp"
+        },
+        "event_uptime_ms": {
+          "pattern": "^(0|[1-9][0-9]{0,19})$",
+          "title": "Event Uptime Ms",
+          "type": "string"
+        },
+        "kind": {
+          "const": "run_changed",
+          "title": "Kind",
+          "type": "string"
+        },
+        "run": {
+          "$ref": "#/$defs/RunStatus"
+        },
+        "run_id": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{32}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Run Id"
+        }
+      },
+      "required": [
+        "event_id",
+        "event_seq",
+        "run_id",
+        "event_uptime_ms",
+        "event_timestamp",
+        "kind",
+        "run"
+      ],
+      "title": "RunChangedEvent",
+      "type": "object"
+    },
+    "RunStatus": {
+      "additionalProperties": false,
+      "properties": {
+        "fault_revision": {
+          "pattern": "^(0|[1-9][0-9]{0,19})$",
+          "title": "Fault Revision",
+          "type": "string"
+        },
+        "measurement_complete": {
+          "title": "Measurement Complete",
+          "type": "boolean"
+        },
+        "measurement_end": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SampleRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "measurement_start": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SampleRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "outcome": {
+          "enum": [
+            "pending",
+            "valid_candidate",
+            "aborted",
+            "invalid"
+          ],
+          "title": "Outcome",
+          "type": "string"
+        },
+        "recipe_digest": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Recipe Digest"
+        },
+        "run_id": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{32}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Run Id"
+        },
+        "safe_boundary": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SampleRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "safe_complete": {
+          "title": "Safe Complete",
+          "type": "boolean"
+        },
+        "safety_profile_digest": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Safety Profile Digest"
+        },
+        "stage_index": {
+          "anyOf": [
+            {
+              "maximum": 63,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Stage Index"
+        },
+        "state": {
+          "enum": [
+            "booting",
+            "idle",
+            "preparing",
+            "measuring",
+            "safe_disposal",
+            "cooling",
+            "completed",
+            "fault",
+            "maintenance"
+          ],
+          "title": "State",
+          "type": "string"
+        },
+        "state_revision": {
+          "pattern": "^(0|[1-9][0-9]{0,19})$",
+          "title": "State Revision",
+          "type": "string"
+        }
+      },
+      "required": [
+        "run_id",
+        "state",
+        "state_revision",
+        "outcome",
+        "recipe_digest",
+        "safety_profile_digest",
+        "stage_index",
+        "measurement_complete",
+        "safe_complete",
+        "measurement_start",
+        "measurement_end",
+        "safe_boundary",
+        "fault_revision"
+      ],
+      "title": "RunStatus",
+      "type": "object"
+    },
+    "SafetyStatus": {
+      "additionalProperties": false,
+      "properties": {
+        "co_alarm": {
+          "title": "Co Alarm",
+          "type": "boolean"
+        },
+        "emergency_stop": {
+          "title": "Emergency Stop",
+          "type": "boolean"
+        },
+        "exhaust_ok": {
+          "title": "Exhaust Ok",
+          "type": "boolean"
+        },
+        "hardwired_permit": {
+          "title": "Hardwired Permit",
+          "type": "boolean"
+        },
+        "overtemperature": {
+          "title": "Overtemperature",
+          "type": "boolean"
+        },
+        "profile_approved": {
+          "title": "Profile Approved",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "hardwired_permit",
+        "emergency_stop",
+        "exhaust_ok",
+        "co_alarm",
+        "overtemperature",
+        "profile_approved"
+      ],
+      "title": "SafetyStatus",
+      "type": "object"
+    },
+    "SampleRef": {
+      "additionalProperties": false,
+      "properties": {
+        "boot_id": {
+          "pattern": "^[0-9a-f]{32}$",
+          "title": "Boot Id",
+          "type": "string"
+        },
+        "sample_seq": {
+          "pattern": "^(0|[1-9][0-9]{0,19})$",
+          "title": "Sample Seq",
+          "type": "string"
+        }
+      },
+      "required": [
+        "boot_id",
+        "sample_seq"
+      ],
+      "title": "SampleRef",
+      "type": "object"
+    },
+    "StartRun": {
+      "additionalProperties": false,
+      "properties": {
+        "recipe_digest": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Recipe Digest",
+          "type": "string"
+        },
+        "run_id": {
+          "pattern": "^[0-9a-f]{32}$",
+          "title": "Run Id",
+          "type": "string"
+        },
+        "safety_profile_digest": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Safety Profile Digest",
+          "type": "string"
+        }
+      },
+      "required": [
+        "run_id",
+        "recipe_digest",
+        "safety_profile_digest"
+      ],
+      "title": "StartRun",
+      "type": "object"
+    },
+    "StatusSnapshot": {
+      "additionalProperties": false,
+      "properties": {
+        "active_alarm_revision": {
+          "pattern": "^(0|[1-9][0-9]{0,19})$",
+          "title": "Active Alarm Revision",
+          "type": "string"
+        },
+        "active_recipe_digest": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Active Recipe Digest"
+        },
+        "latest_sample": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SampleRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "lease_expires_uptime_ms": {
+          "anyOf": [
+            {
+              "pattern": "^(0|[1-9][0-9]{0,19})$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Lease Expires Uptime Ms"
+        },
+        "lease_id": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{32}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Lease Id"
+        },
+        "lease_owner_controller_id": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{32}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Lease Owner Controller Id"
+        },
+        "lease_owner_session_id": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{32}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Lease Owner Session Id"
+        },
+        "log": {
+          "$ref": "#/$defs/LogCatalog"
+        },
+        "profile_digest": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Profile Digest",
+          "type": "string"
+        },
+        "run": {
+          "$ref": "#/$defs/RunStatus"
+        },
+        "safety": {
+          "$ref": "#/$defs/SafetyStatus"
+        }
+      },
+      "required": [
+        "log",
+        "run",
+        "safety",
+        "latest_sample",
+        "active_recipe_digest",
+        "profile_digest",
+        "lease_id",
+        "lease_owner_controller_id",
+        "lease_owner_session_id",
+        "lease_expires_uptime_ms",
+        "active_alarm_revision"
+      ],
+      "title": "StatusSnapshot",
+      "type": "object"
+    },
+    "StopRun": {
+      "additionalProperties": false,
+      "properties": {
+        "reason": {
+          "pattern": "^[a-z][a-z0-9_]{0,63}$",
+          "title": "Reason",
+          "type": "string"
+        },
+        "run_id": {
+          "pattern": "^[0-9a-f]{32}$",
+          "title": "Run Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "run_id",
+        "reason"
+      ],
+      "title": "StopRun",
+      "type": "object"
+    },
+    "Telemetry": {
+      "additionalProperties": false,
+      "properties": {
+        "first_drip_detector_quality": {
+          "enum": [
+            "good",
+            "invalid",
+            "stale",
+            "unavailable",
+            "uncalibrated"
+          ],
+          "title": "First Drip Detector Quality",
+          "type": "string"
+        },
+        "first_drip_latched": {
+          "title": "First Drip Latched",
+          "type": "boolean"
+        },
+        "run_id": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{32}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Run Id"
+        },
+        "sample": {
+          "$ref": "#/$defs/SampleRef"
+        },
+        "sample_timestamp": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{3}Z$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Sample Timestamp"
+        },
+        "sample_uptime_ms": {
+          "pattern": "^(0|[1-9][0-9]{0,19})$",
+          "title": "Sample Uptime Ms",
+          "type": "string"
+        },
+        "state_revision": {
+          "pattern": "^(0|[1-9][0-9]{0,19})$",
+          "title": "State Revision",
+          "type": "string"
+        },
+        "values": {
+          "$ref": "#/$defs/Measurements"
+        }
+      },
+      "required": [
+        "sample",
+        "sample_uptime_ms",
+        "sample_timestamp",
+        "run_id",
+        "state_revision",
+        "values",
+        "first_drip_latched",
+        "first_drip_detector_quality"
+      ],
+      "title": "Telemetry",
+      "type": "object"
+    }
+  },
+  "$id": "urn:smd:hostcomm:2.0:message.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "discriminator": {
+    "mapping": {
+      "alarms_snapshot": "#/$defs/MessageAlarmsSnapshot",
+      "command": "#/$defs/MessageCommand",
+      "command_result": "#/$defs/MessageCommandResult",
+      "error": "#/$defs/MessageError",
+      "event": "#/$defs/MessageEvent",
+      "get_alarms": "#/$defs/MessageGetAlarms",
+      "get_operation": "#/$defs/MessageGetOperation",
+      "get_profile": "#/$defs/MessageGetProfile",
+      "get_recipe": "#/$defs/MessageGetRecipe",
+      "get_status": "#/$defs/MessageGetStatus",
+      "heartbeat": "#/$defs/MessageHeartbeat",
+      "heartbeat_ack": "#/$defs/MessageHeartbeatAck",
+      "hello": "#/$defs/MessageHello",
+      "hello_ack": "#/$defs/MessageHelloAck",
+      "log_ack": "#/$defs/MessageLogAck",
+      "log_chunk": "#/$defs/MessageLogChunk",
+      "log_request": "#/$defs/MessageLogRequest",
+      "log_result": "#/$defs/MessageLogResult",
+      "operation_snapshot": "#/$defs/MessageOperationSnapshot",
+      "profile_snapshot": "#/$defs/MessageProfileSnapshot",
+      "recipe_begin": "#/$defs/MessageRecipeBegin",
+      "recipe_chunk": "#/$defs/MessageRecipeChunk",
+      "recipe_snapshot": "#/$defs/MessageRecipeSnapshot",
+      "recipe_transfer_result": "#/$defs/MessageRecipeTransferResult",
+      "status_snapshot": "#/$defs/MessageStatusSnapshot",
+      "telemetry": "#/$defs/MessageTelemetry"
+    },
+    "propertyName": "type"
+  },
+  "oneOf": [
+    {
+      "$ref": "#/$defs/MessageHello"
+    },
+    {
+      "$ref": "#/$defs/MessageHelloAck"
+    },
+    {
+      "$ref": "#/$defs/MessageHeartbeat"
+    },
+    {
+      "$ref": "#/$defs/MessageHeartbeatAck"
+    },
+    {
+      "$ref": "#/$defs/MessageGetStatus"
+    },
+    {
+      "$ref": "#/$defs/MessageStatusSnapshot"
+    },
+    {
+      "$ref": "#/$defs/MessageCommand"
+    },
+    {
+      "$ref": "#/$defs/MessageCommandResult"
+    },
+    {
+      "$ref": "#/$defs/MessageGetOperation"
+    },
+    {
+      "$ref": "#/$defs/MessageOperationSnapshot"
+    },
+    {
+      "$ref": "#/$defs/MessageGetProfile"
+    },
+    {
+      "$ref": "#/$defs/MessageProfileSnapshot"
+    },
+    {
+      "$ref": "#/$defs/MessageGetAlarms"
+    },
+    {
+      "$ref": "#/$defs/MessageAlarmsSnapshot"
+    },
+    {
+      "$ref": "#/$defs/MessageRecipeBegin"
+    },
+    {
+      "$ref": "#/$defs/MessageRecipeChunk"
+    },
+    {
+      "$ref": "#/$defs/MessageRecipeTransferResult"
+    },
+    {
+      "$ref": "#/$defs/MessageGetRecipe"
+    },
+    {
+      "$ref": "#/$defs/MessageRecipeSnapshot"
+    },
+    {
+      "$ref": "#/$defs/MessageTelemetry"
+    },
+    {
+      "$ref": "#/$defs/MessageEvent"
+    },
+    {
+      "$ref": "#/$defs/MessageLogRequest"
+    },
+    {
+      "$ref": "#/$defs/MessageLogChunk"
+    },
+    {
+      "$ref": "#/$defs/MessageLogAck"
+    },
+    {
+      "$ref": "#/$defs/MessageLogResult"
+    },
+    {
+      "$ref": "#/$defs/MessageError"
+    }
+  ]
+}

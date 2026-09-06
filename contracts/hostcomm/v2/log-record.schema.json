@@ -1,0 +1,808 @@
+{
+  "$defs": {
+    "AlarmEvent": {
+      "additionalProperties": false,
+      "properties": {
+        "acknowledged": {
+          "title": "Acknowledged",
+          "type": "boolean"
+        },
+        "active": {
+          "title": "Active",
+          "type": "boolean"
+        },
+        "alarm_id": {
+          "pattern": "^[0-9a-f]{32}$",
+          "title": "Alarm Id",
+          "type": "string"
+        },
+        "code": {
+          "enum": [
+            "emergency_stop",
+            "co_leak",
+            "exhaust_lost",
+            "furnace_overtemperature",
+            "burden_overtemperature",
+            "temperature_sensor_invalid",
+            "measurement_sensor_invalid",
+            "n2_mfc_fault",
+            "co_mfc_fault",
+            "gas_supply_lost",
+            "actuator_feedback_fault",
+            "lease_lost",
+            "storage_unavailable",
+            "log_capacity_low",
+            "log_capacity_exhausted",
+            "recipe_stage_timeout",
+            "clock_unsynced",
+            "engineering_profile_invalid"
+          ],
+          "title": "Code",
+          "type": "string"
+        },
+        "event_id": {
+          "pattern": "^[0-9a-f]{32}$",
+          "title": "Event Id",
+          "type": "string"
+        },
+        "event_seq": {
+          "pattern": "^(0|[1-9][0-9]{0,19})$",
+          "title": "Event Seq",
+          "type": "string"
+        },
+        "event_timestamp": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{3}Z$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Event Timestamp"
+        },
+        "event_uptime_ms": {
+          "pattern": "^(0|[1-9][0-9]{0,19})$",
+          "title": "Event Uptime Ms",
+          "type": "string"
+        },
+        "kind": {
+          "const": "alarm",
+          "title": "Kind",
+          "type": "string"
+        },
+        "occurrence_seq": {
+          "pattern": "^(0|[1-9][0-9]{0,19})$",
+          "title": "Occurrence Seq",
+          "type": "string"
+        },
+        "run_id": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{32}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Run Id"
+        },
+        "sample": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SampleRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "severity": {
+          "enum": [
+            "info",
+            "warning",
+            "trip"
+          ],
+          "title": "Severity",
+          "type": "string"
+        },
+        "transition": {
+          "enum": [
+            "raised",
+            "acknowledged",
+            "cleared"
+          ],
+          "title": "Transition",
+          "type": "string"
+        }
+      },
+      "required": [
+        "event_id",
+        "event_seq",
+        "run_id",
+        "event_uptime_ms",
+        "event_timestamp",
+        "kind",
+        "alarm_id",
+        "occurrence_seq",
+        "code",
+        "transition",
+        "severity",
+        "active",
+        "acknowledged",
+        "sample"
+      ],
+      "title": "AlarmEvent",
+      "type": "object"
+    },
+    "EventLogRecord": {
+      "additionalProperties": false,
+      "properties": {
+        "boot_id": {
+          "pattern": "^[0-9a-f]{32}$",
+          "title": "Boot Id",
+          "type": "string"
+        },
+        "data": {
+          "discriminator": {
+            "mapping": {
+              "alarm": "#/$defs/AlarmEvent",
+              "first_drip": "#/$defs/FirstDripEvent",
+              "operation_changed": "#/$defs/OperationChangedEvent",
+              "run_changed": "#/$defs/RunChangedEvent"
+            },
+            "propertyName": "kind"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/$defs/FirstDripEvent"
+            },
+            {
+              "$ref": "#/$defs/RunChangedEvent"
+            },
+            {
+              "$ref": "#/$defs/AlarmEvent"
+            },
+            {
+              "$ref": "#/$defs/OperationChangedEvent"
+            }
+          ],
+          "title": "Data"
+        },
+        "log_id": {
+          "pattern": "^[0-9a-f]{32}$",
+          "title": "Log Id",
+          "type": "string"
+        },
+        "record_seq": {
+          "pattern": "^(0|[1-9][0-9]{0,19})$",
+          "title": "Record Seq",
+          "type": "string"
+        },
+        "record_type": {
+          "const": "event",
+          "title": "Record Type",
+          "type": "string"
+        },
+        "timestamp": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{3}Z$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Timestamp"
+        },
+        "uptime_ms": {
+          "pattern": "^(0|[1-9][0-9]{0,19})$",
+          "title": "Uptime Ms",
+          "type": "string"
+        }
+      },
+      "required": [
+        "record_type",
+        "log_id",
+        "record_seq",
+        "boot_id",
+        "timestamp",
+        "uptime_ms",
+        "data"
+      ],
+      "title": "EventLogRecord",
+      "type": "object"
+    },
+    "FirstDripEvent": {
+      "additionalProperties": false,
+      "properties": {
+        "burden_mc": {
+          "$ref": "#/$defs/Point"
+        },
+        "event_id": {
+          "pattern": "^[0-9a-f]{32}$",
+          "title": "Event Id",
+          "type": "string"
+        },
+        "event_seq": {
+          "pattern": "^(0|[1-9][0-9]{0,19})$",
+          "title": "Event Seq",
+          "type": "string"
+        },
+        "event_timestamp": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{3}Z$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Event Timestamp"
+        },
+        "event_uptime_ms": {
+          "pattern": "^(0|[1-9][0-9]{0,19})$",
+          "title": "Event Uptime Ms",
+          "type": "string"
+        },
+        "is_valid": {
+          "title": "Is Valid",
+          "type": "boolean"
+        },
+        "kind": {
+          "const": "first_drip",
+          "title": "Kind",
+          "type": "string"
+        },
+        "run_id": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{32}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Run Id"
+        },
+        "sample": {
+          "$ref": "#/$defs/SampleRef"
+        }
+      },
+      "required": [
+        "event_id",
+        "event_seq",
+        "run_id",
+        "event_uptime_ms",
+        "event_timestamp",
+        "kind",
+        "sample",
+        "burden_mc",
+        "is_valid"
+      ],
+      "title": "FirstDripEvent",
+      "type": "object"
+    },
+    "Measurements": {
+      "additionalProperties": false,
+      "properties": {
+        "burden_mc": {
+          "$ref": "#/$defs/Point"
+        },
+        "co_measured_ml_min": {
+          "$ref": "#/$defs/Point"
+        },
+        "co_setpoint_ml_min": {
+          "$ref": "#/$defs/Point"
+        },
+        "displacement_um": {
+          "$ref": "#/$defs/Point"
+        },
+        "drip_mass_mg": {
+          "$ref": "#/$defs/Point"
+        },
+        "furnace_mc": {
+          "$ref": "#/$defs/Point"
+        },
+        "furnace_setpoint_mc": {
+          "$ref": "#/$defs/Point"
+        },
+        "n2_measured_ml_min": {
+          "$ref": "#/$defs/Point"
+        },
+        "n2_setpoint_ml_min": {
+          "$ref": "#/$defs/Point"
+        },
+        "pressure_drop_pa": {
+          "$ref": "#/$defs/Point"
+        }
+      },
+      "required": [
+        "furnace_mc",
+        "burden_mc",
+        "furnace_setpoint_mc",
+        "pressure_drop_pa",
+        "displacement_um",
+        "drip_mass_mg",
+        "n2_measured_ml_min",
+        "n2_setpoint_ml_min",
+        "co_measured_ml_min",
+        "co_setpoint_ml_min"
+      ],
+      "title": "Measurements",
+      "type": "object"
+    },
+    "OperationChangedEvent": {
+      "additionalProperties": false,
+      "properties": {
+        "command_seq": {
+          "pattern": "^(0|[1-9][0-9]{0,19})$",
+          "title": "Command Seq",
+          "type": "string"
+        },
+        "controller_epoch": {
+          "pattern": "^[0-9a-f]{32}$",
+          "title": "Controller Epoch",
+          "type": "string"
+        },
+        "event_id": {
+          "pattern": "^[0-9a-f]{32}$",
+          "title": "Event Id",
+          "type": "string"
+        },
+        "event_seq": {
+          "pattern": "^(0|[1-9][0-9]{0,19})$",
+          "title": "Event Seq",
+          "type": "string"
+        },
+        "event_timestamp": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{3}Z$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Event Timestamp"
+        },
+        "event_uptime_ms": {
+          "pattern": "^(0|[1-9][0-9]{0,19})$",
+          "title": "Event Uptime Ms",
+          "type": "string"
+        },
+        "kind": {
+          "const": "operation_changed",
+          "title": "Kind",
+          "type": "string"
+        },
+        "operation_id": {
+          "pattern": "^[0-9a-f]{32}$",
+          "title": "Operation Id",
+          "type": "string"
+        },
+        "run_id": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{32}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Run Id"
+        }
+      },
+      "required": [
+        "event_id",
+        "event_seq",
+        "run_id",
+        "event_uptime_ms",
+        "event_timestamp",
+        "kind",
+        "controller_epoch",
+        "operation_id",
+        "command_seq"
+      ],
+      "title": "OperationChangedEvent",
+      "type": "object"
+    },
+    "Point": {
+      "additionalProperties": false,
+      "properties": {
+        "age_ms": {
+          "maximum": 9007199254740991,
+          "minimum": 0,
+          "title": "Age Ms",
+          "type": "integer"
+        },
+        "quality": {
+          "enum": [
+            "good",
+            "invalid",
+            "stale",
+            "unavailable",
+            "uncalibrated"
+          ],
+          "title": "Quality",
+          "type": "string"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Value"
+        }
+      },
+      "required": [
+        "value",
+        "quality",
+        "age_ms"
+      ],
+      "title": "Point",
+      "type": "object"
+    },
+    "RunChangedEvent": {
+      "additionalProperties": false,
+      "properties": {
+        "event_id": {
+          "pattern": "^[0-9a-f]{32}$",
+          "title": "Event Id",
+          "type": "string"
+        },
+        "event_seq": {
+          "pattern": "^(0|[1-9][0-9]{0,19})$",
+          "title": "Event Seq",
+          "type": "string"
+        },
+        "event_timestamp": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{3}Z$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Event Timestamp"
+        },
+        "event_uptime_ms": {
+          "pattern": "^(0|[1-9][0-9]{0,19})$",
+          "title": "Event Uptime Ms",
+          "type": "string"
+        },
+        "kind": {
+          "const": "run_changed",
+          "title": "Kind",
+          "type": "string"
+        },
+        "run": {
+          "$ref": "#/$defs/RunStatus"
+        },
+        "run_id": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{32}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Run Id"
+        }
+      },
+      "required": [
+        "event_id",
+        "event_seq",
+        "run_id",
+        "event_uptime_ms",
+        "event_timestamp",
+        "kind",
+        "run"
+      ],
+      "title": "RunChangedEvent",
+      "type": "object"
+    },
+    "RunStatus": {
+      "additionalProperties": false,
+      "properties": {
+        "fault_revision": {
+          "pattern": "^(0|[1-9][0-9]{0,19})$",
+          "title": "Fault Revision",
+          "type": "string"
+        },
+        "measurement_complete": {
+          "title": "Measurement Complete",
+          "type": "boolean"
+        },
+        "measurement_end": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SampleRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "measurement_start": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SampleRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "outcome": {
+          "enum": [
+            "pending",
+            "valid_candidate",
+            "aborted",
+            "invalid"
+          ],
+          "title": "Outcome",
+          "type": "string"
+        },
+        "recipe_digest": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Recipe Digest"
+        },
+        "run_id": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{32}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Run Id"
+        },
+        "safe_boundary": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SampleRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "safe_complete": {
+          "title": "Safe Complete",
+          "type": "boolean"
+        },
+        "safety_profile_digest": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Safety Profile Digest"
+        },
+        "stage_index": {
+          "anyOf": [
+            {
+              "maximum": 63,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Stage Index"
+        },
+        "state": {
+          "enum": [
+            "booting",
+            "idle",
+            "preparing",
+            "measuring",
+            "safe_disposal",
+            "cooling",
+            "completed",
+            "fault",
+            "maintenance"
+          ],
+          "title": "State",
+          "type": "string"
+        },
+        "state_revision": {
+          "pattern": "^(0|[1-9][0-9]{0,19})$",
+          "title": "State Revision",
+          "type": "string"
+        }
+      },
+      "required": [
+        "run_id",
+        "state",
+        "state_revision",
+        "outcome",
+        "recipe_digest",
+        "safety_profile_digest",
+        "stage_index",
+        "measurement_complete",
+        "safe_complete",
+        "measurement_start",
+        "measurement_end",
+        "safe_boundary",
+        "fault_revision"
+      ],
+      "title": "RunStatus",
+      "type": "object"
+    },
+    "SampleLogRecord": {
+      "additionalProperties": false,
+      "properties": {
+        "data": {
+          "$ref": "#/$defs/Telemetry"
+        },
+        "log_id": {
+          "pattern": "^[0-9a-f]{32}$",
+          "title": "Log Id",
+          "type": "string"
+        },
+        "record_seq": {
+          "pattern": "^(0|[1-9][0-9]{0,19})$",
+          "title": "Record Seq",
+          "type": "string"
+        },
+        "record_type": {
+          "const": "sample",
+          "title": "Record Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "record_type",
+        "log_id",
+        "record_seq",
+        "data"
+      ],
+      "title": "SampleLogRecord",
+      "type": "object"
+    },
+    "SampleRef": {
+      "additionalProperties": false,
+      "properties": {
+        "boot_id": {
+          "pattern": "^[0-9a-f]{32}$",
+          "title": "Boot Id",
+          "type": "string"
+        },
+        "sample_seq": {
+          "pattern": "^(0|[1-9][0-9]{0,19})$",
+          "title": "Sample Seq",
+          "type": "string"
+        }
+      },
+      "required": [
+        "boot_id",
+        "sample_seq"
+      ],
+      "title": "SampleRef",
+      "type": "object"
+    },
+    "Telemetry": {
+      "additionalProperties": false,
+      "properties": {
+        "first_drip_detector_quality": {
+          "enum": [
+            "good",
+            "invalid",
+            "stale",
+            "unavailable",
+            "uncalibrated"
+          ],
+          "title": "First Drip Detector Quality",
+          "type": "string"
+        },
+        "first_drip_latched": {
+          "title": "First Drip Latched",
+          "type": "boolean"
+        },
+        "run_id": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{32}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Run Id"
+        },
+        "sample": {
+          "$ref": "#/$defs/SampleRef"
+        },
+        "sample_timestamp": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{3}Z$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Sample Timestamp"
+        },
+        "sample_uptime_ms": {
+          "pattern": "^(0|[1-9][0-9]{0,19})$",
+          "title": "Sample Uptime Ms",
+          "type": "string"
+        },
+        "state_revision": {
+          "pattern": "^(0|[1-9][0-9]{0,19})$",
+          "title": "State Revision",
+          "type": "string"
+        },
+        "values": {
+          "$ref": "#/$defs/Measurements"
+        }
+      },
+      "required": [
+        "sample",
+        "sample_uptime_ms",
+        "sample_timestamp",
+        "run_id",
+        "state_revision",
+        "values",
+        "first_drip_latched",
+        "first_drip_detector_quality"
+      ],
+      "title": "Telemetry",
+      "type": "object"
+    }
+  },
+  "$id": "urn:smd:hostcomm:2.0:log-record.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "discriminator": {
+    "mapping": {
+      "event": "#/$defs/EventLogRecord",
+      "sample": "#/$defs/SampleLogRecord"
+    },
+    "propertyName": "record_type"
+  },
+  "oneOf": [
+    {
+      "$ref": "#/$defs/SampleLogRecord"
+    },
+    {
+      "$ref": "#/$defs/EventLogRecord"
+    }
+  ]
+}
