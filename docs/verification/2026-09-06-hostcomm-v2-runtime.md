@@ -17,7 +17,7 @@
 | 无执行器板端模型 | `backend/tests/test_hostcomm_v2_simulator.py` | 全部协议类型、租约、配方、状态、日志、故障注入、持久重启；不构成固件验收 |
 | 桌面配对与迁移 | `desktop/tests/test_pairing.py`、`backend/tests/test_v2_operations.py` | 受控配对、身份/密钥不公开、恢复日志、旧库迁移；真实 Windows 行为以 CI 和现场记录分别确认 |
 | 实验后的离线维护 | `backend/tests/test_v2_application.py`、`desktop/tests/test_pairing.py` | 真实 REST/TCP 及归档数据在安全完成后可通过离线配对检查；确证未开始的拒绝启动不补造安全时间；错配终态、未知结果和已观测运行证据继续阻止配对 |
-| 拒绝与中断恢复 | `backend/tests/test_v2_operation_api.py`、`test_v2_upgrade_ready.py` | 启动拒绝证据关闭预约；interrupted 不提前结束采集；未配对安装可维护，已配对未确认终态/未知命令阻止升级 |
+| 拒绝与中断恢复 | `backend/tests/test_v2_operation_api.py`、`test_v2_upgrade_ready.py` | 启动拒绝证据关闭预约；interrupted 不提前结束采集；未配对安装可维护，已配对未确认结束的运行和未经核查的设备操作阻止升级；未知核查不改写原结果 |
 
 ## 浏览器集成验证
 
