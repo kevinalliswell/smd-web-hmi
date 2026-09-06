@@ -197,13 +197,19 @@ async def test_lost_receipt_is_queried_without_replaying_start_and_body_conflict
     }
     sim.drop_reply("command_result")
     pending = asyncio.create_task(command(http, "start_test", parameters, "lost-v2"))
-    for _ in range(100):
-        if sim.state.run["state"] == "preparing":
-            break
-        await asyncio.sleep(0.01)
-    assert sim.state.run["state"] == "preparing", (await pending).text if pending.done() else client.stats
-    await sim.tick()
-    response = await pending
+    try:
+        async with asyncio.timeout(10):
+            while sim.state.run["state"] != "preparing" or sim._drop_replies["command_result"]:
+                assert not pending.done(), "Start finished before the intended start-reply loss"
+                await asyncio.sleep(0.01)
+        await sim.tick()
+        response = await pending
+    finally:
+        # A failed setup assertion must not leave this HTTP request owning the
+        # process-wide ordinary-command guard when the fixture/event loop ends.
+        if not pending.done():
+            pending.cancel()
+        await asyncio.gather(pending, return_exceptions=True)
     assert response.status_code == 504, response.text
     highwater = sim.state.data["highwater"][sim.pairing.controller_epoch]
     repeated = await command(http, "start_test", parameters, "lost-v2")
@@ -270,18 +276,19 @@ async def test_stop_bypasses_a_lost_ordinary_receipt_at_both_http_and_wire_layer
     try:
         # Wait for the intended ordinary reply to be dropped. A fixed sleep can
         # let stop overtake a slow SQLite intent and consume the injected loss.
-        for _ in range(400):
-            if sim._drop_replies["command_result"] == 0:
-                break
-            await asyncio.sleep(0.01)
-        assert sim._drop_replies["command_result"] == 0
+        async with asyncio.timeout(10):
+            while sim._drop_replies["command_result"]:
+                assert not pending.done(), "Alarm confirmation finished before the intended reply loss"
+                await asyncio.sleep(0.01)
         assert sim.state.data["alarms"][f"{alarm['wire_alarm_id']}:{alarm['occurrence_seq']}"]["acknowledged"]
         assert not pending.done()
         result = await stop_with_pending_work(http, client, "priority-stop", lambda: not pending.done(), monkeypatch)
         assert result.status_code == 200, result.text
         assert sim.state.run["state"] in {"safe_disposal", "cooling"}
     finally:
-        await pending
+        if not pending.done():
+            pending.cancel()
+        await asyncio.gather(pending, return_exceptions=True)
 
 
 async def test_stop_uses_current_session_run_identity_when_all_read_slots_are_busy(system, monkeypatch):
@@ -305,12 +312,11 @@ async def test_stop_uses_current_session_run_identity_when_all_read_slots_are_bu
         await asyncio.wait_for(asyncio.shield(client._refresh_task), 10)
     sim.drop_reply("status_snapshot", count=4)
     reads = [asyncio.create_task(client.transport.request("get_status", {})) for _ in range(4)]
-    for _ in range(100):
-        if sim._drop_replies["status_snapshot"] == 0:
-            break
-        await asyncio.sleep(0.01)
-    assert sim._drop_replies["status_snapshot"] == 0
     try:
+        async with asyncio.timeout(10):
+            while sim._drop_replies["status_snapshot"]:
+                assert all(not task.done() for task in reads), "A read finished before all four reply losses"
+                await asyncio.sleep(0.01)
         result = await stop_with_pending_work(
             http, client, "busy-read-stop", lambda: all(not task.done() for task in reads), monkeypatch
         )

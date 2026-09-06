@@ -138,16 +138,22 @@ async def test_cancelled_database_failure_rolls_back_and_preserves_cancellation(
             raise ValueError("invalid source")
 
     task = asyncio.create_task(transaction())
-    await entered.wait()
-    task.cancel()
-    await asyncio.sleep(0)
-    release.set()
-    with pytest.raises(asyncio.CancelledError):
-        await task
-    async with engine.begin() as connection:
-        assert await connection.scalar(text("SELECT count(*) FROM sample")) == 0
-        await connection.execute(text("INSERT INTO sample VALUES ('available')"))
-    await engine.dispose()
+    try:
+        await asyncio.wait_for(entered.wait(), 10)
+        task.cancel()
+        await asyncio.sleep(0)
+        release.set()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        async with engine.begin() as connection:
+            assert await connection.scalar(text("SELECT count(*) FROM sample")) == 0
+            await connection.execute(text("INSERT INTO sample VALUES ('available')"))
+    finally:
+        release.set()
+        if not task.done():
+            task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+        await engine.dispose()
 
 
 async def test_database_unit_internal_cancellation_is_not_swallowed():
