@@ -3,6 +3,13 @@
 本项目遵循[语义化版本](https://semver.org/lang/zh-CN/)；`backend/app/__init__.py` 的
 `__version__` 为唯一权威版本源。条目按 Conventional Commits 类型归类。
 
+## [0.3.0-rc.4] — 2026-09-06
+
+- 修正 Windows 安装器中文错误提示的输入编码和日志路径；区分更新器无法启动与运行后失败，并显示退出码。
+- 本次现场日志已确认缺少 `C:\ProgramData\SmdHmi\maintenance.json`：缺少升级准备时明确引导至旧软件的“系统设置 → 离线升级”，不绕过维护许可。
+
+本候选仅增加安装器诊断与缺失维护准备提示，保留 rc.3 的 HostComm 2.0 功能和历史证据，既有 `v0.3.0-rc.3` 标签不移动。软件检查与候选包结果须绑定本次发布提交；尚未验证用户现场重试成功，旧1.0离线升级限制仍保留。见[排查记录](docs/verification/2026-09-06-windows-installer-errors.md)。
+
 ## [0.3.0-rc.3] — 2026-09-06
 
 - 新增 HostComm 2.0 PSK 认证客户端、独立停止通道、持久序号/操作与未知结果查询恢复；显式保留 1.0 兼容配置。

@@ -24,6 +24,7 @@ $Version = (python scripts/release/metadata.py).Trim()
 - 安装后清单的版本、提交和 schema 目标与本轮构建清单一致。
 - 无认证 GET `/api/system/health` 返回同版本 ready，database/schema/storage/backup 均为 ok，HostComm 必须 offline。
 - 静态页和它引用的实际 `/assets/` JavaScript 资源均能返回，避免把 SPA fallback HTML 当作成功脚本。
+- 再次运行相同 NSIS 安装器且不准备维护：退出码必须为 `20`，日志包含 UTF-8 中文及实际目标版本；原服务 PID、安装指针和配置保持不变，未生成维护票据。只记录布尔结果，不公开配置内容或摘要。这验证未准备升级的拒绝路径，不代表已授权升级或用户现场重试验收通过。
 - 停止服务后，已安装的 `SmdUpdate --pair-device` 成功执行；重启原 LocalService 后，出现与本次随机设备 ID 匹配的 `v2.tls_credentials_loaded` 事件，证明服务身份完成所有者、DACL、密钥格式及 TLS context 加载。HostComm 仍须 offline，证据明确标注未验证设备握手。
 
 安装进程默认最多 360 秒（允许 30–900 秒），配对 CLI 和每次健康检查最多 60 秒，单个 HTTP 请求有 3/5 秒期限。finally 对本次安装及配对进程树、任务、服务、注册表、开始菜单、防火墙规则和带归属标记的测试目录做有限清理。服务和任务必须通过精确可执行文件路径校验；目录拒绝未知归属和重解析点。服务或测试进程仍存在时保留设备阻断且不删除目录，记录清理失败并使 CI 失败。测试异常正文、环境变量、配置内容、密钥、初始口令和 JWT 不进入 JSON 证据。
