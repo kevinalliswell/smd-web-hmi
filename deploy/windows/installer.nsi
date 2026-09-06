@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 Unicode true
 !include "MUI2.nsh"
 !include "x64.nsh"
@@ -48,9 +49,15 @@ Section "SMD HMI" SEC_MAIN
   InitPluginsDir
   SetOutPath "$PLUGINSDIR\payload"
   File /r "${PAYLOAD}\*"
+  ClearErrors
   ExecWait '"$PLUGINSDIR\payload\SmdUpdate\SmdUpdate.exe" --package "$PLUGINSDIR\payload" --install "$INSTDIR"' $0
+  ${If} ${Errors}
+    MessageBox MB_ICONSTOP "无法启动安装更新器 SmdUpdate.exe。请核对安装包完整性及 Windows 的应用拦截记录。此时可能尚未生成 updater.log。" /SD IDOK
+    SetErrorLevel 1
+    Abort
+  ${EndIf}
   ${If} $0 != 0
-    MessageBox MB_ICONSTOP "安装或升级未完成。旧数据将保留。升级前请用管理员在系统维护中准备 ${VERSION}；查看 ProgramData\SmdHmi\updates 日志，并在管理员终端执行恢复程序。" /SD IDOK
+    MessageBox MB_ICONSTOP "安装或升级未完成（更新器退出码：$0）。$\r$\n请以管理员打开 %ProgramData%\SmdHmi\logs\updater.log 查看具体原因；若设置了 SMD_DATA_ROOT，请查看该数据目录下的 logs\updater.log。$\r$\n请保留数据、配置及 updates 中的恢复记录，按日志判断后再重试或恢复。" /SD IDOK
     SetErrorLevel $0
     Abort
   ${EndIf}
@@ -72,9 +79,15 @@ Section "Uninstall"
   ReadRegDWORD $2 HKLM "Software\SmdHmi" "UninstallBackendComplete"
   ${If} $2 != 1
     ReadRegStr $1 HKLM "Software\SmdHmi" "Version"
+    ClearErrors
     ExecWait '"$INSTDIR\versions\$1\SmdUpdate\SmdUpdate.exe" --uninstall --install "$INSTDIR"' $0
+    ${If} ${Errors}
+      MessageBox MB_ICONSTOP "无法启动卸载更新器 SmdUpdate.exe，卸载未完成。请核对程序文件及 Windows 的应用拦截记录。" /SD IDOK
+      SetErrorLevel 1
+      Abort
+    ${EndIf}
     ${If} $0 != 0
-      MessageBox MB_ICONSTOP "卸载未完成。请先在系统维护中准备当前版本，确认没有未闭合实验；中断后再次卸载可继续恢复。" /SD IDOK
+      MessageBox MB_ICONSTOP "卸载未完成（更新器退出码：$0）。请以管理员查看 %ProgramData%\SmdHmi\logs\updater.log；若设置了 SMD_DATA_ROOT，请查看该数据目录下的日志。按具体原因准备维护或继续恢复。" /SD IDOK
       SetErrorLevel $0
       Abort
     ${EndIf}

@@ -3,6 +3,10 @@
 本项目遵循[语义化版本](https://semver.org/lang/zh-CN/)；`backend/app/__init__.py` 的
 `__version__` 为唯一权威版本源。条目按 Conventional Commits 类型归类。
 
+## [Unreleased]
+
+- 修正 Windows 安装器中文错误提示的输入编码和日志路径；区分更新器无法启动与运行后失败，并显示退出码。此诊断修复不解除升级维护门禁，现场失败原因仍以更新器日志为准。见[排查记录](docs/verification/2026-09-06-windows-installer-errors.md)。
+
 ## [0.3.0-rc.3] — 2026-09-06
 
 - 新增 HostComm 2.0 PSK 认证客户端、独立停止通道、持久序号/操作与未知结果查询恢复；显式保留 1.0 兼容配置。
