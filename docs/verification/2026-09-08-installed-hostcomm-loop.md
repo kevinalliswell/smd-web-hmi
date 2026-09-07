@@ -40,6 +40,10 @@ CI发现并复现了两项问题：[首轮](https://github.com/kevinalliswell/sm
 
 随后`package_bench.py::verify_inventory`报`Bench bytes changed after freezing`：运行后的工具文件清单与冻结清单不一致，严格校验拦截了发行ZIP封装。因此第九轮的软件业务及清理验收通过，但封装和整轮CI未通过，不能发布该构建。原始acceptance、脱敏页面证据及10份合成报告保存在该轮诊断artifact；私有资料未上传。清单差异及修复后的完整构建另行验证，不以重用本轮acceptance为不同字节的工具背书。
 
+[第十轮](https://github.com/kevinalliswell/smd-web-hmi/actions/runs/34159811183)的前端、规范、审计和两组Linux检查通过；Windows桌面187通过/2跳过，工具53通过。后端在`test_v2_control_runtime.py::test_queued_recipe_writes_recheck_lease_context[release-recipe_chunk]`的共享`connected`夹具初始化中失败：就绪轮询采用100次10ms等待，结束时`is_online=true`但`_ready=false`；日志同时记录收到6帧、非法帧和丢弃回调均为0。该项业务测试尚未开始执行，后端在613通过/4跳过后以1项setup错误停止，`windows-package`未执行。
+
+共享夹具现使用10秒有界条件等待完整恢复，在启动前登记资源清理，并为新测试库显式开启DDL事务；生产通信期限不变。慢归档、部分启动失败、真实超时和取消的5项新增回归修前全部失败，修后连同原客户端与控制测试26项通过；Windows结果继续由后续CI验证。第九轮17项业务、10份报告及清理通过的证据仍适用于其记录的构建；第十轮未重新运行封装，工具运行后字节清单变化的具体差异尚未取得，交付项目不因此关闭。
+
 ## 测试方法与证据限制
 
 - 模拟器拥有独立SQLite和受限配对资料，通过真实TLS与安装后的后台连接；页面操作不修改后台内部状态或数据库。
