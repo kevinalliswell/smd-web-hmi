@@ -9,7 +9,28 @@ from uuid import uuid4
 
 from smd_desktop import windows_powershell
 
-ERROR_STAGES = frozenset({"bootstrap", "operation", "acl_create", "acl_set", "acl_read", "acl_verify"})
+ERROR_STAGES = frozenset(
+    {
+        "bootstrap",
+        "operation",
+        "acl_create",
+        "acl_set",
+        "acl_read",
+        "acl_verify",
+        "registration_validate",
+        "task_stop",
+        "task_remove",
+        "service_stop",
+        "service_wait",
+        "service_delete",
+        "service_deleted_wait",
+        "registration_remove",
+        "shortcut_remove",
+    }
+)
+ERROR_TYPES = frozenset(
+    {"TimeoutException", "Win32Exception", "UnauthorizedAccessException", "IOException", "InvalidOperationException"}
+)
 ERROR_CATEGORIES = frozenset(
     {
         "NotSpecified",
@@ -45,6 +66,13 @@ class WindowsOperationError(RuntimeError):
             "category": category if isinstance(category, str) and category in ERROR_CATEGORIES else "unknown",
             "exit_code": int(exit_code),
         }
+        exception_type = details.get("exception_type")
+        if isinstance(exception_type, str) and exception_type in ERROR_TYPES:
+            self.diagnostic["exception_type"] = exception_type
+        for name in ("hresult", "native_error"):
+            value = details.get(name)
+            if type(value) is int and -(2**31) <= value < 2**32:
+                self.diagnostic[name] = value
         super().__init__("Windows object operation failed: " + json.dumps(self.diagnostic, sort_keys=True))
 
 
@@ -52,7 +80,7 @@ def powershell(script: str, payload: dict | None = None, *, timeout: int = 60):
     if os.name != "nt" or struct.calcsize("P") != 8:
         raise RuntimeError("SmdBench installation requires Windows x64")
     preamble = "[Console]::OutputEncoding=[Text.UTF8Encoding]::new($false); $ErrorActionPreference='Stop'; Set-StrictMode -Version Latest; $benchStage='bootstrap'; try { $p=$env:SMD_BENCH_INPUT|ConvertFrom-Json; $benchStage='operation';\n"
-    ending = "\n} catch { [Console]::Error.WriteLine('SMD_BENCH_ERROR:'+(@{stage=$benchStage;category=[string]$_.CategoryInfo.Category}|ConvertTo-Json -Compress)); exit 1 }"
+    ending = "\n} catch { $failure=$_.Exception.GetBaseException(); $details=@{stage=$benchStage;category=[string]$_.CategoryInfo.Category;exception_type=$failure.GetType().Name;hresult=$failure.HResult}; if($failure.PSObject.Properties['NativeErrorCode']){$details.native_error=$failure.NativeErrorCode}; [Console]::Error.WriteLine('SMD_BENCH_ERROR:'+($details|ConvertTo-Json -Compress)); exit 1 }"
     encoded = base64.b64encode((preamble + script + ending).encode("utf-16-le")).decode("ascii")
     process = windows_powershell.run(
         ["-EncodedCommand", encoded],
@@ -175,6 +203,7 @@ def remove_registration(executable: Path, updater: Path, desktop: Path, install:
     powershell(
         r"""
 function Same($a,$b){return [String]::Equals([IO.Path]::GetFullPath($a.Trim('"')),[IO.Path]::GetFullPath($b),[StringComparison]::OrdinalIgnoreCase)}
+$benchStage='registration_validate'
 $service=Get-CimInstance Win32_Service -Filter "Name='SmdHmi'" -OperationTimeoutSec 5
 $task=Get-ScheduledTask -TaskName 'SmdHmi-Recover' -ErrorAction SilentlyContinue
 $product='HKLM:\Software\SmdHmi';$uninstall='HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\SmdHmi'
@@ -189,12 +218,13 @@ if(Test-Path -LiteralPath $menu){
  if($items.Count -gt 1 -or ($items.Count -eq 1 -and $items[0].Name -ne 'SMD HMI.lnk')){throw 'foreign shortcut'}
  if($items.Count){if($items[0].Attributes -band [IO.FileAttributes]::ReparsePoint){throw 'shortcut reparse'};$shortcut=(New-Object -ComObject WScript.Shell).CreateShortcut($items[0].FullName);if(-not (Same $shortcut.TargetPath $p.desktop)){throw 'foreign shortcut target'}}
 }
-if($task){Stop-ScheduledTask -InputObject $task;Unregister-ScheduledTask -InputObject $task -Confirm:$false}
-if($service){$s=Get-Service SmdHmi;if($s.Status -ne 'Stopped'){$s.Stop();$s.WaitForStatus('Stopped',[TimeSpan]::FromSeconds(60))};$s.Dispose();& sc.exe delete SmdHmi|Out-Null;if($LASTEXITCODE -ne 0){throw 'delete service failed'}
+if($task){$benchStage='task_stop';Stop-ScheduledTask -InputObject $task;$benchStage='task_remove';Unregister-ScheduledTask -InputObject $task -Confirm:$false}
+if($service){$benchStage='service_stop';$s=Get-Service SmdHmi;try{if($s.Status -ne 'Stopped'){$s.Stop();$benchStage='service_wait';$s.WaitForStatus('Stopped',[TimeSpan]::FromSeconds(60))}}finally{$s.Dispose()};$benchStage='service_delete';& sc.exe delete SmdHmi|Out-Null;if($LASTEXITCODE -ne 0){throw 'delete service failed'}
+ $benchStage='service_deleted_wait'
  $until=[DateTime]::UtcNow.AddSeconds(30);do{$service=Get-CimInstance Win32_Service -Filter "Name='SmdHmi'" -OperationTimeoutSec 5;if(-not $service){break};Start-Sleep -Milliseconds 250}while([DateTime]::UtcNow -lt $until);if($service){throw 'service still exists'}
 }
-foreach($key in @($product,$uninstall)){if(Test-Path -LiteralPath $key){Remove-Item -LiteralPath $key -Recurse -Force}}
-if(Test-Path -LiteralPath $menu){Remove-Item -LiteralPath $menu -Recurse -Force}
+$benchStage='registration_remove';foreach($key in @($product,$uninstall)){if(Test-Path -LiteralPath $key){Remove-Item -LiteralPath $key -Recurse -Force}}
+$benchStage='shortcut_remove';if(Test-Path -LiteralPath $menu){Remove-Item -LiteralPath $menu -Recurse -Force}
 """,
         {
             "service": str(executable),

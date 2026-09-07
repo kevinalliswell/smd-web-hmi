@@ -59,6 +59,44 @@ def test_windows_failure_exposes_only_fixed_diagnostic_fields(tmp_path, monkeypa
     assert secret not in str(caught.value)
 
 
+@pytest.mark.parametrize("invalid", ["private-secret", True, ["private-secret"], 2**40])
+def test_cleanup_diagnostics_accept_only_known_types_and_numeric_os_codes(invalid):
+    diagnostic = windows.WindowsOperationError(
+        1,
+        (
+            "SMD_BENCH_ERROR:"
+            + json.dumps(
+                {
+                    "stage": "service_wait",
+                    "category": "NotSpecified",
+                    "exception_type": invalid,
+                    "hresult": invalid,
+                    "native_error": invalid,
+                    "message": "private-secret",
+                }
+            )
+        ).encode(),
+    ).diagnostic
+    assert diagnostic == {
+        "code": "powershell_failed",
+        "stage": "service_wait",
+        "category": "NotSpecified",
+        "exit_code": 1,
+    }
+    assert "private-secret" not in json.dumps(diagnostic)
+
+
+@pytest.mark.skipif(os.name != "nt", reason="requires real Windows PowerShell exception serialization")
+def test_real_service_wait_diagnostic_does_not_publish_exception_message():
+    with pytest.raises(windows.WindowsOperationError) as caught:
+        windows.powershell("$benchStage='service_wait'; throw [TimeoutException]::new('private-secret')")
+    diagnostic = caught.value.diagnostic
+    assert diagnostic["stage"] == "service_wait"
+    assert diagnostic["exception_type"] == "TimeoutException"
+    assert type(diagnostic["hresult"]) is int
+    assert "private-secret" not in str(caught.value)
+
+
 @pytest.mark.skipif(os.name != "nt", reason="requires real Windows PowerShell 5.1 ACL behavior")
 def test_real_bench_acl_ignores_incompatible_parent_modules(tmp_path, monkeypatch):
     for name in ("Microsoft.PowerShell.Security", "Microsoft.PowerShell.Utility"):

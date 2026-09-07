@@ -28,9 +28,55 @@ class Scenarios:
         print(json.dumps({"stage": name}), flush=True)
 
     async def state(self, expected):
-        return await eventually(
-            lambda: self.worker.request("snapshot"), lambda value: value["run"]["state"] == expected
-        )
+        observed = {}
+
+        async def snapshot():
+            nonlocal observed
+            observed = await self.worker.request("snapshot")
+            return observed
+
+        try:
+            return await eventually(snapshot, lambda value: value["run"]["state"] == expected)
+        except TimeoutError:
+            states = {"idle", "preparing", "measuring", "safe_disposal", "cooling", "completed", "fault"}
+            actual, boot = observed.get("run", {}).get("state"), observed.get("boot_id")
+            sequence = observed.get("sample", {}).get("sample_seq")
+            self.result["state_wait"] = {
+                "expected": expected if expected in states else "unrecognized",
+                "observed": actual if isinstance(actual, str) and actual in states else "unavailable",
+                "boot_id": boot if isinstance(boot, str) and re.fullmatch(r"[0-9a-f]{32}", boot) else None,
+                "sample_seq": (
+                    sequence if isinstance(sequence, str) and re.fullmatch(r"[0-9]{1,20}", sequence) else None
+                ),
+            }
+            raise
+
+    def _record_start(self, response, http_status):
+        response = response or {}
+        statuses = {"accepted", "applied", "rejected", "unknown", "interrupted", "sent", "pending", "verified"}
+        reasons = {
+            "ok",
+            "state_conflict",
+            "lease_required",
+            "boot_mismatch",
+            "recipe_invalid",
+            "profile_mismatch",
+            "profile_unapproved",
+            "busy",
+            "permission_denied",
+            "storage_unavailable",
+            "device_restarted",
+            "stop_latched",
+            "operation_conflict",
+            "device_comm_timeout",
+        }
+        self.result["last_start_response"] = {"http_status": http_status}
+        for key in ("result", "operation_status", "wire_status", "reason_code"):
+            value = response.get(key)
+            allowed = reasons if key == "reason_code" else statuses
+            self.result["last_start_response"][key] = (
+                value if isinstance(value, str) and value in allowed else "unavailable"
+            )
 
     async def activate(self, recipe=None):
         ui = self.ui
@@ -96,6 +142,7 @@ class Scenarios:
         await ui.page.get_by_label("不可变版本", exact=True).select_option(str(recipe["version"]))
         await ui.button("下一步").click()
         result = await ui.click_response("确认启动", "/api/commands", expected=expected)
+        self._record_start(result, expected)
         await self.state("measuring")
         if expected == 200 and await ui.button("查询控制板结果").count():
             await ui.button("查询控制板结果").click()

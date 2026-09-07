@@ -76,6 +76,7 @@ class V2Simulator:
             self.store.close()
             raise ValueError("sampling period exceeds synthetic profile maximum")
         self._server = self._maintenance = None
+        self._last_sample_ms = self.now()
         self._sessions = {}
         self._tasks = set()
         self._drop_replies = {}
@@ -116,6 +117,7 @@ class V2Simulator:
             return self
         self.state.sample()
         self.state.commit()
+        self._last_sample_ms = self.now()
         self.state.notifications.clear()
         options = {"ssl": self.ssl_context}
         if self.ssl_context:
@@ -153,6 +155,7 @@ class V2Simulator:
         self.state.sample()
         self.state.run_changed()
         self.state.commit()
+        self._last_sample_ms = self.now()  # Sampling deadlines belong to this boot's uptime.
         self._broadcast()
 
     def drop_reply(self, message_type, count=1):
@@ -488,16 +491,15 @@ class V2Simulator:
             session.log = None
 
     async def _maintain(self):
-        last_sample = self.now()
         while True:
             await asyncio.sleep(0.05)
             try:
                 lease = self.state.data["lease"]
                 if lease and self.now() >= lease["expires"]:
                     self.state.lose_lease()
-                if self.auto_sample and self.now() - last_sample >= self.sample_period_ms:
+                if self.auto_sample and self.now() - self._last_sample_ms >= self.sample_period_ms:
                     self.state.tick()
-                    last_sample = self.now()
+                    self._last_sample_ms = self.now()
                 for session in list(self._sessions.values()):
                     if session.upload and (
                         self.now() - session.upload.progressed_ms >= 120000
