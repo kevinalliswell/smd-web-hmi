@@ -28,3 +28,9 @@
 正式记录须包含完整实现提交、脚本SHA-256、Windows版本和PowerShell版本、旧安装版本、路径与数据范围、运行命令、预期/实际、退出码、阶段及脱敏后的产物引用。真实数据库、配置、密钥和完整私有备份不提交到仓库。
 
 独立脚本的Windows检查、rc.4安装器既有检查、用户现场重装结果分别记录。任一层通过均不表示实体联锁、固件或长期实验验收完成；失败不能通过删数据或伪造维护票据改写为成功。
+
+## 2026-09-07 补充结果
+
+[PR73的CI](https://github.com/kevinalliswell/smd-web-hmi/actions/runs/34036855130)已通过全部七项检查，分支提交 `59985ec9163527c10897492e32db1b58fecc955d`，实际检查合并提交 `a9549c22f58cbe10cc347a7a4f633388a6a230c8`，与合入主线 `c45046e01f869b214cacfcbc75e0b6ddf2d708bb` 文件树一致。Windows Server 2025 / PowerShell 5.1实际验证完整备份、旧库保留、空库重装、新初始口令及清理；证据为该运行的 `windows-package-diagnostics/windows-install-smoke.json`。交付脚本CRLF字节SHA-256为 `e972090243d0d034d3ffb181f25647d383c21b8d5fccad721f08b1a9fcfa827d`。
+
+用户后续采用的是已核实的rc.2残留服务清理路径，并确认rc.4安装成功，见[现场结果](2026-09-06-windows-installer-errors.md#2026-09-07-用户现场结果)。不能把这条反馈记为本工具在用户机器执行成功、完整备份取得或空库验收完成；上表为最初待记录清单，本补充说明实际获得的CI结果与现场边界。

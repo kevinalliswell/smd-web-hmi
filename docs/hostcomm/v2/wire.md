@@ -1,14 +1,20 @@
 # HostComm 2.0 报文、连接与事务
 
-适用 `2.0-design.1`；实现状态与入口见 [README](README.md)。本文定义目标行为，当前 1.0 客户端和 Mock 不自动满足它。字段名称、必填项、枚举和消息样例以[机器契约](../../../contracts/hostcomm/v2/README.md)一并校验。
+文档修订 `2.0-doc.2`；设计基线 `2.0-design.1`；线上 `protocol_version` 仍为 `2.0`，握手 `design_revision` 仍为 `2.0-design.1`。本次只补交接说明和实现边界，不增加协议字段或更改冻结语义。交接入口见 [README](README.md) 和[固件交接资料](firmware-handoff.md)。
+
+本文区分目标协议与当前 SmdHmi 实现。已实现的 2.0 客户端、参考模拟器和自动测试不等于 STM32 固件验收；保留的 1.0 客户端不能因名称相似而视为兼容。字段名称、必填项、枚举和消息样例须与[机器契约](../../../contracts/hostcomm/v2/README.md)一并校验；第 10 节记录本次审查确认的实现差异。
 
 ## 1. 传输与身份
 
 STM32 作为 TCP 服务端，唯一上位机后台为客户端；默认端口 `34211`，现场配置可更改。2.0 生产端口只接收 TLS，不进行明文探测或自动降级。首期至少支持一个控制连接和一个诊断连接，数量有界；浏览器全部复用后台连接。
 
-本设计选用 TLS 1.3 外部 PSK 配对：`TLS_AES_128_GCM_SHA256`、`psk_dhe_ke`、`secp256r1`，禁用 0-RTT、首次基线不启用会话恢复。双方通过标准 TLS 库认证和加密，不自行实现密码算法或以 JSON 中的 controller_id 代替身份认证。这是项目选型，需在指定 MCU、TLS 库与 Windows Python 3.13 运行时证明互操作；[Python PSK API](https://docs.python.org/3.13/library/ssl.html#ssl.SSLContext.set_psk_client_callback)仅说明可用接口，不代表当前程序已配置它。
+本设计选用 TLS 1.3 外部 PSK 配对：`TLS_AES_128_GCM_SHA256`、`psk_dhe_ke`、`secp256r1`，禁用 0-RTT、首次基线不启用会话恢复。双方通过标准 TLS 库认证和加密，不自行实现密码算法或以 JSON 中的 controller_id 代替身份认证。SmdHmi 已使用 [Python PSK API](https://docs.python.org/3.13/library/ssl.html#ssl.SSLContext.set_psk_client_callback)配置外部 PSK，且有真实 TLS 测试；指定 MCU/TLS 库的互操作仍待验证，见[运行决策](../../decisions/ADR-009-hostcomm-v2-runtime.md)。
+
+当前客户端每次连接建立新的 TLS context，不缓存或传入 `SSLSession`，禁用 ticket，握手后检查实际 TLS 版本、密码套件、外部 PSK 状态及无证书替代。固件必须实际选择 AES-128-GCM；仅支持 TLS 1.3、但选择其他套件也会被断开。测试服务器在进程启动前用受控 OpenSSL 配置限制套件，不能把这一测试配置当作板端实现。代码与实测入口分别为 [v2_security.py](../../../backend/app/hostcomm/v2_security.py) 和 [TLS 安全测试](../../../backend/tests/test_hostcomm_v2_security.py)。
 
 每一对“板卡—后台实例”离线配置独立的 32 字节随机 PSK；不得使用操作员密码、STM32 UID 派生值或全设备共享密钥。非空 PSK identity 使用 `smd2/<device_id>/<controller_id>/<controller_epoch>`，三个 ID 均为 32 位小写十六进制，绑定固定客户端/服务端角色。设备只信任已配对的 identity；host 的 hello 身份必须与 TLS 身份一致。密钥通过受控本地工装/维护流程写入，不通过未认证 HostComm 获取；Windows 仅服务身份和管理员可读。日志、报告、示例和仓库不保存密钥。
+
+离线交接的密钥文件用 64 个十六进制 ASCII 字符表示这 32 字节，允许一个末尾 LF 或 CRLF；TLS 回调使用解码后的 32 字节，不是这 64 字符的文本。完整权限及配对流程见[运行说明](runtime.md)。`v2.tls_credentials_loaded` 仅证明本地密钥、权限和运行环境检查成功，记录时 TCP 尚未建立，不能作为认证设备已连接的证据。
 
 配对清单包含身份、授权角色、版本及撤销状态。角色只有 control 和 diagnostic：control 可申请租约、提交普通命令及无需租约的 stop_run；diagnostic 仅可读取/心跳，不能上传或停止。hello_ack.granted_role 由配对清单决定，不接受客户端自授角色。轮换时设备待机、吊销旧配对、清理旧租约并确认新配对；旧 controller_epoch 不得重新启用。恢复数据库不能降低设备的操作防重放水位。配对凭据遗失必须本地维护重新配对，不能提供网络后门。以上选择依据 [TLS 1.3](https://www.rfc-editor.org/rfc/rfc8446) 和[外部 PSK 使用指南](https://www.rfc-editor.org/rfc/rfc9257)，现场网络隔离作为额外控制。
 
@@ -29,7 +35,9 @@ STM32 作为 TCP 服务端，唯一上位机后台为客户端；默认端口 `3
 | 不完整帧 | 从首字节开始 5 秒仍无 LF 关闭连接；不能被不断输入字节无限延长 |
 | 未知消息/字段 | 本设计严格拒绝，不能默默忽略控制参数；新增字段随修订与协商更新 |
 
-JSON 禁止重复键、NaN/Infinity、浮点、小数/指数词法、`-0`、非法 UTF-8 和未配对代理项；布尔值不能当整数。数值限于 `[-9007199254740991,9007199254740991]` 的整数，具体物理量另受 Schema/工程配置限制。uint64 用无正号、无前导零的十进制字符串，范围 0 到 18446744073709551615。所有对象键为 ASCII；文本不进行隐式 Unicode 归一化。收到合法 JSON 仍须通过消息 Schema 和执行时条件检查。
+JSON 禁止重复键、NaN/Infinity、浮点、小数/指数词法、`-0`、非法 UTF-8 和未配对代理项；布尔值不能当整数。数值限于 `[-9007199254740991,9007199254740991]` 的整数，具体物理量另受 Schema/工程配置限制。uint64 用无正号、无前导零的十进制字符串，范围 0 到 18446744073709551615。对象键为 1—128 个可打印 ASCII 字符（0x20—0x7E）；文本不进行隐式 Unicode 归一化。收到合法 JSON 仍须通过消息 Schema 和执行时条件检查。
+
+普通报文可以有不同的对象键顺序和合法 JSON 空白，接收器不要求与发送器逐字节相同；摘要输入、配方正文和源日志记录采用规范字节：对象键递归排序、无多余空白、非 ASCII 文本直接 UTF-8 编码，并遵守上述整数限制。命令/profile 摘要针对去掉自身摘要字段后的规范 payload，不含外层包络或分隔 LF；配方摘要针对无尾 LF 的正文。日志块和整流摘要则覆盖实际原始字节，包括流中的记录 LF。配方正文必须与重新序列化的规范字节完全一致；不能仅把 CRC 或解析后相同的对象当作相同原文。实现及边界向量见 [codec.py](../../../backend/app/hostcomm/v2_contract/codec.py) 和[契约测试](../../../backend/tests/test_hostcomm_v2_contract.py)。
 
 ## 3. 包络、关联与握手
 
@@ -43,6 +51,23 @@ hello 的 session_id、boot_id 和 reply_to 为 null，uptime_ms 固定为 "0"�
 
 本版基线能力必须成组实现：操作查询与持久序号、租约、配方分块原子激活、明确运行边界、质量/首滴事件和日志补传。能力字符串固定为 durable_operations、atomic_recipe、sample_log、alarm_log，必须各出现一次；租约、运行边界和质量属于 2.0 基础语义。未经实现不能宣告。可选新增能力先分配新名字与设计修订，本修订对未知能力严格拒绝，不能视为已经启用。
 
+握手 payload 的完整字段如下；表中列出的字段全部必填，不允许另添 `status`、`message` 或 1.0 包装层：
+
+| 方向 | payload 字段及交接注意事项 |
+|---|---|
+| hello | `design_revision`、`controller_id`、`controller_epoch`、`expected_device_id`、`client_name`、`client_version`；当前 client_name 为 `smd-web-hmi`，client_version 为应用版本，不是协议版本 |
+| hello_ack | `design_revision`、`device_id`、`controller_epoch`、`fw_version`、`hw_version`、`capabilities`、`profile_digest`、`last_command_seq`、`control_ready`、`granted_role` |
+| 身份/水位 | hello_ack 不回传 controller_id；身份来自 TLS 配对及 hello，controller_epoch 必须回显一致；last_command_seq 是该配对代际的持久水位十进制字符串，不能返回全设备无归属的计数 |
+| 工程配置 | profile_digest 必须与随后 get_profile 和 status_snapshot 一致；工程配置变化需重新握手，不能沿用旧摘要连接继续控制 |
+
+本版不通过 hello 协商帧长、心跳时限或动态字段集合；固定值按本文执行，工程资源另由 get_profile 返回。get_status/get_profile 的 payload 是空对象 `{}`，不能省略或使用 null。`control_ready` 与当前上位机门控之间的差异见第 10 节；任何一个握手标记都不能代替实时安全检查。
+
+当前主机允许 hello_ack 后在同一 TCP 数据段紧跟合法 telemetry/event；它在处理 ACK 时先安装新 session/boot。非 error 响应的 type 必须属于 reply_to 对应请求定义的响应集合：普通请求接收对应响应，log_request 还可接收 log_chunk 流；command_result/operation_snapshot 另须逐项匹配 operation_id、controller_epoch 和 command_seq。
+
+握手后的合法 error 可通过 reply_to 关联原请求，在通过当前 session/boot 和请求关联检查后，以结构化远端错误结束该请求，不要求它等于正常响应类型。error 不代替 command_result 的持久操作终态；调用方仍可能根据错误撤销连接，例如心跳失败。不能用 JSON error 替代成功握手。
+
+错误会话、boot、不匹配的非 error 响应类型或从未发出的 reply_to 会立即断连；这与结构/编码非法帧的连续三次策略不同。最近 256 个已结束请求的晚到回执在通过当前 session/boot 检查后被丢弃，不能完成新请求或补写业务成功；更旧且无法关联的回执按未知关联处理。依据见 [V2Transport._dispatch](../../../backend/app/hostcomm/v2_transport.py) 与[关联/握手竞态测试](../../../backend/tests/test_hostcomm_v2_transport.py)（含结构化远端错误回归）。
+
 ## 4. 心跳、租约与队列
 
 - 心跳周期 2000 ms，每次请求独立关联；每个 hello/普通响应默认等待 3000 ms，TLS/连接建立限时 5000 ms。超时是“未收到结果”，不能推导动作失败。
@@ -54,6 +79,19 @@ hello 的 session_id、boot_id 和 reply_to 为 null，uptime_ms 固定为 "0"�
 - 上位机同一控制身份最多一个普通副作用操作在受理等待中，未知结果未对账前停止普通写请求；stop_run 使用独立安全通道。只读在途请求最多 4 个，上传事务和日志传输各最多 1 个/会话。
 - 板端通信任务不得执行阻塞的仪表 I/O、擦 Flash 或配方循环。优先调度本地安全、远程安全停止、命令结果/心跳、报警、实时遥测、历史日志；普通队列满返回 busy，不能阻塞安全入口。采样日志丢失必须可见，显示合并不能删除原始记录。
 - 重连按 1、2、4、8、16、30 秒上限退避，加入抖动；重连后先对账，不自动重发 start/activate 等副作用请求。
+
+当前 SmdHmi 的容量和调度边界见下表。它描述主机实现，不能替代固件按目标优先级实现独立任务：
+
+| 项目 | 当前主机行为 |
+|---|---|
+| 请求槽 | 普通 command 1 个、stop_run 1 个、heartbeat 1 个独立在途槽；其余请求合计最多 4 个，包含 recipe_begin/recipe_chunk/get_recipe/log_request；log_request 同时最多 1 个 |
+| 上传 | 应用层串行执行配方上传及激活；传输层不替板端维持暂存事务，板端仍需检查 lease、transfer_id 和偏移 |
+| 写出 | 单写锁避免帧字节交错，等待写锁及 drain 共用 3 秒预算；独立停止槽不等于独立 TCP socket，也不能抢占已经发出的帧 |
+| 响应投递 | 命令/心跳回执直接完成关联请求，不等待数据库/遥测回调；telemetry/event/log_chunk 进入容量默认 256 的有界回调队列 |
+| 回调异常/过载 | 计数、撤销连接和本地租约，等待积压回调排空后再重连；源数据通过日志补传恢复，不宣称队列丢失的数据完整 |
+| 重连对账 | 依次读取持久水位、工程配置、未决操作、状态/报警、源日志；恢复失败保持 degraded 和普通控制禁用。读取和重连不自动取得租约，用户发起允许的操作时才申请 |
+
+实现依据：[传输层](../../../backend/app/hostcomm/v2_transport.py)、[适配器恢复流程](../../../backend/app/hostcomm/v2_client.py)、[租约持久结果及所有权回读](../../../backend/app/services/v2_operations.py)。四读槽占满不占用停止/心跳槽、慢回调不阻塞请求回执、过载可见，均有[传输回归](../../../backend/tests/test_hostcomm_v2_transport.py)；板端调度和最坏响应时间仍须在目标固件验证。
 
 ## 5. 消息清单
 
@@ -137,6 +175,8 @@ log_request 指定日志身份、起点、明确终点与限额；先通过 stat
 
 主机校验每块摘要后，先持久化已收原始字节及 next_offset，再 ACK；跨块的记录尾部先写入有界、可恢复的暂存区，允许确认字节进展，但 committed_record_seq 保持上一条完整、合法且已落盘的记录位置（首次可为 null）。这样一条大于 1536 字节的记录不会与单块窗口互相等待。确认丢失后以同一源日志身份/record_seq 去重；字节接收位置、最高完整记录位置和无缺口完整性水位分别保存，不能用字节 ACK 越过尚未判明的源记录缺口。相同身份不同字节是完整性故障，不覆盖。解析未完成的尾部不推进记录游标；断连后可从上一完整记录重新请求。主机不得将历史消息喂入实时状态/命令模块，回填仅用于归档与重新判定。
 
+当前上位机每次自动请求最多 1000 个记录位置，并以开始时读取的 newest_record_seq 为本轮固定终点；这是主机批次策略，协议上限仍为 10000。每个 log_request 的传输默认总预算为 60 秒，应用 recover_logs 显式使用 30 秒；最近有效块到下一块/终态另受 3 秒无进展时限约束，总预算不因重发块延长。超时不会生成 complete，也不表示源记录永久缺失。固件收到未确认块后允许的三次重发不能被当作主机保证等待 9 秒；联调需覆盖主机提前结束请求后的旧块、日志窗口清理和从持久游标重新请求。源码依据：[request/dispatch](../../../backend/app/hostcomm/v2_transport.py)、[recover_logs](../../../backend/app/hostcomm/v2_client.py)。
+
 ACK 只是接收持久化证明，不直接授权永久擦除全部历史。固件按批准的容量/保留策略回收已经确认、非活动运行、已完成归档保留要求的记录；临界水位和缺口持久上报。操作日志/运行边界必须有预留空间，不能被遥测填满。完整离线保存时长由实际采样率、最坏记录长度和可用持久空间计算；未具备容量时拒绝对应记录预算的启动，不能声称支持任意时长离线实验。
 
 ## 9. 错误与实现验证
@@ -144,3 +184,15 @@ ACK 只是接收持久化证明，不直接授权永久擦除全部历史。固�
 错误由固定小写 snake_case code 和供人阅读的说明组成；程序判断只依赖 code。至少区分 invalid_frame、unsupported_version、unsupported_capability、identity_mismatch、permission_denied、stale_session、boot_mismatch、lease_required、state_conflict、busy、operation_conflict、result_expired、profile_unapproved、profile_mismatch、recipe_invalid、digest_mismatch、offset_mismatch、storage_unavailable、range_unavailable 和 internal_error。实际可发送集合以 Schema 为准；retryable 仅表示前置条件纠正后可重新评估，不授权自动重发有副作用命令或把 unknown 改成失败。不把裸异常、密钥或任意底层寄存器信息写入返回值。
 
 参考检查覆盖字段/编码/摘要与所列边界；TLS、租约计时、持久化原子性、队列公平性、停机动作和断点补传状态机必须分别实现并故障注入。收发日志记录消息 ID、操作 ID、结果与统计，不记录 PSK。验收至少包含分字节拆包、粘包、超长行尾伪指令、损坏 UTF-8、重复键、重复命令、丢 ACK、缓存淘汰重放、跨重启旧租约、配方断电和补传损坏；详见[实施清单](firmware-plan.md)。
+
+## 10. 本次审查保留的实现差异
+
+以下项目尚未通过本次文档修订修改代码或冻结协议。固件团队不能把未检查字段当作可任意填写；联调前需由接口负责人确认行为并补相应故障用例。
+
+| 项目 | 冻结要求与当前实现差异 | 处理边界 |
+|---|---|---|
+| 心跳租约期限 | HeartbeatAck Schema 分别允许 lease_id、lease_expires_uptime_ms 为 null，尚未联合验证；传输层对非空续期请求只核对 ID。当前控制许可依据新鲜 status_snapshot 的期限、boot/session/owner，不消费心跳期限作为门控 | 板端仍返回真实、相互一致的租约信息；不能以主机接收了矛盾 ACK 证明续约契约通过。依据：[消息模型](../../../backend/app/hostcomm/v2_contract/messages.py)、[状态投影](../../../backend/app/hostcomm/v2_projection.py) |
+| 握手 control_ready | 必填布尔字段，但当前主机门控使用恢复完成、新鲜状态、批准的 profile/safety、租约和 granted_role，没有读取此标志 | 字段是否为强制门禁还是握手时提示需明确；不能仅据该标志宣称主机已禁止/允许控制。依据：[状态投影](../../../backend/app/hostcomm/v2_projection.py) |
+| 心跳/重连计时 | 目标心跳周期 2000 ms；当前循环在上一 ACK 返回后再等待 2000 ms，实际起点间隔包含响应耗时。重连退避基数最高 30 秒，当前 ±10% 抖动后实际可达 33 秒 | 这是待对齐的调度差异，不把板端 8000 ms 租约延长为新的容差。依据：[心跳与重连实现](../../../backend/app/hostcomm/v2_transport.py) |
+
+当前真实 TLS 端到端软件路径已有[配方—启动—停止—冷却—日志恢复测试](../../../backend/tests/test_v2_tls_application.py)。这些代码和测试链接是可追溯入口，不是本次新执行或实体设备通过的声明。

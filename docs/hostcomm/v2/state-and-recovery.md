@@ -1,5 +1,7 @@
 # HostComm v2 状态、停止与恢复
 
+文档修订：`2.0-doc.2`；设计基线：`2.0-design.1`；协议：`2.0`。本次补充交接说明，不改变报文字段或握手设计版本。
+
 状态：通信语义设计基线；固件尚未实现，硬件动作与时序尚未验收。本文的“必须”约束 v2 实现，不能作为现有 HostComm 1.0 或 Mock 已支持的声明。报文字段、数值编码与资源上限以 v2 主契约和 Schema 为准。
 
 ## 身份与不变量
@@ -18,7 +20,7 @@
 | 状态 | 进入条件与含义 | 允许的后继 |
 |---|---|---|
 | `booting` | 上电/复位后建立新 boot_id，校验持久记录和安全输入；禁止恢复加热/CO | `idle`、`safe_disposal`、`fault` |
-| `idle` | 无未确认运行，工程配置有效且启动许可可评估；不表示自动取得启动许可 | `preparing`、`maintenance`、`fault` |
+| `idle` | 无未确认运行；工程配置、报警和启动许可另行校验，不表示自动取得启动许可 | `preparing`、`maintenance`、`fault` |
 | `preparing` | 启动 accepted 已原子预约身份、配方和工程配置；流程任务应用前重查停止/租约，随后执行不可被省略的预检和保护程序 | `measuring`、`safe_disposal`、`fault` |
 | `measuring` | 板端执行阶段配方并持续记录；转换条件来自新鲜且合格的测量 | `safe_disposal`、`fault` |
 | `safe_disposal` | 已锁存停止/自然测定结束，执行工程批准的撤 CO、撤加热许可与保护置换 | `cooling`、`fault` |
@@ -30,6 +32,8 @@
 `fault` 不暂停安全任务、报警或采样。由 fault 进入处置/冷却只允许继续安全处理；进入 completed 仍须完整安全终态证据；进入 idle 必须满足故障恢复条件，并在存在运行记录时完成 ack_run。网络恢复、报警确认、故障解除均不得跳回 preparing/measuring。
 
 自然测定结束先提交最后一个测定样本和 `measurement_end`，再转 safe_disposal。停止、联锁、超时或重启导致提前离开 measuring 时，也记录实际测定截止边界及原因，但不得据此宣告自然完成。之后所有置换、冷却样本仍归属原 run_id；不延长测定窗口。
+
+采样任务与网络连接、状态查询、命令回执独立；preparing、measuring、safe_disposal、cooling 及尚未安全闭合的 fault 均保留源采样和事件。测定结束与安全完成由板端配方/安全任务判断，协议没有 `finish_measurement`、`complete_purge` 或 `complete_cooling` 命令。这些名称仅是[无执行器模拟器](../../../backend/app/hostcomm/v2_simulator/server.py)的测试方法，固件不能等待 HMI 调用它们才能推进。
 
 ## 运行结果与安全终态
 
@@ -50,6 +54,8 @@ safe_complete 只能在工程批准的撤危险输出、置换、冷却及传感
 
 `ack_run` 是受控确认：仅在 safe_complete 已证明、告警触发条件已消失、所需报警确认及工程故障复位均完成后接受，保留运行记录后返回 idle。它不得隐式确认报警、清除仍活跃的联锁、重置配方进度或恢复加热/CO。未运行过的启动故障仅按批准恢复程序回到 idle，不能伪造 run_id。
 
+`safe_complete` 与 `safe_boundary` 必须同时存在或同时缺失；`completed` 必须携带两者，但安全已闭合仍可因待复位故障保留 `fault`。上位机可据安全边界登记实验档案结束，仍接收设备源记录；设备须显式复位/确认才能回到 idle。`fault_revision` 是故障版本号，非零不等于“尚未复位”；板端必须检查实际故障/确认记录，不能要求它归零。约束见 [RunStatus](../../../backend/app/hostcomm/v2_contract/messages.py)，故障复位和档案边界分别由[模拟器回归](../../../backend/tests/test_hostcomm_v2_simulator.py)与[归档回归](../../../backend/tests/test_v2_archive.py)覆盖。
+
 ## 租约与安全停止
 
 设备只授予一个当前写入租约，租约具有 fencing 标识，超时使用板端单调时钟。更新所有权必须使旧租约立即失效；普通可变请求在执行点重新检查租约、身份和预期状态。页面操作员之间的控制权转移不等同于板端租约转移。
@@ -68,7 +74,7 @@ safe_complete 只能在工程批准的撤危险输出、置换、冷却及传感
 
 ## 操作持久化与断电恢复
 
-普通副作用命令必须具有控制器 epoch、递增命令序号、操作身份和请求摘要。设备持久保存防重放水位；同一身份不同摘要拒绝，已经越过的序号即使结果明细已回收也不得作为新请求执行。只允许查询 retained/expired/unknown 等真实结果，不允许由“没有查到”推导“未执行”。
+普通副作用命令必须具有控制器 epoch、递增命令序号、操作身份和请求摘要。设备持久保存防重放水位；同一身份不同摘要拒绝，已经越过的序号即使结果明细已回收也不得作为新请求执行。查询状态仅使用 accepted/applied/rejected/interrupted/unknown/result_expired/not_found；retained/expired 不是线枚举，不允许由“没有查到”推导“未执行”。
 
 受理前检查状态与配置，在动作前提交意图；start_run 在受理时就预约 run_id 并发布 preparing，使 stop_run 能取消尚未应用的启动；运行身份、配方切换和相关记录必须具有明确原子提交点。若复位落在执行器动作与结果记录之间，恢复为中断或 unknown；不能许诺跨断电物理动作恰好一次，也不能自动重发不确定请求。
 
@@ -105,8 +111,40 @@ safe_complete 只能在工程批准的撤危险输出、置换、冷却及传感
 | 采样过程中反复 get_status | 返回已有源样本，查询不会造成采样序号缺口 |
 | 重启发生在危险输出动作前后 | 新 boot_id、旧 run_id；无自动加热/CO恢复；结果无法证明时 unknown/invalid |
 | 冷却传感器无效或安全反馈缺失 | safe_complete 不成立，ack_run 拒绝，保留故障和采样 |
-| 补传重复/损坏/缺失块 | 原始内容可核对；游标不越过未证明缺口，实时状态不后退 |
+| 补传重复/损坏/缺失块 | 原始内容可核对；完整性区间不跨缺口，已明确缺口允许扫描水位前进，实时状态不后退 |
 | 活跃联锁被 ACK 或故障复位 | 活跃条件仍生效；不得清除后自动恢复实验 |
+
+## 当前上位机对接与归档边界
+
+本节描述当前客户端的接入行为，不能替代板端独立安全判断。
+
+| 对接阶段 | 当前主机行为 / 固件交付注意事项 |
+|---|---|
+| 会话建立 | TLS/hello 成功后仍读取工程配置、核对操作水位和未决结果、读取状态/报警、恢复源日志；全部恢复成功才开放普通控制。恢复期间必须仍能读取和停止明确的当前运行 |
+| 工程配置 | hello、profile_snapshot、status_snapshot 的 profile_digest 必须一致；会话中摘要变化撤销就绪，重新握手。未批准配置可读取诊断，不能启动或激活配方 |
+| 状态来源 | 只有 status_snapshot.run 决定页面阶段；telemetry 不携带可代替它的生命周期状态，run_changed 提醒刷新并保留历史。不要把 1.0 状态别名写入 v2 |
+| 普通操作 | 主机先查未决操作并核对当前状态/权限，申请或确认租约后下发；unknown/result_expired/not_found 不能当成功。停止使用当前会话已知 run_id，独立于普通操作锁和读取窗口 |
+| 安全闭合 | 对已绑定运行，measurement_complete 只登记测定结束，safe_complete 才登记档案结束；ack_run 另行使设备可开始下一实验。后到的历史事件不得把已结束档案改回运行中 |
+| 陌生运行 | 当前仅保留未绑定 run_id 的原始数据，不自动新建 TestSession、不归入 active_test；“建立待核查运行”的完整接管流程仍须后续实现。无 run_id 的全局报警仍正常归档 |
+
+实现依据：[V2Client](../../../backend/app/hostcomm/v2_client.py)、[状态投影](../../../backend/app/hostcomm/v2_projection.py)、[操作策略](../../../backend/app/services/state_policy.py)、[归档投影](../../../backend/app/services/v2_archive.py)。`test_full_application_continues_recording_until_safe_completion`、`test_recovery_pending_rejects_start_before_creating_an_experiment` 及读取窗口占满时停止用例见[完整应用测试](../../../backend/tests/test_v2_application.py)；陌生运行和跨启动边界见[归档测试](../../../backend/tests/test_v2_archive.py)。这些是软件证据，尚非目标固件验收。
+
+### 日志 ACK、扫描与完整性
+
+以下水位含义不同，不能合成一个“已同步”布尔值：
+
+| 位置 | 推进条件与含义 |
+|---|---|
+| log_ack.next_offset | 本块原始字节及跨块尾部已持久化；单条记录可跨块，不得等到 LF 才确认字节 |
+| log_ack.committed_record_seq | 已收齐、通过单条校验且已落盘的最高记录；首块未形成完整记录时为 null，不表示整次传输已验证 |
+| 主机 scanned_through_seq | 完整验证 log_result 的记录、摘要和缺口覆盖后，推进至 requested.last_record_seq；合法 partial/unavailable 也推进，避免反复下载已明确丢失的旧区间 |
+| 主机 verified_from_seq / verified_through_seq | 只证明无缺口的连续区间；partial/unavailable 不扩展它，后续独立 complete 区间也不能抹去之前缺口 |
+
+`scanned_through_seq` 和 `verified_*` 是主机数据库字段，不是新增线字段。所有 log_chunk/log_result 关联原始 log_request；log_ack 的 reply_to=null。每块 ACK 后才可发下一块，最终结果也必须等最后一块 ACK；原始块被确认不等于已投入报告。主机在完整终态校验成功后，才将补传记录和档案投影在同一事务提交；坏摘要或断线保留未完成状态，不伪造源端 missing。
+
+实时与补传按 `(device_id, record_type, boot_id, source_seq)` 去重，并核对 `(device_id, log_id, record_seq)` 日志位置；相同身份不同内容拒绝。补传不更新实时缓存。自动补传在重连恢复及测定/安全完成后执行，按固定源高水位分批；手动重扫保留既有缺口证据。完整性判定仍使用原始运行边界、源记录及质量，不使用接收顺序或数据库自增 ID。
+
+实现与测试：[源日志事务](../../../backend/app/services/v2_source_logs.py)、[传输校验器](../../../backend/app/hostcomm/v2_contract/codec.py)、[源日志回归](../../../backend/tests/test_v2_source_logs.py)。重点用例为 `test_partial_record_commits_bytes_before_ack_and_recovers_after_restart`、`test_bad_terminal_hash_never_archives_staged_records` 和 `test_partial_scan_then_complete_cut_does_not_promote_the_gap`。固件分块窗口/重传时限仍以 [wire.md](wire.md) 为准；UI 刷新不能占住确认通道，见[刷新回归](../../../backend/tests/test_v2_refresh.py)。
 
 ## 工程配置与交付边界
 

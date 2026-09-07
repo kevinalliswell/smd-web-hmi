@@ -1,6 +1,8 @@
 # HostComm 实验扩展候选契约
 
-> 适用范围：本文保留 `0.3.0-rc.2` 的 HostComm **1.0** 客户端与 Mock 行为，供兼容维护和历史核查。当前候选 `0.3.0-rc.3` 已增加不兼容的 [HostComm v2.0](hostcomm/v2/README.md) 上位机适配与无执行器模拟器，见[运行与配对](hostcomm/v2/runtime.md)、[软件验证](verification/2026-09-06-hostcomm-v2-runtime.md)。本文中的待冻结字段及供应商假设是旧实现背景；固件尚未开发，不能将1.0字段或既有软件测试视为真实固件验收。
+> 适用范围：本文保留 `0.3.0-rc.2` 的 HostComm **1.0** 客户端与 Mock 行为，供兼容维护和历史核查。`0.3.0-rc.3` 起已增加不兼容的 [HostComm v2.0](hostcomm/v2/README.md) 上位机适配与无执行器模拟器，见[运行与配对](hostcomm/v2/runtime.md)、[软件验证](verification/2026-09-06-hostcomm-v2-runtime.md)。本文中的待冻结字段及供应商假设是旧实现背景；固件尚未开发，不能将1.0字段或既有软件测试视为真实固件验收。
+
+新固件交接采用 [doc.2 交接说明](hostcomm/v2/firmware-handoff.md)，本页继续保留1.0兼容语境。
 
 维护角色：后端与固件负责人。以下约定记录2026-09-06的 `0.3.0-rc.2` 兼容实现字段，**不是供应商已冻结的固件接口**，下文“当前”均指该历史范围。决策见 [ADR-006](decisions/ADR-006-candidate-experiment-contracts.md)，基础帧与外部交付见 [HostComm 1.0 总览](GB_T34211_HostComm上位机通信协议开发需求说明.md)和[待确认清单](待确认事项与接口对齐清单.md)。
 
