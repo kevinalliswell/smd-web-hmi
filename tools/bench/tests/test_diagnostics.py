@@ -1,4 +1,7 @@
 import json
+import os
+import sqlite3
+from contextlib import closing
 from pathlib import Path
 
 import pytest
@@ -105,4 +108,90 @@ def test_log_preservation_failure_keeps_original_data(tmp_path, monkeypatch):
     )
     with pytest.raises(OSError, match="copy failure"):
         installation.cleanup()
+    assert installation.cleanup_stage == "logs"
     assert installation.install.exists() and (logs / "service.log").read_text() == "keep this evidence"
+
+
+def installation_with_database(tmp_path, monkeypatch):
+    from smd_bench.installation import Installation
+
+    installation = Installation(
+        "d" * 32, {"program_files": str(tmp_path / "pf"), "program_data": str(tmp_path / "pd")}, "0.3.0-rc.5"
+    )
+    for path in (installation.private, installation.install, installation.data):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        claim(path, installation.run_id)
+    installation.private.chmod(0o700)
+    database = installation.data / "db/smd.db"
+    database.parent.mkdir()
+    with closing(sqlite3.connect(database)) as source:
+        source.execute("CREATE TABLE evidence (value TEXT NOT NULL)")
+        source.execute("INSERT INTO evidence VALUES ('preserved synthetic experiment')")
+        source.commit()
+    monkeypatch.setattr("smd_bench.windows.remove_registration", lambda *_args: None)
+    monkeypatch.setattr("smd_bench.windows.service_info", lambda: None)
+    monkeypatch.setattr("smd_bench.windows.firewall", lambda *_args, **_kwargs: None)
+    return installation
+
+
+def test_cleanup_closes_both_real_backup_connections_before_removal(tmp_path, monkeypatch):
+    import shutil
+
+    installation = installation_with_database(tmp_path, monkeypatch)
+    connections = []
+    connect, remove = sqlite3.connect, shutil.rmtree
+
+    def tracked_connect(*args, **kwargs):
+        connection = connect(*args, **kwargs)
+        connections.append(connection)  # Keep strong refs: garbage collection must not make this pass.
+        return connection
+
+    def checked_remove(path, *args, **kwargs):
+        assert len(connections) == 2
+        for connection in connections:
+            with pytest.raises(sqlite3.ProgrammingError, match="closed"):
+                connection.execute("SELECT 1")
+        return remove(path, *args, **kwargs)
+
+    monkeypatch.setattr(sqlite3, "connect", tracked_connect)
+    monkeypatch.setattr(shutil, "rmtree", checked_remove)
+    try:
+        installation.cleanup()
+    finally:
+        for connection in connections:
+            connection.close()
+    assert not installation.install.exists() and not installation.data.exists()
+    with closing(connect(installation.private / "host-archive.sqlite")) as backup:
+        assert backup.execute("SELECT value FROM evidence").fetchone() == ("preserved synthetic experiment",)
+        assert backup.execute("PRAGMA integrity_check").fetchone() == ("ok",)
+
+
+@pytest.mark.skipif(os.name != "nt", reason="requires Windows SQLite file-sharing and real directory removal")
+def test_windows_cleanup_releases_database_for_real_removal_and_retains_backup(tmp_path, monkeypatch):
+    installation = installation_with_database(tmp_path, monkeypatch)
+    installation.cleanup()  # Real sqlite connections, backup, ACL checks and shutil.rmtree.
+    assert not installation.install.exists() and not installation.data.exists()
+    with closing(sqlite3.connect(installation.private / "host-archive.sqlite")) as backup:
+        assert backup.execute("SELECT value FROM evidence").fetchone() == ("preserved synthetic experiment",)
+        assert backup.execute("PRAGMA integrity_check").fetchone() == ("ok",)
+
+
+def test_public_os_diagnostic_excludes_secret_path_and_message():
+    error = PermissionError(13, "private token must not be published", "secret-path.db")
+    error.winerror = 32
+    diagnostic = failure_details(error)
+    assert diagnostic["os_error"] == {"errno": 13, "winerror": 32}
+    assert "private token" not in json.dumps(diagnostic) and "secret-path" not in json.dumps(diagnostic)
+
+
+def test_failed_real_database_backup_retains_original_and_network_isolation(tmp_path, monkeypatch):
+    installation = installation_with_database(tmp_path, monkeypatch)
+    database = installation.data / "db/smd.db"
+    database.write_bytes(b"invalid synthetic database")
+    monkeypatch.setattr(
+        "smd_bench.windows.firewall", lambda *_args, **_kwargs: pytest.fail("isolation removed after failed backup")
+    )
+    with pytest.raises(sqlite3.DatabaseError):
+        installation.cleanup()
+    assert installation.cleanup_stage == "backup"
+    assert installation.install.exists() and database.read_bytes() == b"invalid synthetic database"

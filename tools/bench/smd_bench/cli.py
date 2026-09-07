@@ -195,6 +195,10 @@ def run(args):
             result["cleanup_failure_type"] = diagnostic["type"]
             result["cleanup_failure_frames"] = diagnostic["frames"]
             result["cleanup_private_trace_saved"] = diagnostic["private_trace_saved"]
+            if installation.cleanup_stage in {"registration", "backup", "logs", "install", "data", "firewall"}:
+                result["cleanup_stage"] = installation.cleanup_stage
+            if "os_error" in diagnostic:
+                result["cleanup_os_error"] = diagnostic["os_error"]
             if "windows_operation" in diagnostic:
                 result["cleanup_windows_operation"] = diagnostic["windows_operation"]
             if "private_trace_windows_operation" in diagnostic:

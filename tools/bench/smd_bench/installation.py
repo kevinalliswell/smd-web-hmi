@@ -6,6 +6,7 @@ import re
 import shutil
 import sqlite3
 import subprocess
+from contextlib import closing
 from pathlib import Path
 
 from smd_desktop.storage import atomic_json
@@ -91,6 +92,7 @@ class Installation:
             raise ValueError("invalid installation version")
         self.version = version
         self.claimed = self.evidence_created = False
+        self.cleanup_stage = "registration"
         self.program_files, self.program_data = Path(folders["program_files"]), Path(folders["program_data"])
         self.install = self.program_files / f"SmdHmi-CI-{run_id}"
         self.data = self.program_data / "SmdHmi"
@@ -197,6 +199,7 @@ class Installation:
         windows.start_service(self.service, self.data)
 
     def cleanup(self) -> None:
+        self.cleanup_stage = "registration"
         check_claim(self.private, self.run_id)
         for directory in (self.install, self.data):
             if directory.exists():
@@ -206,18 +209,22 @@ class Installation:
         if windows.service_info():
             raise RuntimeError("service remains; retain network isolation and test files")
         database = self.data / "db/smd.db"
+        self.cleanup_stage = "backup"
         if database.exists():
-            with sqlite3.connect(f"file:{database.as_posix()}?mode=ro", uri=True) as source:
-                with sqlite3.connect(self.private / "host-archive.sqlite") as destination:
+            with closing(sqlite3.connect(f"file:{database.as_posix()}?mode=ro", uri=True)) as source:
+                with closing(sqlite3.connect(self.private / "host-archive.sqlite")) as destination:
                     source.backup(destination)
+        self.cleanup_stage = "logs"
         if self.data.exists():
             from .diagnostics import archive_logs
 
             archive_logs(self.private, self.data, self.run_id)
-        for directory in (self.install, self.data):
+        for stage, directory in (("install", self.install), ("data", self.data)):
+            self.cleanup_stage = stage
             if directory.exists():
                 check_claim(directory, self.run_id)
                 shutil.rmtree(directory)
+        self.cleanup_stage = "firewall"
         windows.firewall(self.run_id, self.service, remove=True)
         self.save("cleaned")
 

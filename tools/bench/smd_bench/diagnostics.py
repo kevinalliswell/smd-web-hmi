@@ -108,6 +108,10 @@ def failure_details(error: BaseException, *, private: Path | None = None, run_id
     result = {"type": type(error).__name__, "frames": public_frames(error), "private_trace_saved": False}
     if isinstance(error, WindowsOperationError):
         result["windows_operation"] = error.diagnostic
+    if isinstance(error, OSError):
+        result["os_error"] = {
+            name: value for name in ("errno", "winerror") if type(value := getattr(error, name, None)) is int
+        }
     if private is not None and run_id is not None:
         try:
             secure_private(private, run_id)
