@@ -61,6 +61,7 @@ async def test_corrupt_nested_legacy_metadata_is_not_overwritten(db_session, old
             db_session,
         )
     assert error.value.status_code == 409
+    await db_session.refresh(row)  # The rejected transaction is rolled back and expires cached ORM values.
     assert row.measurement_basis_json == json.dumps(old)
     assert await db_session.scalar(select(EventLog.id)) is None
 

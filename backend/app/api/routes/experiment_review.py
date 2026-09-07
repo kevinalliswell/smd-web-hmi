@@ -7,11 +7,12 @@ import math
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field, ValidationError
-from sqlalchemy import select
+from sqlalchemy import select, update
 
 from app.api.deps import DbDep, UserDep, get_hostcomm_client, require_role
 from app.api.schemas import err, ok
 from app.api.validation import TestIdPath
+from app.db.cancellation import finish_db_work
 from app.db.models import EventLog, TestSession
 from app.db.v2_models import V2RunBinding
 from app.hostcomm.protocol import now_iso
@@ -31,7 +32,9 @@ class MetadataRequest(BaseModel):
 
 
 async def _get_test(db, test_id):
-    row = await db.scalar(select(TestSession).where(TestSession.test_id == test_id))
+    row = await db.scalar(
+        select(TestSession).where(TestSession.test_id == test_id).execution_options(populate_existing=True)
+    )
     if row is None:
         raise HTTPException(404, err("test_not_found", "实验不存在"))
     return row
@@ -55,6 +58,20 @@ def _basis(row):
 @router.patch("/{test_id}/metadata", dependencies=[Depends(require_role("operator"))])
 async def update_metadata(test_id: TestIdPath, body: MetadataRequest, user: UserDep, db: DbDep):
     async with maintenance_manager.command_guard():
+        return await _commit_metadata(test_id, body, user, db)
+
+
+@finish_db_work
+async def _commit_metadata(test_id, body, user, db):
+    try:
+        # Reserve the same SQLite writer used by source projection before reading
+        # the whole basis JSON; cached evidence must not replace a newer archive.
+        await db.execute(
+            update(TestSession)
+            .where(TestSession.test_id == test_id)
+            .values(measurement_basis_json=TestSession.measurement_basis_json)
+            .execution_options(synchronize_session=False)
+        )
         row = await _get_test(db, test_id)
         basis = _basis(row)
         before = row.measurement_basis_json
@@ -93,6 +110,9 @@ async def update_metadata(test_id: TestIdPath, body: MetadataRequest, user: User
         )
         await db.commit()
         return ok({"test_id": test_id, "original_height_mm": row.original_height_mm, "measurement_basis": basis})
+    except BaseException:
+        await db.rollback()
+        raise
 
 
 class CloseReviewRequest(BaseModel):

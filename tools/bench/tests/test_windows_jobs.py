@@ -62,19 +62,27 @@ def test_parent_job_is_not_closed_by_python_module_cleanup(monkeypatch):
 
 
 @pytest.mark.skipif(os.name != "nt", reason="requires real locked pywin32 and Windows kernel job objects")
-def test_real_job_can_be_created_configured_and_destroyed():
+def test_real_job_can_be_created_configured_and_destroyed(monkeypatch):
+    from uuid import uuid4
+
     import pywintypes
     import win32api
     import win32job
 
+    identity = uuid4()
+    monkeypatch.setattr(windows, "uuid4", lambda: identity)
+    name = "Local\\SmdBench-" + identity.hex
     job = windows.create_kill_on_close_job()
     try:
         info = win32job.QueryInformationJobObject(job, win32job.JobObjectExtendedLimitInformation)
         assert info["BasicLimitInformation"]["LimitFlags"] & win32job.JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
     finally:
         win32api.CloseHandle(job)
-    with pytest.raises((pywintypes.error, ValueError)):
-        win32job.QueryInformationJobObject(job, win32job.JobObjectExtendedLimitInformation)
+    # CloseHandle invalidates PyHANDLE to NULL. QueryInformationJobObject(NULL)
+    # queries the caller's current job, so reopen this exact unique name instead.
+    with pytest.raises(pywintypes.error) as caught:
+        win32job.OpenJobObject(win32job.JOB_OBJECT_QUERY, False, name)
+    assert caught.value.winerror == 2  # ERROR_FILE_NOT_FOUND: the unassigned job was destroyed.
 
 
 @pytest.mark.skipif(os.name != "nt", reason="requires real locked pywin32 and Windows process creation")
