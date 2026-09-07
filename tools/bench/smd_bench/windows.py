@@ -5,6 +5,7 @@ import json
 import os
 import struct
 from pathlib import Path
+from uuid import uuid4
 
 from smd_desktop import windows_powershell
 
@@ -209,15 +210,42 @@ if(Test-Path -LiteralPath $menu){Remove-Item -LiteralPath $menu -Recurse -Force}
 _job_handle = None
 
 
+def create_kill_on_close_job():
+    """pywin32 312 requires a unicode name; never attach to a preexisting job."""
+    import win32api
+    import win32job
+
+    # b312/win32/src/win32job.i uses WCHAR*, whose SWIG converter rejects None.
+    # A fresh local name avoids depending on undocumented empty-name behavior.
+    win32api.SetLastError(0)
+    job = win32job.CreateJobObject(None, "Local\\SmdBench-" + uuid4().hex)
+    try:
+        if win32api.GetLastError() == 183:  # ERROR_ALREADY_EXISTS; do not change its limits.
+            raise RuntimeError("generated job name already exists")
+        info = win32job.QueryInformationJobObject(job, win32job.JobObjectExtendedLimitInformation)
+        info["BasicLimitInformation"]["LimitFlags"] |= win32job.JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
+        win32job.SetInformationJobObject(job, win32job.JobObjectExtendedLimitInformation, info)
+    except BaseException:
+        win32api.CloseHandle(job)
+        raise
+    return job
+
+
 def contain_child_processes() -> None:
     """Parent death closes this nested job and terminates simulator/Chromium children."""
     global _job_handle
     import win32api
     import win32job
 
-    job = win32job.CreateJobObject(None, None)
-    info = win32job.QueryInformationJobObject(job, win32job.JobObjectExtendedLimitInformation)
-    info["BasicLimitInformation"]["LimitFlags"] |= win32job.JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
-    win32job.SetInformationJobObject(job, win32job.JobObjectExtendedLimitInformation, info)
-    win32job.AssignProcessToJobObject(job, win32api.GetCurrentProcess())
-    _job_handle = job  # Intentionally lives until process exit; never close it while running cleanup.
+    if _job_handle is not None:
+        return
+    job = create_kill_on_close_job()
+    try:
+        win32job.AssignProcessToJobObject(job, win32api.GetCurrentProcess())
+    except BaseException:
+        win32api.CloseHandle(job)
+        raise
+    # PyHANDLE destruction calls CloseHandle during Python module teardown. Since
+    # this job includes ourselves, let Windows close the native handle at actual
+    # process exit, preserving the exit code and killing any remaining children.
+    _job_handle = job.Detach()

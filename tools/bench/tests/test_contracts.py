@@ -80,6 +80,8 @@ def test_job_assignment_failure_terminates_suspended_owned_process(tmp_path, mon
         "win32api": SimpleNamespace(
             CloseHandle=lambda h: events.append(("close", h)),
             TerminateProcess=lambda p, c: events.append(("terminate", p)),
+            SetLastError=lambda _: None,
+            GetLastError=lambda: 0,
         ),
         "win32con": SimpleNamespace(CREATE_SUSPENDED=1, CREATE_NO_WINDOW=2),
         "win32event": SimpleNamespace(

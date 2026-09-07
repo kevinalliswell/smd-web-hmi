@@ -228,6 +228,10 @@ def main(argv=None):
             from .browser import Browser
 
             tool_manifest()
+            if os.name == "nt":
+                from .windows import contain_child_processes
+
+                contain_child_processes()
 
             async def check():
                 browser = Browser(Path.cwd())

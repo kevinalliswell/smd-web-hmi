@@ -45,10 +45,7 @@ def checked_process(executable: Path, arguments: list[str], private: Path, *, ti
     import win32job
     import win32process
 
-    job = win32job.CreateJobObject(None, None)
-    info = win32job.QueryInformationJobObject(job, win32job.JobObjectExtendedLimitInformation)
-    info["BasicLimitInformation"]["LimitFlags"] |= win32job.JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
-    win32job.SetInformationJobObject(job, win32job.JobObjectExtendedLimitInformation, info)
+    job = windows.create_kill_on_close_job()
     command = subprocess.list2cmdline([str(executable), *arguments])
     if nsis:
         command = subprocess.list2cmdline([str(executable)]) + " /S /D=" + arguments[-1]

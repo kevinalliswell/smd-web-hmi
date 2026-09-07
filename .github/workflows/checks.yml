@@ -134,12 +134,6 @@ jobs:
       - name: Freeze service, shell and updater; verify Fixed Runtime; compile NSIS
         shell: pwsh
         run: ./scripts/release/build-windows.ps1
-      - name: Install NSIS and verify the isolated LocalService backend
-        shell: pwsh
-        run: |
-          $Version = (& python scripts/release/metadata.py).Trim()
-          if ($LASTEXITCODE -ne 0) { throw 'Source version mismatch' }
-          ./scripts/release/smoke-windows.ps1 -Installer "artifacts/SmdHmi-$Version-windows-x64.exe" -Manifest artifacts/manifest.json -Evidence artifacts/windows-install-smoke.json
       - name: Build the separate offline bench and bundled Chromium
         shell: pwsh
         run: |
@@ -147,6 +141,14 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Bench dependency installation failed' }
           python tools/bench/freeze.py --output artifacts/bench --work artifacts/bench-work
           if ($LASTEXITCODE -ne 0) { throw 'Bench freeze failed' }
+          & ./artifacts/bench/SmdBench/SmdBench.exe self-check
+          if ($LASTEXITCODE -ne 0) { throw 'Frozen bench process and browser self-check failed' }
+      - name: Install NSIS and verify the isolated LocalService backend
+        shell: pwsh
+        run: |
+          $Version = (& python scripts/release/metadata.py).Trim()
+          if ($LASTEXITCODE -ne 0) { throw 'Source version mismatch' }
+          ./scripts/release/smoke-windows.ps1 -Installer "artifacts/SmdHmi-$Version-windows-x64.exe" -Manifest artifacts/manifest.json -Evidence artifacts/windows-install-smoke.json
       - name: Installed TLS, experiment, recovery and report loop
         shell: pwsh
         timeout-minutes: 25
