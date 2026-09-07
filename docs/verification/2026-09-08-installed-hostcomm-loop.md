@@ -21,6 +21,8 @@ CI发现并复现了两项问题：[首轮](https://github.com/kevinalliswell/sm
 
 [第四轮](https://github.com/kevinalliswell/smd-web-hmi/actions/runs/34147661742)的实际PR合并快照为`63f408f59e77102829490af324ca82255488addb`（分支提交`ef5e31dc5b57f2ec216bc3f9dbda5e5eba6c0fe1`）。Windows Server 2025/Python3.13.15后端757通过、4项平台限定跳过，覆盖率87.69%；桌面185通过、2项跳过，工具35通过。安装器SHA256为`d4ca75aaeeadb5da00e02ff70ad4a493423b79a563048d4fd95bb293bc47a30f`，实际安装与既有smoke全部通过，包含旧资料备份及空库重装。独立工具冻结后在创建Job Object时触发TypeError，尚未安装其自身测试实例；失败记录的`cleanup_complete=true`。该构建不是合格联调发行包。
 
+[第五轮](https://github.com/kevinalliswell/smd-web-hmi/actions/runs/34150511408)在打包前执行新增真实Windows Job测试，发现工具独立依赖清单未声明`pywin32`，四项测试在导入阶段失败。现将已由桌面锁固定的312版本及其哈希显式加入工具锁，保留Windows环境标记；不跳过平台测试。Job命名、正常退出与父死子清的最终结果仍需后续Windows执行确认。
+
 ## 测试方法与证据限制
 
 - 模拟器拥有独立SQLite和受限配对资料，通过真实TLS与安装后的后台连接；页面操作不修改后台内部状态或数据库。
