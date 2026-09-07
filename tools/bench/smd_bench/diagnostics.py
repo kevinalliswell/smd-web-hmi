@@ -71,6 +71,44 @@ LOG_NAMES = (
     *(f"updater.log.{i}" for i in range(1, 6)),
 )
 MAX_LOG_BYTES = 256 * 1024 * 1024
+SHUTDOWN_PHASES = {
+    "INFO:uvicorn.error:Shutting down": "requested",
+    "INFO:uvicorn.error:Waiting for connections to close. (CTRL+C to force quit)": "connections",
+    "INFO:uvicorn.error:Waiting for background tasks to complete. (CTRL+C to force quit)": "background_tasks",
+    "INFO:uvicorn.error:Waiting for application shutdown.": "application",
+    "INFO:uvicorn.error:Application shutdown complete.": "application_complete",
+}
+
+
+def service_shutdown_evidence(data: Path, run_id: str) -> dict:
+    """Read-only failure context, never proof of current SCM state or successful cleanup."""
+    try:
+        check_claim(data, run_id)
+        path = data / "logs/service.log"
+        assert_owned_path(path, path)
+        with path.open("rb") as source:
+            offset = max(0, source.seek(0, os.SEEK_END) - 512 * 1024)
+            source.seek(offset)
+            raw = source.read(512 * 1024)
+        if offset:
+            raw = raw.partition(b"\n")[2]  # Never interpret a partial first line.
+        phases = []
+        for line in raw.decode("utf-8", errors="replace").splitlines():
+            if re.fullmatch(r"INFO:uvicorn\.error:Started server process \[[0-9]{1,20}\]", line):
+                phases.clear()
+            phase = SHUTDOWN_PHASES.get(line)
+            if re.fullmatch(
+                r"ERROR:uvicorn\.error:Cancel [0-9]{1,20} running task\(s\), timeout graceful shutdown exceeded",
+                line,
+            ):
+                phase = "requests_cancelled"
+            if phase:
+                if phase == "requested":
+                    phases.clear()
+                phases.append(phase)
+        return {"collection": "ok", "source": "service_log_tail", "stages": phases[-16:]}
+    except (OSError, ValueError, TypeError):
+        return {"collection": "unavailable"}
 
 
 def public_frames(error: BaseException) -> list[dict]:

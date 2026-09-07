@@ -219,7 +219,23 @@ if(Test-Path -LiteralPath $menu){
  if($items.Count){if($items[0].Attributes -band [IO.FileAttributes]::ReparsePoint){throw 'shortcut reparse'};$shortcut=(New-Object -ComObject WScript.Shell).CreateShortcut($items[0].FullName);if(-not (Same $shortcut.TargetPath $p.desktop)){throw 'foreign shortcut target'}}
 }
 if($task){$benchStage='task_stop';Stop-ScheduledTask -InputObject $task;$benchStage='task_remove';Unregister-ScheduledTask -InputObject $task -Confirm:$false}
-if($service){$benchStage='service_stop';$s=Get-Service SmdHmi;try{if($s.Status -ne 'Stopped'){$s.Stop();$benchStage='service_wait';$s.WaitForStatus('Stopped',[TimeSpan]::FromSeconds(60))}}finally{$s.Dispose()};$benchStage='service_delete';& sc.exe delete SmdHmi|Out-Null;if($LASTEXITCODE -ne 0){throw 'delete service failed'}
+if($service){$benchStage='service_stop';$s=Get-Service SmdHmi
+ try {
+  $s.Refresh()
+  if($s.Status -ne 'Stopped'){
+   if($s.Status -ne 'StopPending'){
+    try {$s.Stop()} catch {
+     $cause=$_.Exception.GetBaseException()
+     if($cause -isnot [ComponentModel.Win32Exception] -or $cause.NativeErrorCode -ne 1061){throw}
+     $s.Refresh()
+     if($s.Status -notin @('StopPending','Stopped')){throw}
+    }
+   }
+   $benchStage='service_wait'
+   $s.WaitForStatus('Stopped',[TimeSpan]::FromSeconds(60))
+  }
+ } finally {$s.Dispose()}
+ $benchStage='service_delete';& sc.exe delete SmdHmi|Out-Null;if($LASTEXITCODE -ne 0){throw 'delete service failed'}
  $benchStage='service_deleted_wait'
  $until=[DateTime]::UtcNow.AddSeconds(30);do{$service=Get-CimInstance Win32_Service -Filter "Name='SmdHmi'" -OperationTimeoutSec 5;if(-not $service){break};Start-Sleep -Milliseconds 250}while([DateTime]::UtcNow -lt $until);if($service){throw 'service still exists'}
 }

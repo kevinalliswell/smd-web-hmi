@@ -12,7 +12,7 @@ from uuid import uuid4
 import httpx
 
 from .contracts import validate_run_id
-from .diagnostics import failure_details
+from .diagnostics import failure_details, service_shutdown_evidence
 from .installation import Installation, preflight
 from .package import sha256, tool_manifest, verify_installer
 
@@ -177,6 +177,8 @@ def run(args):
         passed = True
     except Exception as error:
         # Fail closed at the CLI boundary. Never serialize error bodies (browser errors can contain credentials).
+        if installation.claimed:
+            result["service_shutdown"] = service_shutdown_evidence(installation.data, installation.run_id)
         diagnostic = failure_details(
             error, private=installation.private if installation.claimed else None, run_id=installation.run_id
         )
@@ -190,6 +192,8 @@ def run(args):
                 installation.cleanup()
             result["cleanup_complete"] = True
         except Exception as error:
+            if installation.claimed:
+                result["cleanup_service_shutdown"] = service_shutdown_evidence(installation.data, installation.run_id)
             diagnostic = failure_details(
                 error, private=installation.private if installation.claimed else None, run_id=installation.run_id
             )

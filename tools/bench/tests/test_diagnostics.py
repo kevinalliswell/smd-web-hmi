@@ -195,3 +195,65 @@ def test_failed_real_database_backup_retains_original_and_network_isolation(tmp_
         installation.cleanup()
     assert installation.cleanup_stage == "backup"
     assert installation.install.exists() and database.read_bytes() == b"invalid synthetic database"
+
+
+def test_shutdown_evidence_extracts_fixed_stages_after_latest_start_only(tmp_path):
+    from smd_bench.diagnostics import service_shutdown_evidence
+
+    run_id, _private, data = private_run(tmp_path)
+    logs = data / "logs"
+    logs.mkdir()
+    log = logs / "service.log"
+    raw = (
+        "INFO:uvicorn.error:Shutting down\n"
+        "INFO:uvicorn.error:Application shutdown complete.\n"
+        "INFO:uvicorn.error:Started server process [1234]\n"
+        "INFO:backend.stdout:private PSK, password and token must stay here\n"
+        "INFO:uvicorn.error:Shutting down\n"
+        "INFO:uvicorn.error:Waiting for connections to close. (CTRL+C to force quit)\n"
+        "ERROR:uvicorn.error:Cancel 2 running task(s), timeout graceful shutdown exceeded\n"
+        "INFO:uvicorn.error:Waiting for application shutdown.\n"
+        "INFO:uvicorn.error:Application shutdown complete. secret suffix\n"
+    ).encode()
+    log.write_bytes(raw)
+    result = service_shutdown_evidence(data, run_id)
+    assert result == {
+        "collection": "ok",
+        "source": "service_log_tail",
+        "stages": ["requested", "connections", "requests_cancelled", "application"],
+    }
+    assert log.read_bytes() == raw and "secret" not in json.dumps(result) and "1234" not in json.dumps(result)
+
+
+@pytest.mark.parametrize("mode", ["missing", "foreign", "link"])
+def test_shutdown_evidence_refuses_unowned_or_unavailable_logs(tmp_path, mode):
+    from smd_bench.diagnostics import service_shutdown_evidence
+
+    run_id, _private, data = private_run(tmp_path)
+    if mode != "missing":
+        logs = data / "logs"
+        logs.mkdir()
+        if mode == "link":
+            foreign = tmp_path / "foreign.log"
+            foreign.write_text("INFO:uvicorn.error:Shutting down\n", encoding="utf-8")
+            (logs / "service.log").symlink_to(foreign)
+        else:
+            (logs / "service.log").write_text("INFO:uvicorn.error:Shutting down\n", encoding="utf-8")
+            run_id = "b" * 32
+    assert service_shutdown_evidence(data, run_id) == {"collection": "unavailable"}
+
+
+def test_shutdown_evidence_is_bounded_and_never_reconstructs_a_truncated_line(tmp_path):
+    from smd_bench.diagnostics import service_shutdown_evidence
+
+    run_id, _private, data = private_run(tmp_path)
+    logs = data / "logs"
+    logs.mkdir()
+    raw = b"private-prefix" * 50000 + b"INFO:uvicorn.error:Shutting down\n"
+    raw += b"INFO:uvicorn.error:Waiting for background tasks to complete. (CTRL+C to force quit)\n"
+    (logs / "service.log").write_bytes(raw)
+    assert service_shutdown_evidence(data, run_id) == {
+        "collection": "ok",
+        "source": "service_log_tail",
+        "stages": ["background_tasks"],
+    }
