@@ -103,7 +103,11 @@ def secure_private(private: Path, run_id: str) -> None:
 
 
 def failure_details(error: BaseException, *, private: Path | None = None, run_id: str | None = None) -> dict:
+    from .windows import WindowsOperationError
+
     result = {"type": type(error).__name__, "frames": public_frames(error), "private_trace_saved": False}
+    if isinstance(error, WindowsOperationError):
+        result["windows_operation"] = error.diagnostic
     if private is not None and run_id is not None:
         try:
             secure_private(private, run_id)
@@ -116,6 +120,8 @@ def failure_details(error: BaseException, *, private: Path | None = None, run_id
         except Exception as diagnostic_error:
             # This cannot change failed acceptance to passed or replace the original failure.
             result["private_trace_failure_type"] = type(diagnostic_error).__name__
+            if isinstance(diagnostic_error, WindowsOperationError):
+                result["private_trace_windows_operation"] = diagnostic_error.diagnostic
     return result
 
 

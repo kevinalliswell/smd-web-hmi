@@ -30,6 +30,7 @@ async function open(id) {
     const result = await fetchRunRecovery(id)
     if (disposed || generation !== detailGeneration) return
     selected.value = result
+    rows.value = rows.value.map(row => row.id === id ? { ...row, ...result } : row)
     if (pending.value) timer = setTimeout(() => open(id), 1500)
   } catch (e) { if (!disposed && generation === detailGeneration) error.value = apiErrorMessage(e) }
 }

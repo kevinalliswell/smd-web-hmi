@@ -191,12 +191,10 @@ async def faults(scenes):
     restart_test = "BENCH-" + scenes.run_id[:8] + "-HOST-RESTART"
     await scenes.start(restart_test, scenes.standard)
     before_restart = await worker.request("snapshot")
-    await asyncio.to_thread(scenes.installation.stop)
-    # The board and its source storage stay alive while the real host process stops.
-    await asyncio.to_thread(scenes.installation.start)
-    from .cli import wait_health
-
-    await wait_health(ui.base, online=True)
+    async with ui.stopped_service():
+        await asyncio.to_thread(scenes.installation.stop)
+        # The board and its source storage stay alive while the real host process stops.
+        await asyncio.to_thread(scenes.installation.start)
     await ui.ready()
     recovered = await worker.request("snapshot")
     if (

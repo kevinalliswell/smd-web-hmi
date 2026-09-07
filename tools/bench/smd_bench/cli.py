@@ -75,10 +75,11 @@ async def run_scenarios(installation, result, scenario):
         del initial
         result["last_stage"] = "offline_pairing"
         ui.current_stage = "offline_pairing"
-        pairing = await asyncio.to_thread(installation.pair)
-        worker = Worker(installation.private, pairing)
-        await worker.start(wrong_psk=True)
-        await asyncio.to_thread(installation.start)
+        async with ui.stopped_service():
+            pairing = await asyncio.to_thread(installation.pair)
+            worker = Worker(installation.private, pairing)
+            await worker.start(wrong_psk=True)
+            await asyncio.to_thread(installation.start)
         # Observe several real connection attempts; wrong credentials must never yield hello or control.
         wrong = await eventually(
             lambda: worker.request("snapshot"), lambda value: value["psk_attempts"] > 0, timeout=60
@@ -111,6 +112,7 @@ async def run_scenarios(installation, result, scenario):
         result["unexpected_api_errors"] = len(ui.api_failures)
         result["unexpected_console_errors"] = len(ui.console_errors)
         result["expected_fault_console_errors"] = len(ui.expected_console_errors)
+        result["expected_stopped_service_poll_disconnects"] = len(ui.expected_poll_disconnects)
     finally:
         try:
             if worker:
@@ -193,6 +195,10 @@ def run(args):
             result["cleanup_failure_type"] = diagnostic["type"]
             result["cleanup_failure_frames"] = diagnostic["frames"]
             result["cleanup_private_trace_saved"] = diagnostic["private_trace_saved"]
+            if "windows_operation" in diagnostic:
+                result["cleanup_windows_operation"] = diagnostic["windows_operation"]
+            if "private_trace_windows_operation" in diagnostic:
+                result["cleanup_private_trace_windows_operation"] = diagnostic["private_trace_windows_operation"]
             result["cleanup_command"] = "SmdBench.exe cleanup --run-id " + installation.run_id
         if passed and result["cleanup_complete"]:
             result["status"] = "passed"
@@ -243,10 +249,9 @@ def main(argv=None):
         print(json.dumps(result))
         return 0 if result["status"] == "ready" else 2
     except Exception as error:
+        diagnostic = failure_details(error)
         print(
-            json.dumps(
-                {"status": "failed", "error_type": type(error).__name__, "frames": failure_details(error)["frames"]}
-            ),
+            json.dumps({"status": "failed", "error_type": diagnostic.pop("type"), **diagnostic}),
             file=sys.stderr,
         )
         return 1

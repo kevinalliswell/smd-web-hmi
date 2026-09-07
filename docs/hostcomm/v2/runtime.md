@@ -84,7 +84,7 @@ Stop-Service SmdHmi
 
 ## 7. 独立Windows联调工具
 
-本轮新增独立[SmdBench](../../../tools/bench/README.md) ZIP，内含Python、Playwright/Chromium和TLS模拟器。先在全新测试VM中运行preflight，再使用与工具同版本同提交的安装器执行run。工具拒绝已有SmdHmi安装/服务/数据，使用私有模拟器目录与凭据；不要求安装开发环境。详细范围和通过情况见[本轮验证](../../verification/2026-09-08-installed-hostcomm-loop.md)。生产安装包不内置模拟器，现场设备资料不交给该工具。
+本轮已实现独立[SmdBench](../../../tools/bench/README.md)，候选ZIP内含Python、Playwright/Chromium和TLS模拟器。先在全新测试VM中运行preflight，再使用与工具同版本同提交的安装器执行run。工具拒绝已有SmdHmi安装/服务/数据，使用私有模拟器目录与凭据；不要求安装开发环境。完整Windows验收仍在执行，结果必须取自同提交且匹配实际安装器/工具摘要的`acceptance.json`，详细范围见[本轮验证](../../verification/2026-09-08-installed-hostcomm-loop.md)。生产安装包不内置模拟器，现场设备资料不交给该工具。
 
 ## 8. 源码开发方式的同机TLS模拟器
 
@@ -120,6 +120,6 @@ TLS 模拟器需要 Python 的 `ssl.HAS_PSK`。CPython 的上下文 API 不能�
 4. 在另一管理员终端启动服务；确认后台在线、握手身份/能力正确、恢复完成且状态新鲜，然后验证工程 profile 只读、标准/非标配方校验与原字节回读成功。TCP 连通、应用登录和设备可控制是不同检查点。
 5. 在“操作记录”显式触发日志补传，保存任务终态、设备/控制器身份、版本及截图；扫描完成仍按第 5 节解释。停止测试时先按状态完成处置/确认，再停止服务和模拟器，保留双方独立数据库与受限配对材料供复验。
 
-**完整实验还需要测试驱动。** `finish_measurement()`、`complete_purge()`、`complete_cooling()` 是 [Python 模拟器接口](../../../backend/app/hostcomm/v2_simulator/server.py)，用于控制测试轨迹；它们不是 HostComm 网络命令，也没有对应 CLI 参数或现成页面按钮。启动上述 CLI 不等于已经完成测定至冷却的验收。完整业务交付还须准备可重复的独立驱动，覆盖首滴、自然结束、停止后继续记录、报警确认与结束确认、断线/重启和日志缺口，并记录每个注入点。该驱动不得加入生产控制接口。
+**独立测试驱动已由SmdBench实现。** `finish_measurement()`、`complete_purge()`、`complete_cooling()` 是 [Python 模拟器接口](../../../backend/app/hostcomm/v2_simulator/server.py)，用于控制测试轨迹；它们不是 HostComm 网络命令，也没有对应上述源码 CLI 参数或生产页面按钮。[正常场景](../../../tools/bench/smd_bench/scenarios.py)与[故障场景](../../../tools/bench/smd_bench/faults.py)通过工具私有管道注入首滴、测定、置换、冷却、报警、断线/重启和日志缺口，再通过真实页面与接口核对结果。启动源码CLI不等于完成这些场景；安装版验收以同提交的实际执行证据为准。私有测试动作不进入生产控制接口。
 
 软件链路取得证据后继续[固件路线](firmware-plan.md)的 C/Python 向量、持久操作与目标板接入；合成 profile 和模拟器数据不能作为真实传感器、MFC、联锁或国标实验合格依据。

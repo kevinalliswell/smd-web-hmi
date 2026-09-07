@@ -13,7 +13,7 @@ beforeEach(() => {
   vi.clearAllMocks(); setActivePinia(createPinia()); useAuthStore().role = 'admin'
   fetchRunRecoveries.mockResolvedValue([first, second]); fetchRunRecovery.mockImplementation(id => Promise.resolve(id === 'a' ? first : second))
 })
-afterEach(() => wrapper?.unmount())
+afterEach(() => { wrapper?.unmount(); vi.useRealTimers() })
 const start = async () => { wrapper = mount(RunRecoveriesPage, { global: { stubs: { RouterLink: { template: '<a><slot /></a>' } } } }); await flushPromises() }
 
 it('requires review reason and reuses the same identity after an uncertain response', async () => {
@@ -37,12 +37,30 @@ it('does not let a late old selection replace the current run or its review inpu
   await wrapper.findAll('.record')[0].trigger('click')
   await wrapper.findAll('.record')[1].trigger('click'); await flushPromises()
   await wrapper.find('textarea').setValue('仅核查第二个运行')
-  release(first); await flushPromises()
+  release({ ...first, review_state: 'bound', replay_status: 'complete' }); await flushPromises()
   expect(wrapper.find('.detail').text()).toContain('run-b')
   expect(wrapper.find('textarea').element.value).toBe('仅核查第二个运行')
+  expect(wrapper.findAll('.record')[0].text()).toContain('尚未绑定')
   fetchRunRecovery.mockResolvedValue(first)
   await wrapper.findAll('.record')[0].trigger('click'); await flushPromises()
   expect(wrapper.find('textarea').element.value).toBe('')
+})
+
+it('updates the matching list row when detail polling finishes replay', async () => {
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+  const pending = { ...first, review_state: 'bound', replay_status: 'pending', test_id: 'REC-a', replay_through_id: 0 }
+  const complete = { ...pending, replay_status: 'complete', replay_through_id: 2 }
+  fetchRunRecoveries.mockResolvedValue([pending, second])
+  fetchRunRecovery.mockResolvedValueOnce(pending).mockResolvedValueOnce(complete)
+  await start(); await wrapper.findAll('.record')[0].trigger('click'); await flushPromises()
+  expect(wrapper.find('.detail [role="status"]').text()).toContain('等待回放')
+  expect(wrapper.findAll('.record')[0].text()).toContain('等待回放')
+  await vi.advanceTimersByTimeAsync(1500); await flushPromises()
+  expect(wrapper.find('.detail [role="status"]').text()).toContain('现有原始记录回放完成')
+  expect(wrapper.findAll('.record')[0].text()).toContain('现有原始记录回放完成')
+  expect(wrapper.findAll('.record')[0].text()).not.toContain('等待回放')
+  expect(wrapper.findAll('.record')[1].text()).toContain('尚未绑定')
+  expect(fetchRunRecovery).toHaveBeenCalledTimes(2)
 })
 
 it('keeps observers read-only and blocks conflicting evidence for administrators', async () => {

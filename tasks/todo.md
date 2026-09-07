@@ -1,6 +1,6 @@
 # 执行任务清单
 
-进度真源。基线`dev@855c84d`；2026-09-05开始执行，2026-09-07同步固件交接doc.2和安装反馈；当前候选`0.3.0-rc.4`，本次安装器诊断与缺失升级准备提示见[排查记录](../docs/verification/2026-09-06-windows-installer-errors.md)。rc.3功能和[HostComm 2.0验证](../docs/verification/2026-09-06-hostcomm-v2-runtime.md)保留为历史证据，不能代替rc.4发布检查。状态：`todo`未做、`doing`执行中、`implemented`实现并软件验证但等待上层验收、`done`本项全部验收完成、`blocked`需要外部证据。完成时记录完整SHA和验证产物；“文档已描述”不是代码已实现。用户已确认固件尚未开发；HostComm v2.0 的主机实现和新固件实现分别在 HOST/FW 任务中维护，软件验证不等于真机验收。
+进度真源。基线`dev@855c84d`；2026-09-05开始执行，2026-09-08同步固件交接doc.3和安装版闭环实施；本轮开发候选`0.3.0-rc.5`，进展见[本轮验证](../docs/verification/2026-09-08-installed-hostcomm-loop.md)。rc.4安装诊断与用户反馈见[排查记录](../docs/verification/2026-09-06-windows-installer-errors.md)，rc.3功能和[HostComm 2.0验证](../docs/verification/2026-09-06-hostcomm-v2-runtime.md)保留为历史证据，均不能代替本轮发布检查。状态：`todo`未做、`doing`执行中、`implemented`实现并软件验证但等待上层验收、`done`本项全部验收完成、`blocked`需要外部证据。完成时记录完整SHA和验证产物；“文档已描述”不是代码已实现。用户已确认固件尚未开发；HostComm v2.0 的主机实现和新固件实现分别在 HOST/FW 任务中维护，软件验证不等于真机验收。
 
 ## M0 文档基线
 
@@ -75,6 +75,7 @@ M0实现提交与验证：[91c1623 文档基线记录](../docs/verification/2026
 
 ## 本轮状态说明
 
+- rc.5的HOST-2006—2008已有软件实现及回归，独立SmdBench及固定场景已实现；Windows完整安装版流程和RC交付仍在执行。HOST-2009继续doing，须取得同提交及实际安装器/工具摘要匹配的`acceptance.json`；见[本轮验证](../docs/verification/2026-09-08-installed-hostcomm-loop.md)。Win10/11 WebView2人工验收与固件/真机分别保留。
 - rc.4增加安装器中文编码、日志路径、进程启动/退出诊断和缺失维护准备提示；标签及资产保持原样。用户随后遇到残留rc.2服务路径冲突，以管理员权限删除该已停止服务、确认1060后反馈安装成功，见[现场记录](../docs/verification/2026-09-06-windows-installer-errors.md#2026-09-07-用户现场结果)。这是一次安装成功证据，不关闭正常覆盖升级、空库或HostComm验收，M4-06仍待完成。
 - 用户选择完整保留旧资料、使用空库重装。M4-06b单独交付的[测试机重装工具](../deploy/windows/TEST-REINSTALL.md)已通过PR73的Windows CI，见[工具验证](../docs/verification/2026-09-06-test-reinstall.md)。尚未确认用户使用过该工具，也未取得这台机器的备份和空库核验结果；M4-06b保持doing，M4-06和M5不因此关闭。
 - M0及M1-01—05的有界交付已完成；合并、CI、恢复、引用清理和键盘交互证据见[最终软件验证](../docs/verification/2026-09-06-software.md#最终集成软件验证)。M1仓库与质量基线退出条件已满足，不代表M2—M5现场或正式发布验收通过。
@@ -105,10 +106,10 @@ M0实现提交与验证：[91c1623 文档基线记录](../docs/verification/2026
 | HOST-2004 / P1 | 日志入库、缺口补传与报警对账 | 后端负责人 | HOST-2002、FW-08 | 游标与样本原子写入；补传不重复计量；不可恢复缺口不冒充完整；M2-06b回归 | implemented |
 | HOST-2005 / P0 | 双端兼容回归与候选包 | 后端/前端/发布/测试负责人 | 软件依赖HOST-2003/2004；实物验收依赖FW-09 | 软件检查与候选包已有证据；Windows安装版到TLS模拟器另列HOST-2009，真机台架待FW-09；明确兼容范围 | implemented |
 | DOC-FW-02 / P1 | 固件交接doc.2及文码差异审查 | 项目/后端/固件负责人 | FW-00、rc.4源码 | 版本分层、交接材料、角色/阶段/验收、ALIGN差异及来源齐备；见[审查记录](../docs/verification/2026-09-07-firmware-handoff.md) | implemented |
-| HOST-2006 / P0 | 陌生运行核查与受控归档绑定 | 后端负责人 | ALIGN-04、HOST-2002/2004 | 真实raw-only运行可显式核查/绑定并重放投影；不伪造测定起点，重启恢复/停止/报告门禁回归通过 | doing |
-| HOST-2007 / P0 | 租约回读与握手就绪语义对齐 | 后端/协议负责人 | ALIGN-05/06、HOST-2001 | 明确control_ready门禁语义；lease_id/expiry联合校验及状态/心跳一致；矛盾回执撤销许可的测试通过 | doing |
-| HOST-2008 / P1 | 心跳周期和重连抖动口径 | 后端/固件负责人 | ALIGN-07、HOST-2001 | 确定2秒周期/ACK延迟及30秒基数/总上限；双方计时规范与边界回归一致，不放宽板端8秒租约 | doing |
-| HOST-2009 / P0 | Windows安装版与TLS模拟器完整流程 | Windows/后端/测试负责人 | HOST-2005软件基线、适用ALIGN-04—08；不依赖FW-09 | 独立数据/配对和可重复轨迹驱动；握手/遥测/配方/启停/冷却/报告/重连补传；桌面浏览器相同结果并保存原始证据 | doing |
+| HOST-2006 / P0 | 陌生运行核查与受控归档绑定 | 后端负责人 | ALIGN-04、HOST-2002/2004 | 真实raw-only运行可显式核查/绑定并重放投影；不伪造测定起点，重启恢复/停止/报告门禁的软件回归见[本轮验证](../docs/verification/2026-09-08-installed-hostcomm-loop.md) | implemented |
+| HOST-2007 / P0 | 租约回读与握手就绪语义对齐 | 后端/协议负责人 | ALIGN-05/06、HOST-2001 | 明确control_ready语义；lease_id/expiry及状态/心跳一致，矛盾回执撤销许可、同版本迟到状态不误撤已有有效租约；软件证据见[本轮验证](../docs/verification/2026-09-08-installed-hostcomm-loop.md) | implemented |
+| HOST-2008 / P1 | 心跳周期和重连抖动口径 | 后端/固件负责人 | ALIGN-07、HOST-2001 | 主机实现发送起点2秒调度、单一3秒心跳预算及实际重连30秒上限；[软件计时回归](../docs/verification/2026-09-08-installed-hostcomm-loop.md)不代替板端8秒租约实测 | implemented |
+| HOST-2009 / P0 | Windows安装版与TLS模拟器完整流程 | Windows/后端/测试负责人 | HOST-2005软件基线、适用ALIGN-04—08；不依赖FW-09 | 独立SmdBench已实现；安装版服务/TLS/Chromium页面验证握手、配方、启停、冷却、报告及恢复，须有同提交和实际包摘要匹配的[执行证据](../docs/verification/2026-09-08-installed-hostcomm-loop.md)；Win10/11 WebView2仍属M4人工验收 | doing |
 
 FW-01 已取得板卡资源与引脚图，仍需解决复用/重复标注并补齐原理图、实装存储/启动和安全工程证据；FW-02 和可注入存储/时钟/驱动的 FW-04/06/07 纯逻辑部分可先实现。FW-09/10 的目标板实测与 M5 仍需真实设备及批准 profile，不以主机模拟关闭。
 

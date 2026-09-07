@@ -4,25 +4,64 @@ import base64
 import json
 import os
 import struct
-import subprocess
 from pathlib import Path
+
+from smd_desktop import windows_powershell
+
+ERROR_STAGES = frozenset({"bootstrap", "operation", "acl_create", "acl_set", "acl_read", "acl_verify"})
+ERROR_CATEGORIES = frozenset(
+    {
+        "NotSpecified",
+        "PermissionDenied",
+        "ObjectNotFound",
+        "ResourceUnavailable",
+        "InvalidArgument",
+        "InvalidData",
+        "InvalidOperation",
+        "ParserError",
+        "SecurityError",
+    }
+)
+
+
+class WindowsOperationError(RuntimeError):
+    """Retain fixed diagnostics only, never PowerShell messages or payload values."""
+
+    def __init__(self, exit_code: int, stderr: bytes):
+        details = {}
+        for line in stderr[-8192:].decode("utf-8", errors="replace").splitlines():
+            if line.startswith("SMD_BENCH_ERROR:"):
+                try:
+                    candidate = json.loads(line.removeprefix("SMD_BENCH_ERROR:"))
+                except json.JSONDecodeError:
+                    continue
+                if isinstance(candidate, dict):
+                    details = candidate
+        stage, category = details.get("stage"), details.get("category")
+        self.diagnostic = {
+            "code": "powershell_failed",
+            "stage": stage if isinstance(stage, str) and stage in ERROR_STAGES else "unknown",
+            "category": category if isinstance(category, str) and category in ERROR_CATEGORIES else "unknown",
+            "exit_code": int(exit_code),
+        }
+        super().__init__("Windows object operation failed: " + json.dumps(self.diagnostic, sort_keys=True))
 
 
 def powershell(script: str, payload: dict | None = None, *, timeout: int = 60):
     if os.name != "nt" or struct.calcsize("P") != 8:
         raise RuntimeError("SmdBench installation requires Windows x64")
-    executable = Path(os.environ["SystemRoot"]) / "System32/WindowsPowerShell/v1.0/powershell.exe"
-    preamble = "[Console]::OutputEncoding=[Text.UTF8Encoding]::new($false); $ErrorActionPreference='Stop'; Set-StrictMode -Version Latest; $p=$env:SMD_BENCH_INPUT|ConvertFrom-Json;\n"
-    encoded = base64.b64encode((preamble + script).encode("utf-16-le")).decode("ascii")
-    process = subprocess.run(
-        [str(executable), "-NoProfile", "-NonInteractive", "-EncodedCommand", encoded],
+    preamble = "[Console]::OutputEncoding=[Text.UTF8Encoding]::new($false); $ErrorActionPreference='Stop'; Set-StrictMode -Version Latest; $benchStage='bootstrap'; try { $p=$env:SMD_BENCH_INPUT|ConvertFrom-Json; $benchStage='operation';\n"
+    ending = "\n} catch { [Console]::Error.WriteLine('SMD_BENCH_ERROR:'+(@{stage=$benchStage;category=[string]$_.CategoryInfo.Category}|ConvertTo-Json -Compress)); exit 1 }"
+    encoded = base64.b64encode((preamble + script + ending).encode("utf-16-le")).decode("ascii")
+    process = windows_powershell.run(
+        ["-EncodedCommand", encoded],
         env={**os.environ, "SMD_BENCH_INPUT": json.dumps(payload or {})},
         capture_output=True,
         timeout=timeout,
         check=False,
     )
     if process.returncode:
-        raise RuntimeError("Windows object operation failed")
+        raise WindowsOperationError(process.returncode, process.stderr)
     output = process.stdout.decode("utf-8-sig").strip()
     return json.loads(output) if output else None
 
@@ -50,14 +89,18 @@ $existing=@(); foreach($path in @((Join-Path $pd 'SmdHmi'),(Join-Path $pf 'SmdHm
 def secure_directory(path: Path) -> None:
     powershell(
         r"""
+$benchStage='acl_create'
 $acl=New-Object Security.AccessControl.DirectorySecurity
 $acl.SetAccessRuleProtection($true,$false)
 $admin=New-Object Security.Principal.SecurityIdentifier('S-1-5-32-544')
 $system=New-Object Security.Principal.SecurityIdentifier('S-1-5-18')
 $acl.SetOwner($admin)
 foreach($sid in @($admin,$system)) {$rule=New-Object Security.AccessControl.FileSystemAccessRule($sid,'FullControl','ContainerInherit,ObjectInherit','None','Allow');$acl.AddAccessRule($rule)}
+$benchStage='acl_set'
 Set-Acl -LiteralPath $p.path -AclObject $acl
+$benchStage='acl_read'
 $actual=Get-Acl -LiteralPath $p.path
+$benchStage='acl_verify'
 if(-not $actual.AreAccessRulesProtected -or $actual.GetOwner([Security.Principal.SecurityIdentifier]).Value -ne $admin.Value){throw 'private ownership mismatch'}
 $rules=@($actual.GetAccessRules($true,$true,[Security.Principal.SecurityIdentifier]))
 if($rules.Count -ne 2){throw 'private ACL differs'}
