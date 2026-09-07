@@ -62,7 +62,11 @@ hello 的 session_id、boot_id 和 reply_to 为 null，uptime_ms 固定为 "0"�
 
 本版不通过 hello 协商帧长、心跳时限或动态字段集合；固定值按本文执行，工程资源另由 get_profile 返回。get_status/get_profile 的 payload 是空对象 `{}`，不能省略或使用 null。`control_ready` 与当前上位机门控之间的差异见第 10 节；任何一个握手标记都不能代替实时安全检查。
 
-当前主机允许 hello_ack 后在同一 TCP 数据段紧跟合法 telemetry/event；它在处理 ACK 时先安装新 session/boot。响应的 type 必须与 reply_to 对应的请求匹配；command_result/operation_snapshot 还必须逐项匹配 operation_id、controller_epoch 和 command_seq。错误会话、boot、响应类型或从未发出的 reply_to 会立即断连；这与结构/编码非法帧的连续三次策略不同。最近 256 个已结束请求的晚到回执被丢弃，不能完成新请求或补写业务成功；更旧且无法关联的回执按未知关联处理。依据见 [V2Transport._dispatch](../../../backend/app/hostcomm/v2_transport.py) 与[关联/握手竞态测试](../../../backend/tests/test_hostcomm_v2_transport.py)。
+当前主机允许 hello_ack 后在同一 TCP 数据段紧跟合法 telemetry/event；它在处理 ACK 时先安装新 session/boot。非 error 响应的 type 必须属于 reply_to 对应请求定义的响应集合：普通请求接收对应响应，log_request 还可接收 log_chunk 流；command_result/operation_snapshot 另须逐项匹配 operation_id、controller_epoch 和 command_seq。
+
+握手后的合法 error 可通过 reply_to 关联原请求，在通过当前 session/boot 和请求关联检查后，以结构化远端错误结束该请求，不要求它等于正常响应类型。error 不代替 command_result 的持久操作终态；调用方仍可能根据错误撤销连接，例如心跳失败。不能用 JSON error 替代成功握手。
+
+错误会话、boot、不匹配的非 error 响应类型或从未发出的 reply_to 会立即断连；这与结构/编码非法帧的连续三次策略不同。最近 256 个已结束请求的晚到回执在通过当前 session/boot 检查后被丢弃，不能完成新请求或补写业务成功；更旧且无法关联的回执按未知关联处理。依据见 [V2Transport._dispatch](../../../backend/app/hostcomm/v2_transport.py) 与[关联/握手竞态测试](../../../backend/tests/test_hostcomm_v2_transport.py)（含结构化远端错误回归）。
 
 ## 4. 心跳、租约与队列
 
