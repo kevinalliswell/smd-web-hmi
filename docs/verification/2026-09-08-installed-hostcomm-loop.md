@@ -5,15 +5,17 @@
 
 ## 状态
 
-首个集成提交为 `c6c2a0697c07b378011e3929e4d5aaf3a4af5c56`，见[PR #75](https://github.com/kevinalliswell/smd-web-hmi/pull/75)。[首轮CI](https://github.com/kevinalliswell/smd-web-hmi/actions/runs/34144808314)执行中；最终提交、CI及发布资产仍以本轮实际结果登记，不能据此认定Windows或真机验收通过。
+首个集成提交为 `c6c2a0697c07b378011e3929e4d5aaf3a4af5c56`，见[PR #75](https://github.com/kevinalliswell/smd-web-hmi/pull/75)。最终提交、CI及发布资产仍以本轮实际结果登记，不能据此认定Windows或真机验收通过。
 
 | 层次 | 验证内容 | 当前证据 |
 |---|---|---|
 | 本机软件 | 心跳/租约/重连，未知运行审查与回放，报告空值/完整性门禁，工具归属与发布门禁 | Python3.13.12/macOS后端743通过、2项Windows限定跳过，覆盖率86.80%；Node24前端123通过，类型/lint/build通过；发行门禁补字节绑定反例后8通过 |
-| 模拟器 | 真实TLS、合成阶段、故障注入、日志/报警关联和实际导出 | 场景集成中 |
+| 模拟器 | 真实TLS、合成阶段、故障注入、日志/报警关联和实际导出 | macOS源码后台与Chromium通过15项业务断言，下载并检查10份实际报告；未替代Windows冻结程序验收 |
 | Windows CI | 实际NSIS/LocalService；旧安装冒烟；独立工具重新安装并执行TLS/页面/报告 | 待执行；由同一checks工作流严格阻止失败发包 |
 | Win10/11桌面 | WebView2、关闭窗口持续采集、中文路径、显示缩放、下载及重开 | 未验收，单列人工复验 |
 | 固件/真机 | STM32H750、TLS栈、外设/联锁、工艺时长、完整实验与24小时 | 未验收；固件尚待开发 |
+
+CI发现并复现了两项问题：[首轮](https://github.com/kevinalliswell/smd-web-hmi/actions/runs/34144808314)的报告测试使用系统默认编码读取UTF-8文件，已显式指定编码；[第二轮](https://github.com/kevinalliswell/smd-web-hmi/actions/runs/34145624716)在Windows及Python3.11发现同版本心跳先于状态查询归档时，已有有效租约被误判为未确认。后者通过模型、真实TCP与HTTP报警流程稳定复现；修复只复用仍有效且身份、状态版本匹配的已确认租约，不修改其截止时间。修后106项相关测试通过。以上失败均阻止了安装版打包步骤，需要后续完整CI通过才可发布。
 
 ## 测试方法与证据限制
 

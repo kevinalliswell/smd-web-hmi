@@ -213,6 +213,10 @@ class Installation:
             with sqlite3.connect(f"file:{database.as_posix()}?mode=ro", uri=True) as source:
                 with sqlite3.connect(self.private / "host-archive.sqlite") as destination:
                     source.backup(destination)
+        if self.data.exists():
+            from .diagnostics import archive_logs
+
+            archive_logs(self.private, self.data, self.run_id)
         for directory in (self.install, self.data):
             if directory.exists():
                 check_claim(directory, self.run_id)

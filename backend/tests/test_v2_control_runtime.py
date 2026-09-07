@@ -8,6 +8,29 @@ from app.hostcomm.v2_transport import V2TransportError
 from tests.test_v2_client import connected  # noqa: F401
 
 
+async def test_ownership_confirmation_survives_newer_same_revision_heartbeat(connected):
+    client, sim, factory = connected
+    await client.operations.acquire_lease(actor="admin", role="admin")
+    client.transport._heartbeat_task.cancel()
+    await asyncio.gather(client.transport._heartbeat_task, return_exceptions=True)
+    lease_id = client.transport.lease_id
+    frame = await client.transport.request("get_status", {})
+    # Deliver an actual later board ACK before the application consumes the
+    # already received status. No state transition or lease replacement occurs.
+    async with asyncio.timeout(1):
+        while True:
+            ack = await client.transport.request("heartbeat", {"lease_id": lease_id})
+            if int(ack["uptime_ms"]) > int(frame["uptime_ms"]):
+                break
+            await asyncio.sleep(0.001)
+    assert ack["payload"]["state_revision"] == frame["payload"]["run"]["state_revision"]
+    deadline, order = client.transport.leases.expires_at, client.transport.leases.observed_order
+    assert await client.operations.confirm_owned_lease(frame)
+    assert client.transport.leases.expires_at == deadline
+    assert client.transport.leases.observed_order == order
+    assert client.transport.is_online and client.transport.lease_id == lease_id
+
+
 async def test_release_waits_for_inflight_renewal_and_does_not_resume_it(connected, monkeypatch):
     client, sim, factory = connected
     result = await client.operations.acquire_lease(actor="admin", role="admin")

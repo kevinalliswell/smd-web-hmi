@@ -85,8 +85,7 @@ class LeaseContext:
         payload = frame["payload"]
         order = (int(payload["run"]["state_revision"]), int(frame["uptime_ms"]))
         if (
-            order < self.observed_order
-            or order[0] < self.minimum_revision
+            order[0] < self.minimum_revision
             or not lease_id
             or payload["lease_id"] != lease_id
             or payload["lease_owner_controller_id"] != self.controller_id
@@ -94,6 +93,11 @@ class LeaseContext:
         ):
             return False
         deadline = self._deadline(frame, started)
+        if order < self.observed_order:
+            # A later same-revision renewal may arrive while the status read
+            # is being archived. Reuse only this already-confirmed live lease;
+            # never let the older read adopt ownership or replace its deadline.
+            return self.lease_id == lease_id
         if deadline <= now:
             return False
         if self.lease_id != lease_id:

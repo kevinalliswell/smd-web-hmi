@@ -62,6 +62,57 @@ def test_newer_heartbeat_invalidates_old_phase_until_status_refresh():
     assert lease.expires_at == 110
 
 
+def test_newer_renewal_does_not_invalidate_already_confirmed_same_revision_ownership():
+    lease = context()
+    assert lease.confirm(status(), lease.token(), "a" * 32, started=100, now=100)
+    token = lease.token()
+    ack = status(uptime="14000", expiry="22000")
+    ack["payload"] = dict(lease_id="a" * 32, lease_expires_uptime_ms="22000", state_revision="12")
+    lease.heartbeat(ack, token, "a" * 32, started=102, now=102)
+    deadline, order = lease.expires_at, lease.observed_order
+
+    # A status read may finish application/database work after this later ACK.
+    # It still names the owned lease and current phase, but may not regress the
+    # newer renewal evidence or manufacture another lease lifetime.
+    assert lease.confirm(status(), token, "a" * 32, started=100, now=103)
+    assert lease.token() == token
+    assert lease.expires_at == deadline
+    assert lease.observed_order == order
+
+
+@pytest.mark.parametrize(
+    "mismatch", ["owner", "session", "boot", "lease", "revision", "expired", "generation", "unowned", "paused"]
+)
+def test_older_status_cannot_reuse_ownership_when_context_is_no_longer_valid(mismatch):
+    lease = context()
+    assert lease.confirm(status(), lease.token(), "a" * 32, started=100, now=100)
+    token = lease.token()
+    ack = status(uptime="14000", expiry="22000")
+    ack["payload"] = dict(lease_id="a" * 32, lease_expires_uptime_ms="22000", state_revision="12")
+    lease.heartbeat(ack, token, "a" * 32, started=102, now=102)
+    frame, now = status(), 103
+    if mismatch == "owner":
+        frame["payload"]["lease_owner_controller_id"] = "e" * 32
+    elif mismatch == "session":
+        frame["payload"]["lease_owner_session_id"] = "e" * 32
+    elif mismatch == "boot":
+        frame["boot_id"] = "e" * 32
+    elif mismatch == "lease":
+        frame["payload"]["lease_id"] = "e" * 32
+    elif mismatch == "revision":
+        frame["payload"]["run"]["state_revision"] = "11"
+    elif mismatch == "expired":
+        now = 110
+    elif mismatch == "unowned":
+        lease.clear(token)
+        token = lease.token()
+    elif mismatch == "paused":
+        lease.renewals_paused = True
+    else:
+        lease.generation += 1
+    assert not lease.confirm(frame, token, "a" * 32, started=100, now=now)
+
+
 def test_old_heartbeat_and_release_cannot_mutate_new_generation():
     lease = context()
     lease.confirm(status(), lease.token(), "a" * 32, started=100, now=100)

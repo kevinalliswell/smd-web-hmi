@@ -11,6 +11,7 @@ from uuid import uuid4
 import httpx
 
 from .contracts import validate_run_id
+from .diagnostics import failure_details
 from .installation import Installation, preflight
 from .package import sha256, tool_manifest, verify_installer
 
@@ -173,7 +174,12 @@ def run(args):
         passed = True
     except Exception as error:
         # Fail closed at the CLI boundary. Never serialize error bodies (browser errors can contain credentials).
-        result["failure_type"] = type(error).__name__
+        diagnostic = failure_details(
+            error, private=installation.private if installation.claimed else None, run_id=installation.run_id
+        )
+        result["failure_type"] = diagnostic.pop("type")
+        result["failure_frames"] = diagnostic.pop("frames")
+        result.update(diagnostic)
         result["cleanup_command"] = "SmdBench.exe cleanup --run-id " + installation.run_id
     finally:
         try:
@@ -181,7 +187,13 @@ def run(args):
                 installation.cleanup()
             result["cleanup_complete"] = True
         except Exception as error:
-            result["cleanup_failure_type"] = type(error).__name__
+            diagnostic = failure_details(
+                error, private=installation.private if installation.claimed else None, run_id=installation.run_id
+            )
+            result["cleanup_failure_type"] = diagnostic["type"]
+            result["cleanup_failure_frames"] = diagnostic["frames"]
+            result["cleanup_private_trace_saved"] = diagnostic["private_trace_saved"]
+            result["cleanup_command"] = "SmdBench.exe cleanup --run-id " + installation.run_id
         if passed and result["cleanup_complete"]:
             result["status"] = "passed"
         result.pop("evidence_dir", None)
@@ -231,7 +243,12 @@ def main(argv=None):
         print(json.dumps(result))
         return 0 if result["status"] == "ready" else 2
     except Exception as error:
-        print(json.dumps({"status": "failed", "error_type": type(error).__name__}), file=sys.stderr)
+        print(
+            json.dumps(
+                {"status": "failed", "error_type": type(error).__name__, "frames": failure_details(error)["frames"]}
+            ),
+            file=sys.stderr,
+        )
         return 1
 
 
