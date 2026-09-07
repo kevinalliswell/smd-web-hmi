@@ -128,6 +128,10 @@ onBeforeUnmount(() => clearInterval(timer))
     </div>
 
     <div v-if="banner" class="banner">{{ banner }}</div>
+    <p v-if="snapshot.system?.run_recovery_required" class="card" role="status">
+      本次控制板运行存在归属核查或原始数据回放待办。安全停止仍可使用；结束确认依据板端安全完成与核查状态，最终报告还需回放完成。
+      <RouterLink to="/run-recoveries">打开运行恢复</RouterLink>
+    </p>
 
     <!-- 工艺阶段步骤条 -->
     <div class="card">

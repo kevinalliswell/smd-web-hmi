@@ -80,6 +80,24 @@ class V2Client:
         return bool(self.transport and self.transport.is_online)
 
     @property
+    def current_run_identity(self):
+        frame = self._status_frame
+        if (
+            not self.is_online
+            or frame is None
+            or frame["session_id"] != self.transport.session_id
+            or frame["boot_id"] != self.transport.boot_id
+            or frame["payload"]["run"]["run_id"] is None
+        ):
+            return None
+        return {
+            "device_id": self.device_id,
+            "run_id": frame["payload"]["run"]["run_id"],
+            "boot_id": frame["boot_id"],
+            "session_id": frame["session_id"],
+        }
+
+    @property
     def comm_quality(self):
         return "good" if self.is_online and self._ready else "offline"
 
@@ -117,6 +135,7 @@ class V2Client:
                 mock=self.mock,
                 on_message=self._on_message,
                 on_connection=self._on_connection,
+                on_state_revision=self._on_state_revision,
             )
             self.operations = V2OperationCoordinator(
                 self.factory,
@@ -276,6 +295,10 @@ class V2Client:
                     )
                 self._schedule_refresh(needs_status=True)
 
+    def _on_state_revision(self, revision):
+        if self._status_frame is None or revision > int(self._status_frame["payload"]["run"]["state_revision"]):
+            self._schedule_refresh(needs_status=True)
+
     def _schedule_refresh(self, *, needs_status):
         # Optional reads/publishing must never hold the durable source callback
         # lane: the next log chunk has an independent 3s progress deadline.
@@ -387,10 +410,19 @@ class V2Client:
             status_receipt=self.transport.receipt_metadata(frame["msg_id"]),
             telemetry_receipt=self.transport.receipt_metadata(sample["msg_id"]) if sample else None,
             alarm_snapshot=self.alarms,
+            lease_evidence=self.transport.lease_evidence(),
         )
         snapshot.setdefault("state_machine", {})["test_id"] = await self._test_id_for_run(
             frame["payload"]["run"]["run_id"]
         )
+        from app.services.v2_run_recovery import recovery_for_run
+
+        recovery = await recovery_for_run(self.factory, self.device_id, frame["payload"]["run"]["run_id"])
+        required = bool(recovery and (recovery["review_state"] != "bound" or recovery["replay_status"] != "complete"))
+        snapshot["_v2"]["recovery"] = recovery
+        snapshot["system"]["run_recovery_required"] = required
+        if recovery and (recovery["review_state"] != "bound" or recovery["replay_status"] == "conflict"):
+            snapshot["system"]["can_ack_run"] = False
         snapshot["_v2_persisted"] = True
         if self.on_status:
             await self.on_status(snapshot)
@@ -443,6 +475,9 @@ class V2Client:
         if unresolved:
             fail("operation_unresolved", "必须先查询并核查上一条设备操作")
         snapshot = await self.get_status()
+        if self._status_frame["payload"]["lease_id"] and not self.transport.lease_id:
+            if await self.operations.confirm_owned_lease(self._status_frame):
+                snapshot = await self._publish()
         permission = {
             "start_test": "can_start_test",
             "set_parameters": "can_activate_recipe",
@@ -465,7 +500,8 @@ class V2Client:
                 or status["lease_owner_session_id"] != self.transport.session_id
             ):
                 fail("device_control_owned", "设备控制租约属于其他会话")
-            self.transport.set_lease(status["lease_id"])
+            if not await self.operations.confirm_owned_lease(self._status_frame):
+                fail("lease_unconfirmed", "设备租约缺少当前持久结果和有效回读证据")
         else:
             row = await self.operations.acquire_lease(
                 actor=actor, role=role, operation_id=self.lease_operation_id(parent_id)
@@ -474,6 +510,8 @@ class V2Client:
             if not self.transport.lease_id:
                 fail("lease_unconfirmed", "设备控制租约尚未回读确认")
         await self.get_status()
+        if not self.transport.lease_evidence()["valid"]:
+            fail("lease_unconfirmed", "设备控制租约已失效，必须重新核查")
 
     @staticmethod
     def _result(row):

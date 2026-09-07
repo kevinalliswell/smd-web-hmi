@@ -13,6 +13,7 @@ from app.api.deps import DbDep, UserDep, get_hostcomm_client, require_role
 from app.api.schemas import err, ok
 from app.api.validation import TestIdPath
 from app.db.models import EventLog, TestSession
+from app.db.v2_models import V2RunBinding
 from app.hostcomm.protocol import now_iso
 from app.services.cache import status_cache
 from app.services.experiment_metadata import ReportContext, SpecimenMetadata
@@ -104,6 +105,43 @@ async def close_review(test_id: TestIdPath, body: CloseReviewRequest, request: R
     async with maintenance_manager.command_guard():
         row = await _get_test(db, test_id)
         if row.end_time is not None:
+            return ok({"test_id": test_id, "phase": row.phase, "data_integrity": row.data_integrity})
+        basis = _basis(row)
+        binding = await db.scalar(select(V2RunBinding).where(V2RunBinding.test_id == test_id))
+        if binding is not None or "v2" in basis or "recovery" in basis:
+            # A manual checkbox or an unrelated current idle snapshot cannot establish
+            # the historical run's safe terminal boundary.
+            v2 = basis.get("v2", {})
+            if not (
+                binding
+                and v2.get("device_id") == binding.device_id
+                and v2.get("run_id") == binding.run_id
+                and v2.get("safe_complete") is True
+                and v2.get("safe_boundary")
+                and row.safety_completed_at
+            ):
+                raise HTTPException(
+                    409, err("v2_safe_evidence_required", "须恢复该运行的板端安全完成边界，人工确认不能替代原始证据")
+                )
+            row.end_time = row.safety_completed_at
+            row.end_reason, row.phase, row.data_integrity = (
+                "reviewed_safe_incomplete",
+                "archived_incomplete",
+                "incomplete",
+            )
+            db.add(
+                EventLog(
+                    test_id=test_id,
+                    ts=now_iso(),
+                    source="hmi_review",
+                    event_code="INCOMPLETE_ARCHIVED",
+                    operator_id=user.username,
+                    level=1,
+                    text=body.reason,
+                    detail_json=json.dumps({"v2_safe_evidence": v2}, ensure_ascii=False),
+                )
+            )
+            await db.commit()
             return ok({"test_id": test_id, "phase": row.phase, "data_integrity": row.data_integrity})
         snapshot = await status_cache.get_snapshot()
         measurement = snapshot.get("measurement") or {}

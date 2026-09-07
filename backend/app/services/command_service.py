@@ -305,6 +305,7 @@ class CommandService:
                     role,
                     client_ip,
                     result_payload,
+                    operation_msg_id=operation.msg_id,
                 )
             return result_payload
         except BaseException:
@@ -362,9 +363,32 @@ class CommandService:
             exists = await db_session.scalar(select(TestSession.id).where(TestSession.test_id == test_id))
             if exists is not None:
                 raise CommandError(409, "test_id_exists", f"试验编号已存在: {test_id}")
-            open_session = await db_session.scalar(
-                select(TestSession.test_id).where(TestSession.end_time.is_(None)).order_by(TestSession.id.desc())
-            )
+            open_query = select(TestSession.test_id).where(TestSession.end_time.is_(None))
+            if getattr(self._client, "protocol_version", None) == "2.0":
+                from app.db.v2_models import V2RunBinding, V2RunRecovery
+
+                snapshot = await self._client.get_status()
+                if (
+                    not self._client.is_online
+                    or self._cache.current_state != "idle"
+                    or snapshot.get("system", {}).get("can_start_test") is not True
+                    or self._client.current_run_identity is not None
+                ):
+                    raise CommandError(409, "state_not_allowed", "设备当前状态不能证明可开始新的运行")
+                reviewed_history = (
+                    select(V2RunRecovery.test_id)
+                    .join(
+                        V2RunBinding,
+                        (V2RunBinding.device_id == V2RunRecovery.device_id)
+                        & (V2RunBinding.run_id == V2RunRecovery.run_id)
+                        & (V2RunBinding.test_id == V2RunRecovery.test_id),
+                    )
+                    .where(V2RunRecovery.review_state == "bound")
+                )
+                # Only reviewed, durably associated historical recovery records
+                # are excluded. Ordinary uncertain starts still require closure.
+                open_query = open_query.where(TestSession.test_id.not_in(reviewed_history))
+            open_session = await db_session.scalar(open_query.order_by(TestSession.id.desc()).limit(1))
             if open_session is not None:
                 raise CommandError(409, "test_session_active", f"试验 {open_session} 尚未闭合")
 
@@ -440,6 +464,8 @@ class CommandService:
         role: str,
         client_ip: str | None,
         result_payload: dict,
+        *,
+        operation_msg_id: str | None = None,
     ) -> None:
         """启动ACK确认采集身份/拒绝归档；停止ACK只标记待板端安全收尾。"""
         if db_session is None:
@@ -479,19 +505,67 @@ class CommandService:
                 await db_session.commit()
 
         elif command == "stop_test":
-            test_id = active_test.active_test_id
-            row = None
-            if test_id:
-                row = await db_session.scalar(select(TestSession).where(TestSession.test_id == test_id))
-            if row is None or row.end_time is not None:
-                row = await db_session.scalar(
-                    select(TestSession).where(TestSession.end_time.is_(None)).order_by(TestSession.id.desc())
-                )
+            if getattr(self._client, "protocol_version", None) == "2.0":
+                row = await self._v2_stop_target(db_session, result_payload, operation_msg_id, operator_id, role)
+            else:
+                test_id = active_test.active_test_id
+                row = None
+                if test_id:
+                    row = await db_session.scalar(select(TestSession).where(TestSession.test_id == test_id))
+                if row is None or row.end_time is not None:
+                    row = await db_session.scalar(
+                        select(TestSession).where(TestSession.end_time.is_(None)).order_by(TestSession.id.desc())
+                    )
             if row is not None and row.end_time is None:
                 row.stop_requested_at = now_iso()
                 row.phase = "stopping"
                 await db_session.commit()
                 active_test.restore(row.test_id, needs_device_reconcile=True)
+
+    async def _v2_stop_target(self, db, result, operation_msg_id, operator_id, role):
+        from pydantic import TypeAdapter
+        from sqlalchemy import select
+
+        from app.db.models import TestSession
+        from app.db.v2_models import V2Operation, V2RunBinding
+        from app.hostcomm.v2_contract.codec import command_digest
+        from app.hostcomm.v2_contract.messages import Command
+
+        wire_id = result.get("wire_operation_id")
+        if not wire_id or operation_msg_id is None:
+            return None
+        wire = await db.get(V2Operation, wire_id)
+        if (
+            wire is None
+            or wire.device_id != self._client.device_id
+            or wire.command != "stop_run"
+            or wire.status not in {"accepted", "applied"}
+            or wire.actor != operator_id
+            or wire.role != role
+        ):
+            return None
+        try:
+            request = TypeAdapter(Command).validate_json(wire.request_json).model_dump(mode="python")
+            if (
+                uuid.uuid5(uuid.UUID(hex=wire.controller_epoch), operation_msg_id).hex != wire_id
+                or request["operation_id"] != wire_id
+                or request["command"] != "stop_run"
+                or request["controller_epoch"] != wire.controller_epoch
+                or request["command_seq"] != wire.command_seq
+                or request["request_digest"] != wire.request_digest
+                or command_digest(request) != wire.request_digest
+            ):
+                return None
+        except (ValueError, TypeError):
+            return None
+        return await db.scalar(
+            select(TestSession)
+            .join(V2RunBinding, V2RunBinding.test_id == TestSession.test_id)
+            .where(
+                V2RunBinding.device_id == wire.device_id,
+                V2RunBinding.run_id == request["params"]["run_id"],
+            )
+        )
 
     async def _prepare_start_archive(
         self, db_session, params: dict, operator_id: str, operation: OperationExecution

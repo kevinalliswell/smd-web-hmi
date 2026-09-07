@@ -1,0 +1,8 @@
+# Independent test tool only; never installed into the application freeze environment.
+# Constraints keep shared dependencies compatible with the deployed backend.
+-c ../../backend/requirements.lock
+-c ../../backend/requirements-dev.lock
+-c ../../desktop/requirements.lock
+playwright==1.62.0
+pypdf==6.17.0
+httpx==0.28.1

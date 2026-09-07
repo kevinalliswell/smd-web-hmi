@@ -124,6 +124,7 @@ onMounted(loadTests)
 <template>
   <div class="page">
     <h1 class="page-title">历史试验</h1>
+    <RouterLink to="/run-recoveries">核查控制板陌生运行与恢复归档</RouterLink>
     <div
       v-if="banner"
       class="banner"

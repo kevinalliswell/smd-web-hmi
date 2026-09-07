@@ -1,6 +1,6 @@
 # HostComm 2.0 上位机运行、离线配对与升级
 
-文档修订：`2.0-doc.2`（2026-09-07）；设计基线 `2.0-design.1`、线协议 `2.0` 不变。上位机运行、配对及模拟器已有软件实现；STM32 固件尚未实现。用户确认 rc.4 安装成功只证明该次安装结果，不证明升级、空库来源、HostComm 配对、Windows TLS 联调、真机或 24 小时验收通过。语义依据为 [wire.md](wire.md)、[state-and-recovery.md](state-and-recovery.md) 和 [data-and-recipe.md](data-and-recipe.md)。
+文档修订：`2.0-doc.3`（2026-09-08）；设计基线 `2.0-design.1`、线协议 `2.0` 不变。上位机运行、配对及模拟器已有软件实现；STM32 固件尚未实现。用户确认 rc.4 安装成功只证明该次安装结果，不证明升级、空库来源、HostComm 配对、Windows TLS 联调、真机或 24 小时验收通过。语义依据为 [wire.md](wire.md)、[state-and-recovery.md](state-and-recovery.md) 和 [data-and-recipe.md](data-and-recipe.md)。
 
 ## 1. 共用后台与配置
 
@@ -82,9 +82,13 @@ Stop-Service SmdHmi
 
 这些测试不代替 Windows SCM/DACL、打包程序、断网安装、固件 TLS 栈、真实工程配置、安全联锁和全程实验验收。正式发布证据应分开记录本机软件测试、模拟器测试、Windows 验收和指定硬件/固件组合的实际结果。
 
-## 7. Windows 安装包与同机 TLS 模拟器
+## 7. 独立Windows联调工具
 
-下一步先验证安装后的真实后台与软件设备。安装包包含后台、桌面壳和维护工具，**不包含独立模拟器可执行文件**；模拟器须在同一台无设备 Windows 测试机另备源码及 Python 3.13 环境，依赖按仓库锁文件安装。完整组合尚待验收，以下是按现有 [CLI](../../../backend/app/hostcomm/v2_simulator/__main__.py) 整理的启动模板。
+本轮新增独立[SmdBench](../../../tools/bench/README.md) ZIP，内含Python、Playwright/Chromium和TLS模拟器。先在全新测试VM中运行preflight，再使用与工具同版本同提交的安装器执行run。工具拒绝已有SmdHmi安装/服务/数据，使用私有模拟器目录与凭据；不要求安装开发环境。详细范围和通过情况见[本轮验证](../../verification/2026-09-08-installed-hostcomm-loop.md)。生产安装包不内置模拟器，现场设备资料不交给该工具。
+
+## 8. 源码开发方式的同机TLS模拟器
+
+保留下面的源码CLI供协议开发人员手动诊断；此方式需源码及Python3.13，日常独立工具使用上节ZIP。以下命令不是SmdBench自动验收结果，完整组合是否通过须查对应证据。
 
 模拟器始终禁止实体 I/O，明文与 TLS 模式都只允许 loopback 地址。`--storage` 必填，使用独立模拟器 SQLite，绝不能指向上位机数据库。当前 CLI 自动生成样本；默认合成工程 profile 未批准，`--approve-synthetic-profile` 仅允许在软件模拟值上运行，不构成设备工程批准。
 

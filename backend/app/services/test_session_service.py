@@ -45,8 +45,12 @@ async def reconcile_test_sessions(
     )
     restored = None
     if device_snapshot is None:
-        if len(rows) == 1:
-            restored = rows[0]
+        # Historical recovered records with unknown safe ends are not evidence of
+        # a currently active board run. Only a matching authenticated v2 snapshot
+        # may select them later through the dedicated v2 adapter.
+        candidates = [row for row in rows if "recovery" not in json_object(row.measurement_basis_json)[0]]
+        if len(candidates) == 1:
+            restored = candidates[0]
     else:
         sm = object_value(device_snapshot.get("state_machine"))
         device_id = sm.get("test_id")

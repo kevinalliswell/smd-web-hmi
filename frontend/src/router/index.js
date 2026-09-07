@@ -10,6 +10,7 @@ const routes = [
   { path: '/test', name: 'test', component: () => import('@/pages/TestPage.vue'), meta: { title: '当前试验' } },
   { path: '/alarms', name: 'alarms', component: () => import('@/pages/AlarmsPage.vue'), meta: { title: '报警事件' } },
   { path: '/history', name: 'history', component: () => import('@/pages/HistoryPage.vue'), meta: { title: '历史试验' } },
+  { path: '/run-recoveries', name: 'run-recoveries', component: () => import('@/pages/RunRecoveriesPage.vue'), meta: { title: '运行恢复' } },
   { path: '/recipes', name: 'recipes', component: () => import('@/pages/RecipesPage.vue'), meta: { title: '实验配方' } },
   { path: '/operations', name: 'operations', component: () => import('@/pages/OperationsPage.vue'), meta: { title: '操作记录' } },
   { path: '/parameters', name: 'parameters', component: () => import('@/pages/ParametersPage.vue'), meta: { title: '参数配置' } },

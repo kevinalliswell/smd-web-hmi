@@ -101,7 +101,7 @@ def main():
                 "required_capabilities": ["durable_operations", "atomic_recipe", "sample_log", "alarm_log"],
                 "firmware_validation": "unverified: real firmware must pass the documented contract and M5 acceptance",
                 "windows_validation": (
-                    "CI build and installed-service smoke gated; clean offline Win10/11 acceptance required"
+                    "CI build, installed-service smoke and separate SmdBench loop gated; see bench-acceptance.json; clean offline Win10/11 acceptance required"
                 ),
             },
         )

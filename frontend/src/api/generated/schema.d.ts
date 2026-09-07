@@ -697,6 +697,74 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/run-recoveries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Recoveries */
+        get: operations["list_recoveries_api_run_recoveries_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/run-recoveries/{recovery_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Recovery Detail */
+        get: operations["recovery_detail_api_run_recoveries__recovery_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/run-recoveries/{recovery_id}/binding": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Bind Recovery */
+        post: operations["bind_recovery_api_run_recoveries__recovery_id__binding_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/run-recoveries/{recovery_id}/replays": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Replay Recovery */
+        post: operations["replay_recovery_api_run_recoveries__recovery_id__replays_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/recipes/template/standard": {
         parameters: {
             query?: never;
@@ -1304,6 +1372,151 @@ export interface components {
         RecoverSourceLogsRequest: {
             /** First Record Seq */
             first_record_seq?: string | null;
+        };
+        /** RecoveryAudit */
+        RecoveryAudit: {
+            /** Actor */
+            actor: string;
+            /** Role */
+            role: string;
+            /** Reason */
+            reason: string;
+            /** Action */
+            action: string;
+            /** Created At */
+            created_at: string;
+            /** Evidence */
+            evidence: Record<string, never>;
+        };
+        /** RecoveryBindingRequest */
+        RecoveryBindingRequest: {
+            /** Reason */
+            reason: string;
+            /** Idempotency Key */
+            idempotency_key: string;
+            /** Expected Review Revision */
+            expected_review_revision: number;
+            /** Target Test Id */
+            target_test_id?: string | null;
+        };
+        /** RecoveryDetail */
+        RecoveryDetail: {
+            /** Id */
+            readonly id: string;
+            /** Device Id */
+            readonly device_id: string;
+            /** Run Id */
+            readonly run_id: string;
+            /** First Seen At */
+            first_seen_at: string;
+            /** Last Seen At */
+            last_seen_at: string;
+            /** Review Revision */
+            review_revision: number;
+            /**
+             * Review State
+             * @enum {string}
+             */
+            review_state: "unreviewed" | "bound" | "conflict";
+            /** Test Id */
+            test_id: string | null;
+            /**
+             * Replay Status
+             * @enum {string}
+             */
+            replay_status: "not_bound" | "pending" | "running" | "complete" | "failed";
+            /** Replay Through Id */
+            replay_through_id: number;
+            /** Replay Error */
+            replay_error: string | null;
+            /** State */
+            state: string | null;
+            /** Evidence */
+            evidence: Record<string, never>;
+            /** Start Time */
+            start_time: string | null;
+            /** Discovered At */
+            discovered_at: string | null;
+            /** Source Count */
+            source_count: number;
+            /** Log Gaps */
+            log_gaps: components["schemas"]["RecoveryLogGap"][];
+            /** Reviews */
+            reviews: components["schemas"]["RecoveryAudit"][];
+        };
+        /** RecoveryLogGap */
+        RecoveryLogGap: {
+            /** Log Id */
+            log_id: string;
+            /** First Record Seq */
+            first_record_seq: string;
+            /** Last Record Seq */
+            last_record_seq: string;
+            /** Reason */
+            reason: string;
+        };
+        /** RecoveryResponse[RecoveryDetail] */
+        RecoveryResponse_RecoveryDetail_: {
+            data: components["schemas"]["RecoveryDetail"];
+            /** Ts */
+            ts: string;
+        };
+        /** RecoveryResponse[RecoverySummary] */
+        RecoveryResponse_RecoverySummary_: {
+            data: components["schemas"]["RecoverySummary"];
+            /** Ts */
+            ts: string;
+        };
+        /** RecoveryResponse[list[RecoverySummary]] */
+        RecoveryResponse_list_RecoverySummary__: {
+            /** Data */
+            data: components["schemas"]["RecoverySummary"][];
+            /** Ts */
+            ts: string;
+        };
+        /** RecoveryReviewRequest */
+        RecoveryReviewRequest: {
+            /** Reason */
+            reason: string;
+            /** Idempotency Key */
+            idempotency_key: string;
+            /** Expected Review Revision */
+            expected_review_revision: number;
+        };
+        /** RecoverySummary */
+        RecoverySummary: {
+            /** Id */
+            readonly id: string;
+            /** Device Id */
+            readonly device_id: string;
+            /** Run Id */
+            readonly run_id: string;
+            /** First Seen At */
+            first_seen_at: string;
+            /** Last Seen At */
+            last_seen_at: string;
+            /** Review Revision */
+            review_revision: number;
+            /**
+             * Review State
+             * @enum {string}
+             */
+            review_state: "unreviewed" | "bound" | "conflict";
+            /** Test Id */
+            test_id: string | null;
+            /**
+             * Replay Status
+             * @enum {string}
+             */
+            replay_status: "not_bound" | "pending" | "running" | "complete" | "failed";
+            /** Replay Through Id */
+            replay_through_id: number;
+            /** Replay Error */
+            replay_error: string | null;
+            /** State */
+            state: string | null;
+            /** Evidence */
+            evidence: Record<string, never>;
         };
         /** RepeatabilityRequest */
         RepeatabilityRequest: {
@@ -2663,6 +2876,147 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_recoveries_api_run_recoveries_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecoveryResponse_list_RecoverySummary__"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    recovery_detail_api_run_recoveries__recovery_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                recovery_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecoveryResponse_RecoveryDetail_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    bind_recovery_api_run_recoveries__recovery_id__binding_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                recovery_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RecoveryBindingRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecoveryResponse_RecoverySummary_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    replay_recovery_api_run_recoveries__recovery_id__replays_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                recovery_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RecoveryReviewRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecoveryResponse_RecoverySummary_"];
                 };
             };
             /** @description Validation Error */

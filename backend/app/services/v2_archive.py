@@ -8,11 +8,12 @@ from pydantic import TypeAdapter
 from sqlalchemy import select
 
 from app.db.models import EventLog, SamplePoint, TestSession
-from app.db.v2_models import V2RunBinding
+from app.db.v2_models import V2RunBinding, V2SourceRecord
 from app.hostcomm.protocol import now_iso
 from app.hostcomm.v2_contract.messages import RunStatus, StatusSnapshot
 from app.hostcomm.v2_contract.types import Identifier
 from app.services.v2_alarm_archive import V2AlarmArchive
+from app.services.v2_recovery_evidence import discover_run
 
 
 def _json(value):
@@ -68,11 +69,21 @@ class V2ArchiveProjector:
 
     async def on_record(self, db, record, origin):
         payload = record["data"]
+        source_boot = payload["sample"]["boot_id"] if record["record_type"] == "sample" else record["boot_id"]
+        case = await discover_run(
+            db,
+            self.device_id,
+            payload.get("run_id"),
+            boot_id=source_boot,
+            origin=origin,
+            run=payload.get("run") if payload.get("kind") == "run_changed" else None,
+            observed_at=record.get("received_at"),
+        )
         binding, row = await self._bound(db, payload.get("run_id"))
         is_alarm = record["record_type"] == "event" and payload.get("kind") == "alarm"
-        if row is None and not is_alarm:
+        if (row is None or (case and case.review_state == "conflict")) and not is_alarm:
             return False
-        received_at = now_iso()
+        received_at = record.get("received_at") or now_iso()
         evidence = {
             "device_id": self.device_id,
             "origin": origin,
@@ -82,6 +93,7 @@ class V2ArchiveProjector:
         }
         if record["record_type"] == "sample":
             await self._sample(db, row, payload, evidence)
+            await self._recover_start_time(db, row)
             return True
         evidence.update(boot_id=record["boot_id"], event=payload)
         db.add(
@@ -115,6 +127,8 @@ class V2ArchiveProjector:
             if not any(event["event_id"] == payload["event_id"] for event in events):
                 events.append({"boot_id": record["boot_id"], **payload})
             row.measurement_basis_json = _json(basis)
+        if row is not None:
+            await self._recover_start_time(db, row)
         return True
 
     async def _sample(self, db, row, payload, evidence):
@@ -163,8 +177,19 @@ class V2ArchiveProjector:
     async def reconcile_status(self, db, snapshot, *, boot_id, received_at=None):
         TypeAdapter(Identifier).validate_python(boot_id)
         status = StatusSnapshot.model_validate(snapshot).model_dump()
+        case = await discover_run(
+            db,
+            self.device_id,
+            status["run"]["run_id"],
+            boot_id=boot_id,
+            origin="status_snapshot",
+            run=status["run"],
+            observed_at=received_at,
+            authoritative=True,
+            status=status,
+        )
         binding, row = await self._bound(db, status["run"]["run_id"])
-        if row is None:
+        if row is None or (case and case.review_state == "conflict"):
             return False
         self._run(
             row,
@@ -178,15 +203,35 @@ class V2ArchiveProjector:
         basis = _basis(row)
         basis["v2"]["status_evidence"] = {"boot_id": boot_id, "received_at": received_at or now_iso(), "status": status}
         row.measurement_basis_json = _json(basis)
+        await self._recover_start_time(db, row)
         return True
+
+    async def _recover_start_time(self, db, row):
+        basis = _basis(row)
+        reference = basis["v2"].get("measurement_start")
+        if row.start_time is not None or "recovery" not in basis or reference is None:
+            return
+        raw = await db.scalar(
+            select(V2SourceRecord).where(
+                V2SourceRecord.device_id == self.device_id,
+                V2SourceRecord.run_id == basis["v2"]["run_id"],
+                V2SourceRecord.record_type == "sample",
+                V2SourceRecord.boot_id == reference["boot_id"],
+                V2SourceRecord.source_seq == reference["sample_seq"],
+            )
+        )
+        if raw:
+            row.start_time = json.loads(raw.payload_bytes).get("sample_timestamp")
 
     def _run(self, row, binding, run, *, boot_id, observed_at, source, authoritative):
         for key, expected in (
             ("recipe_digest", binding.recipe_digest),
             ("safety_profile_digest", binding.profile_digest),
         ):
-            if run[key] is not None and run[key] != expected:
+            if run[key] is not None and expected is not None and run[key] != expected:
                 raise ValueError("run configuration conflicts with its durable binding")
+            if expected is None and run[key] is not None:
+                setattr(binding, "profile_digest" if key == "safety_profile_digest" else key, run[key])
         basis = _basis(row)
         v2 = basis["v2"]
         v2.update(
