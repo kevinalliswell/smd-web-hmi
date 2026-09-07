@@ -26,8 +26,9 @@ async def eventually(function, predicate, *, timeout=60):
 
 
 class Browser:
-    def __init__(self, evidence: Path, *, base="http://127.0.0.1:8000"):
+    def __init__(self, evidence: Path, *, private_dir: Path | None = None, base="http://127.0.0.1:8000"):
         self.base, self.evidence = base, evidence
+        self.private_dir, self.log_path = private_dir, None
         self.playwright = self.browser = self.context = self.page = None
         self.password = secrets.token_urlsafe(32)
         self.api_failures, self.page_errors = [], []
@@ -41,11 +42,31 @@ class Browser:
         self._pending_poll_console = []
         self.current_stage = "startup"
 
-    async def open(self):
+    async def open(self, *, diagnostic_logging=False):
+        if self.private_dir is None:
+            raise ValueError("browser requires owned private storage")
+        private, evidence = self.private_dir.resolve(strict=True), self.evidence.resolve()
+        if (
+            not private.is_dir()
+            or private == evidence
+            or private.is_relative_to(evidence)
+            or evidence.is_relative_to(private)
+        ):
+            raise ValueError("browser logs and public evidence must not overlap")
+        self.log_path = private / ("chromium-" + secrets.token_hex(8) + ".log")
+        self.log_path.touch(mode=0o600, exist_ok=False)
+        environment = {key: value for key, value in os.environ.items() if key.casefold() != "chrome_log_file"}
+        environment["CHROME_LOG_FILE"] = str(self.log_path)
+        arguments = ["--enable-logging", "--log-file=" + str(self.log_path)]
+        if diagnostic_logging:
+            arguments.append("--v=1")
         if getattr(sys, "frozen", False):
             os.environ["PLAYWRIGHT_BROWSERS_PATH"] = str(Path(sys.executable).parent / "browsers")
         self.playwright = await async_playwright().start()
-        self.browser = await self.playwright.chromium.launch(headless=True)
+        # Full Chromium forwards logging handles to Windows child processes.
+        self.browser = await self.playwright.chromium.launch(
+            channel="chromium", headless=True, env=environment, args=arguments
+        )
         self.context = await self.browser.new_context(viewport={"width": 1440, "height": 1000}, accept_downloads=True)
         self.page = await self.context.new_page()
         self.page.set_default_timeout(30000)

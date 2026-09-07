@@ -56,6 +56,14 @@ CI发现并复现了两项问题：[首轮](https://github.com/kevinalliswell/sm
 
 第九轮工具清单变化在本轮未重现，具体差异和根因仍未定位，不能将本轮通过表述为该问题已明确修复。本轮证据证明上述实际字节通过了完整流程和严格核验；后续标签或重新冻结的产物必须重新验收，不能只引用本轮结果。
 
+[第十二轮](https://github.com/kevinalliswell/smd-web-hmi/actions/runs/34163979969)的实际PR合并快照为`0aebf914f8464363f01ae952d80e90d27ef7fdf8`（分支`8c069e22e6bdd97c84f12bdd068bb97e0d21861d`）。六项基础检查通过，Windows后端766通过/4跳过、覆盖率87.76%，桌面187通过/2跳过、工具53通过。实际安装冒烟、冻结工具自检和自检后清单、17项业务断言、10份实际报告及归属清理再次通过；报告大小和SHA256已独立复核，三类非预期页面错误为0。
+
+最终封装再次被严格清单拦截，此次有限差异诊断明确显示仅新增`browsers/chromium_headless_shell-1234/chrome-headless-shell-win64/debug.log`，原文件没有改变或删除。该轮没有合格发行ZIP；acceptance中的安装器摘要为`efb88693175fe00b60dcdba149cdc770f11f8eade117e53b95fbeec75b747bd7`，不能用其业务通过替代封装验收。浏览器运行日志必须定向本轮受限诊断目录，并在冻结自检中核对实际日志归属；禁止通过忽略、删除该文件或重算原清单掩盖变化。第九轮没有留下具体路径，不能把本次定位倒推成第九轮已被证实的原因。
+
+对照 Chromium `151.0.7922.34` [Headless Shell 初始化](https://chromium.googlesource.com/chromium/src/+/refs/tags/151.0.7922.34/headless/lib/headless_content_main_delegate.cc)与[完整 Chromium 日志实现](https://chromium.googlesource.com/chromium/src/+/refs/tags/151.0.7922.34/chrome/common/logging_chrome.cc)，前者的 Windows 子进程跳过日志初始化，后者处理继承的日志句柄。工具改用已经随包分发的完整 Chromium 新 headless 模式，将参数及浏览器子进程的 `CHROME_LOG_FILE` 同时指向私有绝对路径，不修改父进程该环境变量。常态保留日志；冻结自检额外开启详细日志，要求实际写入非空文件，并在关闭浏览器后删除其受限临时目录。
+
+本机真实 Chromium 探针确认私有日志非空、外来日志和公开证据未改变、335个浏览器文件摘要不变，自检临时目录成功移除。工具测试65通过、7项既有Windows限定跳过；严格清单没有忽略项或运行后重算。这些结果仅验证本机修复，完整冻结 Windows 场景及最终封装仍须在后续构建重新通过。
+
 ## PDF 导出目视核查
 
 第十一轮实际 Windows 报告（SHA256 `09e7d7498b9f3b6d0c10aa0efb62d53fafe6b5de434909d58c78d620f504c71d`）经 Poppler 渲染后发现三处温度差减号和页尾中点显示为方框，且“结果指标”标题孤立在前页。独立核对 `UniGB-UCS2-H` 字体映射确认 U+2212、U+00B7 无对应 CID；该报告其他非 ASCII 字符均有映射。`Heading2` 默认不保持与后文同页。这些问题未被原有文本内容断言识别，原 CI 通过记录不代表版式没有问题。

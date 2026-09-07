@@ -6,6 +6,7 @@ import json
 import os
 import sys
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from uuid import uuid4
 
 import httpx
@@ -66,7 +67,7 @@ async def run_scenarios(installation, result, scenario):
     from .scenarios import Scenarios
     from .worker import Worker
 
-    ui = Browser(Path(result["evidence_dir"]))
+    ui = Browser(Path(result["evidence_dir"]), private_dir=installation.private)
     worker = None
     try:
         await ui.open()
@@ -237,15 +238,25 @@ def main(argv=None):
 
                 contain_child_processes()
 
-            async def check():
-                browser = Browser(Path.cwd())
+            async def check(private):
+                browser = Browser(private.parent / "evidence", private_dir=private)
                 try:
-                    await browser.open()
+                    await browser.open(diagnostic_logging=True)
                     await browser.page.set_content("<p>SmdBench browser self-check</p>")
                 finally:
                     await browser.close()
+                if browser.log_path is None or browser.log_path.stat().st_size == 0:
+                    raise AssertionError("browser did not write its private diagnostic log")
 
-            asyncio.run(check())
+            with TemporaryDirectory(prefix="SmdBench-self-check-") as temporary:
+                private_root = Path(temporary)
+                if os.name == "nt":
+                    from .windows import secure_directory
+
+                    secure_directory(private_root)
+                private = private_root / "private"
+                private.mkdir(mode=0o700)
+                asyncio.run(check(private))
             print('{"self_check":"passed"}')
             return 0
         tool = tool_manifest()
