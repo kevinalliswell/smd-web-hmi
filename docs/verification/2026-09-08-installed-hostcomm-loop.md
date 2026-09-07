@@ -5,13 +5,14 @@
 
 ## 状态
 
-首个集成提交为 `c6c2a0697c07b378011e3929e4d5aaf3a4af5c56`，见[PR #75](https://github.com/kevinalliswell/smd-web-hmi/pull/75)。最终提交、CI及发布资产仍以本轮实际结果登记，不能据此认定Windows或真机验收通过。
+首个集成提交为 `c6c2a0697c07b378011e3929e4d5aaf3a4af5c56`，见[PR #75](https://github.com/kevinalliswell/smd-web-hmi/pull/75)。第九轮已通过实际Windows安装版业务、报告与清理验收；随后独立工具封装的文件清单校验失败，整轮CI及候选封装仍未通过，未发布资产。该业务通过结论仅覆盖下方记录的构建，不代表Win10/11桌面人工或真机验收。
 
 | 层次 | 验证内容 | 当前证据 |
 |---|---|---|
 | 本机软件 | 心跳/租约/重连，未知运行审查与回放，报告空值/完整性门禁，工具归属与发布门禁 | `e27c32ef7e27b20f612e5705bb26b4c5b400512a`在Python3.13.12/macOS后端759通过、2项Windows限定跳过，覆盖率86.88%；Node24前端123通过，类型/lint/build通过；发行门禁补字节绑定反例后8通过 |
 | 模拟器 | 真实TLS、合成阶段、故障注入、日志/报警关联和实际导出 | macOS源码后台与Chromium通过15项业务断言，下载并检查10份实际报告；未替代Windows冻结程序验收 |
-| Windows CI | 实际NSIS/LocalService；旧安装冒烟；独立工具重新安装并执行TLS/页面/报告 | 第七轮17项业务通过但清理失败；第八轮在模拟板重启后下一实验启动超时，整体验收仍未通过，不允许发包 |
+| Windows安装版业务 | 实际NSIS/LocalService；旧安装冒烟；独立工具重新安装并执行TLS/页面/报告 | 第九轮17项业务断言、10份实际报告及清理全部通过；页面/API/console非预期错误均为0，`acceptance.json`为passed且`cleanup_complete=true` |
+| 候选封装与交付 | 运行后工具文件清单、安装器/工具摘要及发行ZIP门禁 | 第九轮`package_bench`发现运行后文件清单与冻结清单不一致，严格校验拒绝封装；整轮CI未通过，不能将业务验收结果视为合格工具ZIP或已发布候选 |
 | Win10/11桌面 | WebView2、关闭窗口持续采集、中文路径、显示缩放、下载及重开 | 未验收，单列人工复验 |
 | 固件/真机 | STM32H750、TLS栈、外设/联锁、工艺时长、完整实验与24小时 | 未验收；固件尚待开发 |
 
@@ -29,11 +30,15 @@ CI发现并复现了两项问题：[首轮](https://github.com/kevinalliswell/sm
 
 [第七轮](https://github.com/kevinalliswell/smd-web-hmi/actions/runs/34151503455)的PR合并快照为`efcd7bb01a6e9a7d2d749e8cb7c8d781fff6cf35`（分支`024c15767167d1f0982d682e57a81c885065e826`）。Windows后端760通过/4跳过、覆盖率87.73%，桌面185通过/2跳过，工具42通过；前端124通过。实际安装、冻结工具自检与业务17项断言全部通过，10份HTML/PDF/XLSX报告已逐文件核对摘要，页面/API/console意外错误均为0。安装器SHA256为`42f3128654a7910b01c1560d735b4145395550197496bff41bba61bdce72872d`。最后清理目录发生PermissionError，`cleanup_complete=false`，因此整体状态仍为failed，发布门禁已拦截。公开证据保留在该轮诊断artifact；私有数据库和完整诊断未上传。
 
-清理路径发现SQLite连接上下文只提交事务而不关闭连接，删除时仍持有源库及备份库句柄。现使用显式closing；真实连接回归修前失败、修后通过，工具本机40通过/6项Windows限定跳过，另保留真实Windows目录删除和备份完整性测试。失败诊断只追加固定清理阶段及数字错误码，不公开路径或异常消息。修复后的整轮Windows结果仍待取得。
+清理路径发现SQLite连接上下文只提交事务而不关闭连接，删除时仍持有源库及备份库句柄。现使用显式closing；真实连接回归修前失败、修后通过，工具本机40通过/6项Windows限定跳过，另保留真实Windows目录删除和备份完整性测试。失败诊断只追加固定清理阶段及数字错误码，不公开路径或异常消息。后续Windows执行结果分别见第八、九轮记录。
 
 [第八轮](https://github.com/kevinalliswell/smd-web-hmi/actions/runs/34153937234)的实际PR合并快照为`a9d5d564155389ae811718d89c22396fe86f31d9`（分支`0e76723a3af69da4c0436ac5399f15ca086f55dc`）。Windows后端760通过/4跳过、覆盖率87.72%，桌面185通过/2跳过，工具46通过，包含真实Windows SQLite删除与备份完整性回归；安装冒烟及冻结工具自检通过。完整流程13项断言及7份报告通过，随后在模拟板重启后的下一实验启动等待中超时；最终登记清理也失败，`cleanup_complete=false`，没有发行包。安装器SHA256为`5b16202512560c1479b47a6a7a854b1c0092b114d3886449a1300b6ffcb930a9`。
 
-该启动问题通过真实loopback模拟器与可控单调时钟复现：重启将设备uptime归零，但自动采样仍沿用旧boot的时间水位，导致新实验停在preparing，直到新uptime追平旧值。采样水位改为在启动和重启时重新设定；回归不重发启动，也不放宽心跳或租约期限。清理异常目前只有`registration / NotSpecified`证据，不能认定数据库死锁；新增固定清理子阶段、受限异常类型和数字HRESULT以区分后续原因。整体验收继续保留为未通过。
+该启动问题通过真实loopback模拟器与可控单调时钟复现：重启将设备uptime归零，但自动采样仍沿用旧boot的时间水位，导致新实验停在preparing，直到新uptime追平旧值。采样水位改为在启动和重启时重新设定；回归不重发启动，也不放宽心跳或租约期限。第八轮清理异常只有`registration / NotSpecified`证据，不能认定数据库死锁；新增固定清理子阶段、受限异常类型和数字HRESULT以区分后续原因。第八轮整体验收未通过的记录保留。
+
+[第九轮](https://github.com/kevinalliswell/smd-web-hmi/actions/runs/34156913521)的实际PR合并快照为`e80a65df19c03b8967eca34cd206871b037c8774`（分支`7d57e3cb83cb4edd886bee5fe7acb877ed512337`）。Windows后端761通过/4跳过、覆盖率87.74%，桌面185通过/2跳过，工具53通过。实际NSIS/LocalService安装冒烟、冻结工具自检、独立安装版TLS与全部17项业务断言通过；10份实际HTML/PDF/XLSX报告已逐文件核对SHA256与大小，页面/API/console非预期错误均为0。`acceptance.json`记录`status=passed`、`cleanup_complete=true`；安装器SHA256为`451686b98622b23c9950aab2e8209f14b18e92b1d2caaf0878f3b7b33103f77e`，工具清单SHA256为`4c04bff4536a50e70caa7fb387fd536c91f1eaab5f98d34a6e8cf5148fda366c`。
+
+随后`package_bench.py::verify_inventory`报`Bench bytes changed after freezing`：运行后的工具文件清单与冻结清单不一致，严格校验拦截了发行ZIP封装。因此第九轮的软件业务及清理验收通过，但封装和整轮CI未通过，不能发布该构建。原始acceptance、脱敏页面证据及10份合成报告保存在该轮诊断artifact；私有资料未上传。清单差异及修复后的完整构建另行验证，不以重用本轮acceptance为不同字节的工具背书。
 
 ## 测试方法与证据限制
 

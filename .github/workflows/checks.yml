@@ -143,6 +143,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Bench freeze failed' }
           & ./artifacts/bench/SmdBench/SmdBench.exe self-check
           if ($LASTEXITCODE -ne 0) { throw 'Frozen bench process and browser self-check failed' }
+          python scripts/release/package_bench.py --bundle artifacts/bench/SmdBench --inventory-only
+          if ($LASTEXITCODE -ne 0) { throw 'Frozen bench self-check changed the bundle inventory' }
       - name: Install NSIS and verify the isolated LocalService backend
         shell: pwsh
         run: |

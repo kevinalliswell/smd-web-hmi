@@ -66,16 +66,37 @@ def verify_inventory(bundle: Path, manifest: dict) -> None:
         if path.is_file() and path.relative_to(bundle).as_posix() != "tool-manifest.json":
             actual[path.relative_to(bundle).as_posix()] = digest(path)
     if actual != expected:
-        raise ValueError("Bench bytes changed after freezing")
+        changes = {
+            "added": sorted(actual.keys() - expected.keys()),
+            "removed": sorted(expected.keys() - actual.keys()),
+            "changed": sorted(name for name in actual.keys() & expected.keys() if actual[name] != expected[name]),
+        }
+        # Bundle-relative inventory metadata only: no file contents or absolute
+        # runtime paths. Keep diagnostics bounded even for a badly altered kit.
+        summary = {
+            kind: {"count": len(names), "paths": [name[:256] for name in names[:20]]} for kind, names in changes.items()
+        }
+        raise ValueError(
+            "Bench bytes changed after freezing: " + json.dumps(summary, ensure_ascii=True, sort_keys=True)
+        )
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--bundle", type=Path, required=True)
-    parser.add_argument("--output", type=Path, required=True)
-    parser.add_argument("--evidence", type=Path, required=True)
+    parser.add_argument("--output", type=Path)
+    parser.add_argument("--evidence", type=Path)
+    parser.add_argument(
+        "--inventory-only", action="store_true", help="Check frozen bytes without packaging or accepting a run"
+    )
     args = parser.parse_args()
     manifest = json.loads((args.bundle / "tool-manifest.json").read_text(encoding="utf-8"))
+    if args.inventory_only:
+        verify_inventory(args.bundle, manifest)
+        print("Frozen bench inventory is unchanged")
+        return
+    if args.output is None or args.evidence is None:
+        parser.error("Packaging requires --output and --evidence")
     evidence_path = args.evidence / "acceptance.json"
     evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
     validate_evidence(
