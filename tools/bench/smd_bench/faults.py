@@ -61,6 +61,8 @@ async def unknown_run(scenes):
     await worker.request("complete_cooling")
     await scenes.state("completed")
     await expect(ui.button("确认本次实验结束")).to_be_disabled()
+    await scenes.recover_logs()
+    await ui.api("/api/status")
     await ui.go("/run-recoveries")
     await ui.page.get_by_role("button").filter(has_text=run_id).click()
     await ui.page.get_by_label("核查原因", exact=True).fill(
@@ -136,7 +138,17 @@ async def faults(scenes):
         lambda value: any(r["fault"] == "lost_reply" for r in value["fault_receipts"]),
     )
     starts = [row for row in receipt["wire_commands"] if row["command"] == "start_run"]
-    await ui.button("查询控制板结果").click()
+    async with ui.page.expect_response(
+        lambda r: r.url.endswith("/query") and r.request.method == "POST", timeout=60000
+    ) as queried:
+        await ui.button("查询控制板结果").click()
+    queried_response = await queried.value
+    queried_data = (await queried_response.json()).get("data", {})
+    if (
+        queried_response.status != 200
+        or queried_data.get("wire_operation", {}).get("status", queried_data.get("wire_status")) != "applied"
+    ):
+        raise AssertionError("lost-reply query did not prove the board applied the original start")
     await ui.page.get_by_role("heading", name="启动试验").wait_for(state="hidden")
     after = await worker.request("snapshot")
     if [r for r in after["wire_commands"] if r["command"] == "start_run"] != starts:

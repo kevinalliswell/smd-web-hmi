@@ -93,7 +93,9 @@ def main() -> None:
     commit = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
     import playwright
 
-    browser_metadata = json.loads((Path(playwright.__file__).parent / "driver/package/browsers.json").read_text())
+    browser_metadata = json.loads(
+        (Path(playwright.__file__).parent / "driver/package/browsers.json").read_text(encoding="utf-8")
+    )
     write_manifest(bundle, version, commit, browser_metadata)
     print(f"Built independent SmdBench {version}; synthetic software validation only")
 

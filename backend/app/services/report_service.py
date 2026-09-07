@@ -549,11 +549,20 @@ async def generate_report(
         raise ValueError(f"不支持的报告格式: {fmt}")
 
     await require_recovery_report_ready(session, test_id)
+    source_watermark = (
+        select(func.coalesce(func.max(V2SourceRecord.id), 0))
+        .where(V2SourceRecord.device_id == V2RunRecovery.device_id, V2SourceRecord.run_id == V2RunRecovery.run_id)
+        .correlate(V2RunRecovery)
+        .scalar_subquery()
+    )
     recovery_snapshot = (
         await session.execute(
-            select(V2RunRecovery.id, V2RunRecovery.review_revision, V2RunRecovery.replay_through_id).where(
-                V2RunRecovery.test_id == test_id
-            )
+            select(
+                V2RunRecovery.id,
+                V2RunRecovery.review_revision,
+                V2RunRecovery.replay_through_id,
+                source_watermark.label("source_watermark"),
+            ).where(V2RunRecovery.test_id == test_id)
         )
     ).first()
     test = await session.scalar(
@@ -614,6 +623,7 @@ async def generate_report(
                 V2RunRecovery.replay_status == "complete",
                 V2RunRecovery.review_revision == recovery_snapshot.review_revision,
                 V2RunRecovery.replay_through_id == recovery_snapshot.replay_through_id,
+                source_watermark == recovery_snapshot.source_watermark,
             )
             .values(review_revision=V2RunRecovery.review_revision)
             .execution_options(synchronize_session=False)

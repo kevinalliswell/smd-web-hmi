@@ -41,6 +41,7 @@ async def discover_run(
         await db.flush()
     evidence = json.loads(case.evidence_json)
     before = json_text(evidence)
+    review_before = json_text({key: value for key, value in evidence.items() if key != "origins"})
     origins = evidence.setdefault("origins", [])
     if origin not in origins:
         origins.append(origin)
@@ -63,13 +64,19 @@ async def discover_run(
         newer = prior is None or (same_boot and int(run["state_revision"]) >= int(prior["run"]["state_revision"]))
         if newer or (authoritative and not same_boot):
             candidate = {"boot_id": boot_id, "run": run, "origin": origin}
-            if prior is None or any(candidate[k] != prior.get(k) for k in candidate):
+            if prior is None or any(candidate[k] != prior.get(k) for k in ("boot_id", "run")):
                 evidence["latest_run"] = {**candidate, "observed_at": observed_at}
                 if status is not None:
                     evidence["latest_run"]["status"] = status
+            elif status is not None and "status" not in prior:
+                # An event may arrive first. Preserve the first full status for
+                # this run state; repeated source labels and lease refreshes are
+                # not new run evidence and must not invalidate a human review.
+                prior["status"] = status
     if json_text(evidence) != before:
         case.evidence_json = json_text(evidence)
-        case.review_revision += 1
+        if json_text({key: value for key, value in evidence.items() if key != "origins"}) != review_before:
+            case.review_revision += 1
     case.last_seen_at = max(case.last_seen_at, observed_at)
     return case
 

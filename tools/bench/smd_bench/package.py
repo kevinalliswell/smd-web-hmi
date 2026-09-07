@@ -61,6 +61,11 @@ def verify_installer(installer: Path, manifest_file: Path, tool: dict) -> tuple[
         or not manifest.compatibility.get("database_revision")
     ):
         raise ValueError("installer and tool must have identical version and source commit")
+    if (
+        manifest.compatibility.get("hostcomm_version") != "2.0"
+        or manifest.compatibility.get("hostcomm_v2_design_revision") != "2.0-design.1"
+    ):
+        raise ValueError("installer protocol and design must match the frozen acceptance tool")
     expected = []
     for line in (installer.parent / "SHA256SUMS.txt").read_text(encoding="utf-8").splitlines():
         match = re.fullmatch(r"([0-9a-fA-F]{64})\s+\*?(.+)", line)

@@ -73,6 +73,7 @@ async def run_scenarios(installation, result, scenario):
         await ui.first_login(initial)
         del initial
         result["last_stage"] = "offline_pairing"
+        ui.current_stage = "offline_pairing"
         pairing = await asyncio.to_thread(installation.pair)
         worker = Worker(installation.private, pairing)
         await worker.start(wrong_psk=True)
@@ -103,10 +104,12 @@ async def run_scenarios(installation, result, scenario):
             from .faults import faults
 
             await faults(scenes)
-        if ui.page_errors or ui.api_failures:
+        if ui.page_errors or ui.api_failures or ui.console_errors:
             raise AssertionError("unexpected browser or API errors were observed")
         result["browser_errors"] = len(ui.page_errors)
         result["unexpected_api_errors"] = len(ui.api_failures)
+        result["unexpected_console_errors"] = len(ui.console_errors)
+        result["expected_fault_console_errors"] = len(ui.expected_console_errors)
     finally:
         try:
             if worker:
@@ -146,6 +149,16 @@ def run(args):
         result["tool_manifest_sha256"] = sha256(Path(sys.executable).parent / "tool-manifest.json")
     else:
         result["source_execution"] = True
+    print(
+        json.dumps(
+            {
+                "run_id": installation.run_id,
+                "phase": "before_installation",
+                "cleanup_command": "SmdBench.exe cleanup --run-id " + installation.run_id,
+            }
+        ),
+        flush=True,
+    )
     passed = False
     try:
         installation.prepare(evidence, manifest, digest)
@@ -161,6 +174,7 @@ def run(args):
     except Exception as error:
         # Fail closed at the CLI boundary. Never serialize error bodies (browser errors can contain credentials).
         result["failure_type"] = type(error).__name__
+        result["cleanup_command"] = "SmdBench.exe cleanup --run-id " + installation.run_id
     finally:
         try:
             if installation.claimed:

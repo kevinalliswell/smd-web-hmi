@@ -97,6 +97,60 @@ async def test_discovery_is_durable_deduped_and_never_invents_start(system):
         assert await db.scalar(select(func.count()).select_from(SamplePoint)) == 1
 
 
+@pytest.mark.parametrize("event_first", [False, True])
+async def test_unchanged_run_sources_do_not_invalidate_review_or_erase_status(system, event_first):
+    factory, projector, store, service = system
+    frame = message("status_snapshot")
+    if event_first:
+        await store.ingest_live(message("run_changed"))
+    async with factory() as db, db.begin():
+        await projector.reconcile_status(db, frame["payload"], boot_id=frame["boot_id"])
+    reviewed = (await service.list())[0]
+    assert reviewed["evidence"]["latest_run"]["status"] == frame["payload"]
+    for index in range(4):
+        event = message("run_changed")
+        event["payload"].update(event_id=uuid.uuid4().hex, event_seq=str(10 + index))
+        await store.ingest_live(event)
+        after_event = await service.detail(reviewed["id"])
+        assert after_event["review_revision"] == reviewed["review_revision"]
+        assert after_event["evidence"]["latest_run"] == reviewed["evidence"]["latest_run"]
+        # A renewed lease or a later received snapshot is not a changed run.
+        refreshed = copy.deepcopy(frame["payload"])
+        refreshed["lease_expires_uptime_ms"] = str(21000 + index)
+        async with factory() as db, db.begin():
+            await projector.reconcile_status(db, refreshed, boot_id=frame["boot_id"])
+    current = await service.detail(reviewed["id"])
+    assert current["review_revision"] == reviewed["review_revision"]
+    assert set(current["evidence"]["origins"]) == {"live", "status_snapshot"}
+    assert current["evidence"]["latest_run"] == reviewed["evidence"]["latest_run"]
+    await bind(service, reviewed)  # The operator's reviewed revision remains usable.
+    async with factory() as db:
+        assert await db.scalar(select(func.count()).select_from(V2SourceRecord)) == 4 + int(event_first)
+
+
+async def test_material_run_completion_still_invalidates_an_older_review(system):
+    factory, projector, _, service = system
+    case = await discover(system)
+    frame = message("status_snapshot")
+    frame["payload"]["run"].update(
+        state="completed",
+        state_revision="13",
+        outcome="valid_candidate",
+        measurement_complete=True,
+        safe_complete=True,
+        measurement_end={"boot_id": frame["boot_id"], "sample_seq": "45"},
+        safe_boundary={"boot_id": frame["boot_id"], "sample_seq": "50"},
+    )
+    async with factory() as db, db.begin():
+        await projector.reconcile_status(db, frame["payload"], boot_id=frame["boot_id"])
+    current = await service.detail(case["id"])
+    assert current["review_revision"] > case["review_revision"]
+    assert current["evidence"]["latest_run"]["status"] == frame["payload"]
+    assert current["evidence"]["safe_boundary"]["sample_seq"] == "50"
+    with pytest.raises(V2RecoveryError, match="revision"):
+        await bind(service, case)
+
+
 async def test_review_conflicts_permissions_and_target_proof_are_enforced(system):
     factory, _, _, service = system
     case = await discover(system)

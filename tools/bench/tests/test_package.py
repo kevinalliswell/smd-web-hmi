@@ -31,7 +31,11 @@ def test_installer_requires_matching_tool_commit_and_checksum(tmp_path):
                 "platform": "windows-x64",
                 "version": version,
                 "commit": commit,
-                "compatibility": {"database_revision": "test"},
+                "compatibility": {
+                    "database_revision": "test",
+                    "hostcomm_version": "2.0",
+                    "hostcomm_v2_design_revision": "2.0-design.1",
+                },
             }
         )
     )
@@ -66,3 +70,31 @@ def test_frozen_tool_rejects_different_scenario_before_file_inventory(tmp_path, 
     monkeypatch.setattr(sys, "executable", str(tmp_path / "SmdBench.exe"))
     with pytest.raises(ValueError, match="unsupported tool manifest"):
         tool_manifest()
+
+
+def test_installer_refuses_protocol_or_design_mismatch_even_with_same_commit(tmp_path):
+    version, commit = "0.3.0-rc.5", "a" * 40
+    installer = tmp_path / f"SmdHmi-{version}-windows-x64.exe"
+    installer.write_bytes(b"fixture")
+    checksum = hashlib.sha256(installer.read_bytes()).hexdigest()
+    (tmp_path / "SHA256SUMS.txt").write_text(f"{checksum}  {installer.name}\n", encoding="ascii")
+    manifest = tmp_path / "manifest.json"
+    compatibility = {
+        "database_revision": "test",
+        "hostcomm_version": "2.0",
+        "hostcomm_v2_design_revision": "2.0-design.1",
+    }
+    for field, wrong in (("hostcomm_version", "1.0"), ("hostcomm_v2_design_revision", "2.0-doc.2")):
+        manifest.write_text(
+            json.dumps(
+                {
+                    "schema_version": 1,
+                    "platform": "windows-x64",
+                    "version": version,
+                    "commit": commit,
+                    "compatibility": {**compatibility, field: wrong},
+                }
+            )
+        )
+        with pytest.raises(ValueError, match="protocol and design"):
+            verify_installer(installer, manifest, {"version": version, "commit": commit})

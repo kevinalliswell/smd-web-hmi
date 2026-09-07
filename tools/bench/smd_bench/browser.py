@@ -33,6 +33,8 @@ class Browser:
         self.expected_statuses: set[tuple[str, int]] = set()
         self.api_client = httpx.AsyncClient(base_url=base, trust_env=False, timeout=60)
         self.console_errors = []
+        self.expected_console_errors = []
+        self.current_stage = "startup"
 
     async def open(self):
         if getattr(sys, "frozen", False):
@@ -44,15 +46,27 @@ class Browser:
         self.page.set_default_timeout(30000)
         self.page.on("pageerror", lambda _error: self.page_errors.append("pageerror"))
         self.page.on("response", self._response)
-        self.page.on(
-            "console", lambda message: self.console_errors.append("console_error") if message.type == "error" else None
-        )
+        self.page.on("console", self._console)
+
+    def _console(self, message):
+        if message.type != "error":
+            return
+        path = urlsplit(message.location.get("url", "")).path
+        status = re.search(r"server responded with a status of (\d{3})", message.text)
+        expected = bool(status and (path, int(status[1])) in self.expected_statuses)
+        if message.text.startswith("WebSocket connection") and self.current_stage in {
+            "offline_pairing",
+            "fault_host_service_restart",
+        }:
+            expected = True
+        target = self.expected_console_errors if expected else self.console_errors
+        target.append({"kind": "http_failure" if status else "console_error", "stage": self.current_stage})
 
     def _response(self, response):
         path = urlsplit(response.url).path
         if path.startswith("/api/") and response.status >= 400:
             if (path, response.status) not in self.expected_statuses:
-                self.api_failures.append({"path": path, "status": response.status})
+                self.api_failures.append({"path": path, "status": response.status, "stage": self.current_stage})
 
     async def login(self, username: str, password: str, *, page=None):
         page = page or self.page

@@ -24,6 +24,7 @@ class Scenarios:
 
     def stage(self, name):
         self.result["last_stage"] = name
+        self.ui.current_stage = name
         print(json.dumps({"stage": name}), flush=True)
 
     async def state(self, expected):

@@ -110,7 +110,7 @@ async def test_recovered_global_alarm_is_in_report_without_rewriting_original(db
     db_session.add(V2RecoveryAssociation(recovery_id=case.id, source_record_id=1, alarm_log_id=alarm.id))
     await db_session.commit()
     report = await report_service.generate_report(db_session, test.test_id, operator_id="admin")
-    assert "RECOVERY-ALARM" in Path(report.file_path).read_text()
+    assert "RECOVERY-ALARM" in Path(report.file_path).read_text(encoding="utf-8")
     await db_session.refresh(alarm)
     assert alarm.test_id is None
 
@@ -131,13 +131,16 @@ def test_synthetic_profile_is_explicitly_labeled_in_report_provenance():
     assert "not_certified" in rows["数据来源"]
 
 
-async def test_replay_finishing_during_report_does_not_publish_mixed_snapshot(db_session, tmp_path, monkeypatch):
+@pytest.mark.parametrize("change", ["replay", "new_source"])
+async def test_replay_finishing_during_report_does_not_publish_mixed_snapshot(
+    db_session, tmp_path, monkeypatch, change
+):
     from sqlalchemy import update
     from sqlalchemy.ext.asyncio import async_sessionmaker
 
     from app.core.config import get_settings
     from app.db.models import ReportExport
-    from app.db.v2_models import V2RunRecovery
+    from app.db.v2_models import V2RunRecovery, V2SourceRecord
     from app.services.v2_run_recovery import V2RecoveryError
 
     monkeypatch.setattr(type(get_settings()), "reports_dir", property(lambda _self: tmp_path))
@@ -148,15 +151,29 @@ async def test_replay_finishing_during_report_does_not_publish_mixed_snapshot(db
     async def concurrent_replay(path, content):
         await original(path, content)
         async with factory() as other:
-            await other.execute(
-                update(V2RunRecovery)
-                .where(V2RunRecovery.id == case.id)
-                .values(
-                    review_revision=V2RunRecovery.review_revision + 1,
-                    replay_status="complete",
-                    replay_through_id=42,
+            if change == "new_source":
+                other.add(
+                    V2SourceRecord(
+                        device_id=case.device_id,
+                        run_id=case.run_id,
+                        boot_id="d" * 32,
+                        record_type="sample",
+                        source_seq="1",
+                        payload_bytes=b"{}",
+                        archived=1,
+                        received_at=case.first_seen_at,
+                    )
                 )
-            )
+            else:
+                await other.execute(
+                    update(V2RunRecovery)
+                    .where(V2RunRecovery.id == case.id)
+                    .values(
+                        review_revision=V2RunRecovery.review_revision + 1,
+                        replay_status="complete",
+                        replay_through_id=42,
+                    )
+                )
             await other.commit()
 
     monkeypatch.setattr(report_service, "_write_report_file", concurrent_replay)

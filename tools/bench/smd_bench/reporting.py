@@ -23,6 +23,8 @@ def check_metrics(metrics: dict, scenario: str) -> None:
     if metrics["compliance"] != "not_certified":
         raise AssertionError("synthetic reports must remain not_certified")
     if scenario == "recovered_unknown":
+        if metrics["measurement_data_integrity"] == "complete":
+            raise AssertionError("recovered run invented missing engineering freshness evidence")
         if metrics.get("t10") is not None or metrics.get("t40") is not None:
             raise AssertionError("recovered run invented missing original height")
         if metrics.get("td_drip_temp") != 1290 or metrics.get("td_source") != "first_drip_event":
