@@ -3,13 +3,14 @@
 本项目遵循[语义化版本](https://semver.org/lang/zh-CN/)；`backend/app/__init__.py` 的
 `__version__` 为唯一权威版本源。条目按 Conventional Commits 类型归类。
 
-## [0.3.0-rc.5] — 开发中
+## [0.3.0-rc.5] — 候选版本
 
 - 修正 HostComm 2.0 租约证据、迟到回执、释放竞态、心跳总期限和重连上限；持续控制依据当前状态。
 - 增加陌生运行核查、带审计的档案绑定和可恢复回放；真实开始时间与发现时间分别保存，缺失实验资料保持未知。
+- 修正人工补录与源数据归档并发时覆盖首滴依据的问题；补录先取得数据库写入权并刷新依据，保留审计和原子提交。
 - 增加独立 Windows SmdBench 工具，内含 TLS 模拟器、浏览器和固定场景；真实安装版的实验、报告及故障恢复由CI验收门禁核对。
 
-协议保持 `2.0 / 2.0-design.1`，固件文档修订 `2.0-doc.3`。以上为已实现的软件变更；发布及Windows安装版验收以同提交检查和包内`bench-acceptance.json`为准。Win10/11 WebView2、固件与真机仍需单独验收，见[本轮验证](docs/verification/2026-09-08-installed-hostcomm-loop.md)。
+协议保持 `2.0 / 2.0-design.1`，固件文档修订 `2.0-doc.3`。本轮软件检查、Windows CI安装版固定流程、实际报告、归属清理及严格产物核验通过，证据绑定对应构建和包内`bench-acceptance.json`。候选交付状态、最终提交与字节以对应标签流水线及 Release 附件为准。Win10/11 WebView2人工验收、固件与真机仍须单独完成，见[本轮验证](docs/verification/2026-09-08-installed-hostcomm-loop.md)。
 
 ## [0.3.0-rc.4] — 2026-09-06
 

@@ -84,7 +84,9 @@ Stop-Service SmdHmi
 
 ## 7. 独立Windows联调工具
 
-本轮已实现独立[SmdBench](../../../tools/bench/README.md)，候选ZIP内含Python、Playwright/Chromium和TLS模拟器。先在全新测试VM中运行preflight，再使用与工具同版本同提交的安装器执行run。工具拒绝已有SmdHmi安装/服务/数据，使用私有模拟器目录与凭据；不要求安装开发环境。完整Windows验收仍在执行，结果必须取自同提交且匹配实际安装器/工具摘要的`acceptance.json`，详细范围见[本轮验证](../../verification/2026-09-08-installed-hostcomm-loop.md)。生产安装包不内置模拟器，现场设备资料不交给该工具。
+本轮已实现独立[SmdBench](../../../tools/bench/README.md)，候选ZIP内含Python、Playwright/Chromium和TLS模拟器。先在全新测试VM中运行preflight，再使用与工具同版本同提交的安装器执行run。工具拒绝已有SmdHmi安装/服务/数据，使用私有模拟器目录与凭据；不要求安装开发环境。生产安装包不内置模拟器，现场设备资料不交给该工具。
+
+本轮候选已通过Windows CI中的冻结自检、实际安装版TLS/Chromium固定流程、报告核验及归属清理，严格封装和下载产物核验也已通过。结论只适用于`acceptance.json`绑定的提交、安装器和工具摘要，详细范围见[本轮验证](../../verification/2026-09-08-installed-hostcomm-loop.md)。候选交付状态、最终提交与字节以对应标签流水线及 Release 附件为准；Win10/11 WebView2人工验收和真实STM32联调仍须分别完成。
 
 ## 8. 源码开发方式的同机TLS模拟器
 

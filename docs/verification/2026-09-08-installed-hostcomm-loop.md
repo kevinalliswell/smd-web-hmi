@@ -1,18 +1,18 @@
 # Windows安装版与HostComm实验闭环验证
 
 实施基线：`89e5ec1ed18c7232ad07a222b2f1c49059bcdcec`，上一已发布候选rc.4。
-本轮开发候选：`0.3.0-rc.5`；文档修订：`2.0-doc.3`；线协议：`2.0 / 2.0-design.1`。
+本轮候选：`0.3.0-rc.5`；文档修订：`2.0-doc.3`；线协议：`2.0 / 2.0-design.1`。
 
 ## 状态
 
-首个集成提交为 `c6c2a0697c07b378011e3929e4d5aaf3a4af5c56`，见[PR #75](https://github.com/kevinalliswell/smd-web-hmi/pull/75)。第九轮已通过实际Windows安装版业务、报告与清理验收；随后独立工具封装的文件清单校验失败，整轮CI及候选封装仍未通过，未发布资产。该业务通过结论仅覆盖下方记录的构建，不代表Win10/11桌面人工或真机验收。
+首个集成提交为 `c6c2a0697c07b378011e3929e4d5aaf3a4af5c56`，见[PR #75](https://github.com/kevinalliswell/smd-web-hmi/pull/75)。第十一轮共享检查、实际Windows安装版业务、报告、清理、严格封装及下载产物核验均通过，完成HOST-2006—2009的软件范围。结论仅覆盖下方记录的构建和实际字节；候选交付状态、最终提交与字节以对应标签流水线及 Release 附件为准。Win10/11桌面人工与固件/真机验收仍未完成；前十轮失败证据继续保留。
 
 | 层次 | 验证内容 | 当前证据 |
 |---|---|---|
 | 本机软件 | 心跳/租约/重连，未知运行审查与回放，报告空值/完整性门禁，工具归属与发布门禁 | `e27c32ef7e27b20f612e5705bb26b4c5b400512a`在Python3.13.12/macOS后端759通过、2项Windows限定跳过，覆盖率86.88%；Node24前端123通过，类型/lint/build通过；发行门禁补字节绑定反例后8通过 |
 | 模拟器 | 真实TLS、合成阶段、故障注入、日志/报警关联和实际导出 | macOS源码后台与Chromium通过15项业务断言，下载并检查10份实际报告；未替代Windows冻结程序验收 |
-| Windows安装版业务 | 实际NSIS/LocalService；旧安装冒烟；独立工具重新安装并执行TLS/页面/报告 | 第九轮17项业务断言、10份实际报告及清理全部通过；页面/API/console非预期错误均为0，`acceptance.json`为passed且`cleanup_complete=true` |
-| 候选封装与交付 | 运行后工具文件清单、安装器/工具摘要及发行ZIP门禁 | 第九轮`package_bench`发现运行后文件清单与冻结清单不一致，严格校验拒绝封装；整轮CI未通过，不能将业务验收结果视为合格工具ZIP或已发布候选 |
+| Windows安装版业务 | 实际NSIS/LocalService；旧安装冒烟；独立工具重新安装并执行TLS/页面/报告 | 第十一轮17项业务断言、10份实际报告及清理全部通过；页面/API/console非预期错误均为0，`acceptance.json`为passed且`cleanup_complete=true` |
+| 候选封装与交付 | 运行后工具文件清单、安装器/工具摘要及发行ZIP门禁 | 第十一轮冻结自检后清单、最终严格封装及下载产物独立核验通过；摘要见下文。每次标签重新验收实际构建，不能复用不同字节的结论 |
 | Win10/11桌面 | WebView2、关闭窗口持续采集、中文路径、显示缩放、下载及重开 | 未验收，单列人工复验 |
 | 固件/真机 | STM32H750、TLS栈、外设/联锁、工艺时长、完整实验与24小时 | 未验收；固件尚待开发 |
 
@@ -38,11 +38,23 @@ CI发现并复现了两项问题：[首轮](https://github.com/kevinalliswell/sm
 
 [第九轮](https://github.com/kevinalliswell/smd-web-hmi/actions/runs/34156913521)的实际PR合并快照为`e80a65df19c03b8967eca34cd206871b037c8774`（分支`7d57e3cb83cb4edd886bee5fe7acb877ed512337`）。Windows后端761通过/4跳过、覆盖率87.74%，桌面185通过/2跳过，工具53通过。实际NSIS/LocalService安装冒烟、冻结工具自检、独立安装版TLS与全部17项业务断言通过；10份实际HTML/PDF/XLSX报告已逐文件核对SHA256与大小，页面/API/console非预期错误均为0。`acceptance.json`记录`status=passed`、`cleanup_complete=true`；安装器SHA256为`451686b98622b23c9950aab2e8209f14b18e92b1d2caaf0878f3b7b33103f77e`，工具清单SHA256为`4c04bff4536a50e70caa7fb387fd536c91f1eaab5f98d34a6e8cf5148fda366c`。
 
-随后`package_bench.py::verify_inventory`报`Bench bytes changed after freezing`：运行后的工具文件清单与冻结清单不一致，严格校验拦截了发行ZIP封装。因此第九轮的软件业务及清理验收通过，但封装和整轮CI未通过，不能发布该构建。原始acceptance、脱敏页面证据及10份合成报告保存在该轮诊断artifact；私有资料未上传。清单差异及修复后的完整构建另行验证，不以重用本轮acceptance为不同字节的工具背书。
+随后`package_bench.py::verify_inventory`报`Bench bytes changed after freezing`：运行后的工具文件清单与冻结清单不一致，严格校验拦截了发行ZIP封装。因此第九轮的软件业务及清理验收通过，但封装和整轮CI未通过，不能发布该构建。原始acceptance、脱敏页面证据及10份合成报告保存在该轮诊断artifact；私有资料未上传。清单差异与后续完整构建分别核查，不以重用本轮acceptance为不同字节的工具背书。
 
 [第十轮](https://github.com/kevinalliswell/smd-web-hmi/actions/runs/34159811183)的前端、规范、审计和两组Linux检查通过；Windows桌面187通过/2跳过，工具53通过。后端在`test_v2_control_runtime.py::test_queued_recipe_writes_recheck_lease_context[release-recipe_chunk]`的共享`connected`夹具初始化中失败：就绪轮询采用100次10ms等待，结束时`is_online=true`但`_ready=false`；日志同时记录收到6帧、非法帧和丢弃回调均为0。该项业务测试尚未开始执行，后端在613通过/4跳过后以1项setup错误停止，`windows-package`未执行。
 
-共享夹具现使用10秒有界条件等待完整恢复，在启动前登记资源清理，并为新测试库显式开启DDL事务；生产通信期限不变。慢归档、部分启动失败、真实超时和取消的5项新增回归修前全部失败，修后连同原客户端与控制测试26项通过；Windows结果继续由后续CI验证。第九轮17项业务、10份报告及清理通过的证据仍适用于其记录的构建；第十轮未重新运行封装，工具运行后字节清单变化的具体差异尚未取得，交付项目不因此关闭。
+共享夹具现使用10秒有界条件等待完整恢复，在启动前登记资源清理，并为新测试库显式开启DDL事务；生产通信期限不变。慢归档、部分启动失败、真实超时和取消的5项新增回归修前全部失败，修后连同原客户端与控制测试26项通过；第十一轮Windows完整检查也已通过。第九轮17项业务、10份报告及清理通过的证据仍适用于其记录的构建；第十轮未重新运行封装，也未取得工具运行后字节清单变化的具体差异，该轮未关闭交付项目。
+
+[第十一轮](https://github.com/kevinalliswell/smd-web-hmi/actions/runs/34160870535)完整CI通过，安装包任务为`101863391426`。从实际checkout日志独立核对的PR合并快照为`d24150ed7e3a1bd44df083a09a2a479e5d792758`，不是PR分支提交。Windows后端766通过/4跳过，覆盖率87.70%（日志TOTAL行修约为88%）；桌面187通过/2跳过，工具53通过。前端、规范、审计及两组Linux检查全部通过。
+
+该轮冻结工具自检及自检后清单校验、实际NSIS/LocalService安装冒烟、独立安装版TLS与全部17项业务断言通过；10份实际HTML/PDF/XLSX报告逐文件核对SHA256与大小。`acceptance.json`记录`status=passed`、`cleanup_complete=true`；页面/API/console非预期错误均为0。最终`package_bench`严格封装通过，原始acceptance、脱敏页面证据和合成报告保存在该轮诊断artifact。
+
+实际产物下载后再次独立核验版本、完整提交、验收与工具清单关联，978个工具inventory文件全部匹配；`SHA256SUMS`严格包含4个完整且唯一的预期条目，各文件摘要均匹配。核验结果为`verified`，实际摘要如下：
+
+- 安装器SHA256：`a6d755cd6e988e9926394317875b5223833571c8c0a718865ddd81382ca8da91`。
+- 工具manifest SHA256：`d22391e92c463fbda4d14fba52877e7157c9ddf4afb2e55daf6ab6105f6195f8`。
+- SmdBench ZIP SHA256：`d14a8c39ffadc00deb8e8deb90765610863deb5c2d727c51343cfc8792a2de40`。
+
+第九轮工具清单变化在本轮未重现，具体差异和根因仍未定位，不能将本轮通过表述为该问题已明确修复。本轮证据证明上述实际字节通过了完整流程和严格核验；后续标签或重新冻结的产物必须重新验收，不能只引用本轮结果。
 
 ## 测试方法与证据限制
 
