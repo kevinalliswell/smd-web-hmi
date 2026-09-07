@@ -387,6 +387,7 @@ def _render_pdf(
     styles = getSampleStyleSheet()
     for style_name in ("Title", "Heading2", "BodyText"):
         styles[style_name].fontName = font_name
+    styles["Heading2"].keepWithNext = True
     document = SimpleDocTemplate(
         buffer,
         pagesize=A4,
@@ -432,7 +433,7 @@ def _render_pdf(
     meta_table.setStyle(table_style)
     story.extend([meta_table, Spacer(1, 5 * mm), Paragraph("结果指标", styles["Heading2"])])
     metric_data = [["指标", "结果"]] + [
-        [label, _fmt(metrics[key], digits, unit)] for label, key, digits, unit in METRIC_ROWS
+        [label.replace("−", "-"), _fmt(metrics[key], digits, unit)] for label, key, digits, unit in METRIC_ROWS
     ]
     metrics_table = Table(metric_data, colWidths=[82 * mm, 81 * mm], repeatRows=1)
     metrics_table.setStyle(table_style)
@@ -458,7 +459,7 @@ def _render_pdf(
         [
             alarm_table,
             Spacer(1, 5 * mm),
-            Paragraph(f"生成时间：{now_iso()} · smd-web-hmi 自动生成", styles["BodyText"]),
+            Paragraph(f"生成时间：{now_iso()} | smd-web-hmi 自动生成", styles["BodyText"]),
         ]
     )
     document.build(story)
