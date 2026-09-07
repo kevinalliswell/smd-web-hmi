@@ -52,6 +52,18 @@ def check_metrics(metrics: dict, scenario: str) -> None:
             raise AssertionError(f"fixed report oracle differed: {key}")
 
 
+def check_pdf_pages(pages: list[str]) -> None:
+    text = " ".join("\n".join(pages).split())
+    for label in ("T40 - T10", "Td - Ts", "Td - T10"):
+        if label not in text:
+            raise AssertionError("PDF omitted an ASCII temperature-difference label")
+    if "| smd-web-hmi 自动生成" not in text:
+        raise AssertionError("PDF omitted its ASCII footer separator")
+    heading_pages = [page for page in pages if "结果指标" in {line.strip() for line in page.splitlines()}]
+    if not heading_pages or any("炉温峰值" not in page for page in heading_pages):
+        raise AssertionError("PDF results heading is absent or separated from its first metric")
+
+
 def inspect_document(path: Path, test_id: str) -> dict:
     if path.suffix == ".html":
         text = path.read_text(encoding="utf-8")
@@ -61,7 +73,9 @@ def inspect_document(path: Path, test_id: str) -> dict:
         reader = PdfReader(path)
         if not reader.pages:
             raise AssertionError("download has no PDF pages")
-        text = "\n".join(page.extract_text() for page in reader.pages)
+        pages = [page.extract_text() for page in reader.pages]
+        check_pdf_pages(pages)
+        text = "\n".join(pages)
     elif path.suffix == ".xlsx":
         workbook = load_workbook(path, read_only=True, data_only=True)
         try:
