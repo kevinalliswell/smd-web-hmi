@@ -1,6 +1,6 @@
 # HostComm 2.0 上位机运行、离线配对与升级
 
-状态：上位机运行实现及本机自动测试。STM32 固件尚未实现，本页不构成真机、24 小时持续运行或干净 Windows 安装验收证据。语义依据为 [wire.md](wire.md)、[state-and-recovery.md](state-and-recovery.md) 和 [data-and-recipe.md](data-and-recipe.md)。
+文档修订：`2.0-doc.2`（2026-09-07）；设计基线 `2.0-design.1`、线协议 `2.0` 不变。上位机运行、配对及模拟器已有软件实现；STM32 固件尚未实现。用户确认 rc.4 安装成功只证明该次安装结果，不证明升级、空库来源、HostComm 配对、Windows TLS 联调、真机或 24 小时验收通过。语义依据为 [wire.md](wire.md)、[state-and-recovery.md](state-and-recovery.md) 和 [data-and-recipe.md](data-and-recipe.md)。
 
 ## 1. 共用后台与配置
 
@@ -72,7 +72,7 @@ Stop-Service SmdHmi
 
 维护人员可填写依据核查已经无法查询的结果。后台重新读取认证状态并校验安全条件后才接受核查；历史结果仍为未知，不补写“执行成功”。核查标记持久保存，刷新页面后仍有效；后续动作需要用户重新明确确认，并产生新的操作 ID。
 
-连接恢复及测定/安全完成后自动补传源日志。“系统设置”也提供维护权限的日志补传入口，采用后台任务，避免阻塞命令回执。`POST /api/system/maintenance/source-logs` 可指定十进制 uint64 字符串 `first_record_seq` 重新扫描；通过返回的 `task_id` 查询 `/api/system/maintenance/source-logs/{task_id}`。
+连接恢复及测定/安全完成后自动补传源日志。“操作记录”提供管理员的“设备源日志补传”入口，采用后台任务，避免阻塞命令回执。`POST /api/system/maintenance/source-logs` 可指定十进制 uint64 字符串 `first_record_seq` 重新扫描；通过返回的 `task_id` 查询 `/api/system/maintenance/source-logs/{task_id}`。
 
 “扫描完成”只表示本次日志传输完成。扫描水位可越过板端已确认丢失的区间，但验证水位只覆盖连续且已验证的记录；报告仍根据源边界、缺口、质量和首滴事件独立判定完整性。重新扫描不删除既有缺口证据、不覆盖原始记录，也不刷新实时控制状态。
 
@@ -81,3 +81,41 @@ Stop-Service SmdHmi
 操作测试覆盖先持久化再发送、并发序号、未知结果、历史结果不可回退、租约读回；日志测试覆盖原始字节去重、分块落盘后 ACK、终态摘要校验和事务回滚；归档测试覆盖源边界、全局报警、固定修订对账及补传不回退当前报警。桌面配对测试使用真实临时 SQLite 验证停机/互斥、未闭合状态拒绝、替换水位保留、旧材料保留及中断恢复。
 
 这些测试不代替 Windows SCM/DACL、打包程序、断网安装、固件 TLS 栈、真实工程配置、安全联锁和全程实验验收。正式发布证据应分开记录本机软件测试、模拟器测试、Windows 验收和指定硬件/固件组合的实际结果。
+
+## 7. Windows 安装包与同机 TLS 模拟器
+
+下一步先验证安装后的真实后台与软件设备。安装包包含后台、桌面壳和维护工具，**不包含独立模拟器可执行文件**；模拟器须在同一台无设备 Windows 测试机另备源码及 Python 3.13 环境，依赖按仓库锁文件安装。完整组合尚待验收，以下是按现有 [CLI](../../../backend/app/hostcomm/v2_simulator/__main__.py) 整理的启动模板。
+
+模拟器始终禁止实体 I/O，明文与 TLS 模式都只允许 loopback 地址。`--storage` 必填，使用独立模拟器 SQLite，绝不能指向上位机数据库。当前 CLI 自动生成样本；默认合成工程 profile 未批准，`--approve-synthetic-profile` 仅允许在软件模拟值上运行，不构成设备工程批准。
+
+1. 记录包版本、后台服务与登录结果，明确本次数据是保留旧库还是新建；设备尚未配对时显示离线是预期行为。
+2. 在停止服务后按第 2 节为本次软件设备配对。将 `service.env` 的地址/端口设为 `127.0.0.1` / `34212`，保持 `PROTOCOL_VERSION=2.0`、`HOSTCOMM_MOCK=false`；配对工具不会代填地址。使用生成的三项身份和 PSK，不能混用模拟器的默认身份或现场设备材料。
+3. 在能读取受限配对文件的管理员 PowerShell 中启动模拟器，再启动 `SmdHmi` 服务。按下面模板替换路径；`$SimPython` 是另备的源码环境，不能用 `SmdService.exe` 替代。
+
+```powershell
+Set-Location "<源码目录>\backend"
+$SimPython = "<源码虚拟环境>\Scripts\python.exe"
+$SimWork = "<已创建的独立模拟器目录>"
+$PairingFile = "C:\ProgramData\SmdHmi\config\pairings\<事务ID>\firmware-pairing.json"
+$Pairing = Get-Content -LiteralPath $PairingFile -Raw | ConvertFrom-Json
+$PskFile = Join-Path (Split-Path $PairingFile) $Pairing.psk_file
+$PolicyFile = Join-Path $SimWork "openssl-hostcomm.cnf"
+& $SimPython -c "import pathlib,sys; from app.hostcomm.v2_security import OPENSSL_AES128_POLICY; pathlib.Path(sys.argv[1]).write_text(OPENSSL_AES128_POLICY, encoding='ascii')" $PolicyFile
+if ($LASTEXITCODE -ne 0) { throw "Cannot prepare simulator TLS policy" }
+$PreviousOpenSslConf = $env:OPENSSL_CONF
+try {
+    $env:OPENSSL_CONF = $PolicyFile
+    & $SimPython -m app.hostcomm.v2_simulator --storage (Join-Path $SimWork "device.sqlite") --host 127.0.0.1 --port 34212 --psk-file $PskFile --device-id $Pairing.device_id --controller-id $Pairing.controller_id --controller-epoch $Pairing.controller_epoch --approve-synthetic-profile
+} finally {
+    $env:OPENSSL_CONF = $PreviousOpenSslConf
+}
+```
+
+TLS 模拟器需要 Python 的 `ssl.HAS_PSK`。CPython 的上下文 API 不能直接限定 TLS 1.3 密码套件，因此在**新模拟器进程启动前**加载源码中的 `OPENSSL_AES128_POLICY`；模板只改变当前终端环境并在退出后恢复，不修改系统或服务的 TLS 配置。策略未生效、PSK/身份不符或 ACL 不合要求时应诊断失败原因，不能关闭校验或改用 `--test-plaintext` 代替这项 TLS 验收。
+
+4. 在另一管理员终端启动服务；确认后台在线、握手身份/能力正确、恢复完成且状态新鲜，然后验证工程 profile 只读、标准/非标配方校验与原字节回读成功。TCP 连通、应用登录和设备可控制是不同检查点。
+5. 在“操作记录”显式触发日志补传，保存任务终态、设备/控制器身份、版本及截图；扫描完成仍按第 5 节解释。停止测试时先按状态完成处置/确认，再停止服务和模拟器，保留双方独立数据库与受限配对材料供复验。
+
+**完整实验还需要测试驱动。** `finish_measurement()`、`complete_purge()`、`complete_cooling()` 是 [Python 模拟器接口](../../../backend/app/hostcomm/v2_simulator/server.py)，用于控制测试轨迹；它们不是 HostComm 网络命令，也没有对应 CLI 参数或现成页面按钮。启动上述 CLI 不等于已经完成测定至冷却的验收。完整业务交付还须准备可重复的独立驱动，覆盖首滴、自然结束、停止后继续记录、报警确认与结束确认、断线/重启和日志缺口，并记录每个注入点。该驱动不得加入生产控制接口。
+
+软件链路取得证据后继续[固件路线](firmware-plan.md)的 C/Python 向量、持久操作与目标板接入；合成 profile 和模拟器数据不能作为真实传感器、MFC、联锁或国标实验合格依据。

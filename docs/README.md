@@ -1,6 +1,6 @@
 # 文档入口
 
-维护角色：项目维护者。当前候选软件版本为 `0.3.0-rc.4`，状态更新于2026-09-06。本次仅修正安装器诊断及缺失升级准备的提示，见[Windows安装排查记录](verification/2026-09-06-windows-installer-errors.md)；现场日志已确认缺少维护准备文件，尚未验证用户重试成功。rc.3 的 HostComm 2.0 功能与[运行验证](verification/2026-09-06-hostcomm-v2-runtime.md)保留；新候选包仍须通过对应提交的检查，发布状态见 [GitHub Releases](https://github.com/kevinalliswell/smd-web-hmi/releases)。
+维护角色：项目维护者。当前候选软件版本为 `0.3.0-rc.4`；2026-09-07用户确认清理rc.2残留服务后安装成功，见[安装排查记录](verification/2026-09-06-windows-installer-errors.md)。这不证明覆盖升级、空库或HostComm联调已验收。固件文档修订为 `2.0-doc.2`，协议仍为2.0/design.1；当前实现限制和交接目标见[固件交接](hostcomm/v2/firmware-handoff.md)、[兼容核对](hostcomm/v2/compatibility.md)。
 
 历史整改审查基线为 `dev@855c84d425f35279cabb9ac9ed6dc322711c335c`（`0.3.0-rc.1`，2026-09-05）；上一轮软件检查、合并和分支清理见[历史软件验证](verification/2026-09-06-software.md#最终集成软件验证)。基线不冻结后续实现；各任务的提交与验收在任务和证据记录中更新。
 
@@ -10,6 +10,7 @@
 |---|---|---|
 | [实验规范与国标追踪](experiment-spec.md) | 标准/非标实验有哪些条件、算法与报告要求？ | 试验负责人、算法开发 |
 | [系统架构与公共接口](上位机软件开发规格说明书.md) | 桌面、Web、后台和 STM32 如何分工？当前 API 是什么？ | 软件负责人 |
+| [固件开发交接](hostcomm/v2/firmware-handoff.md) / [版本](hostcomm/v2/revisions.md) / [兼容核对](hostcomm/v2/compatibility.md) | 交给固件人员哪些材料、当前是否匹配、谁交付什么及如何验收？ | 项目/后端/固件负责人 |
 | [HostComm v2.0 设计入口](hostcomm/v2/README.md) | 新 STM32 固件应实现哪些报文、状态、恢复和安全边界？ | 后端、固件负责人 |
 | [固件与上位机实施路线](hostcomm/v2/firmware-plan.md) | 从契约到 C 实现、上位机适配和真机验收如何推进？ | 固件、后端、测试负责人 |
 | [STM32H750VBT6 板卡资料](hardware/stm32h750vbt6-board.md) | 板卡有哪些接口、引脚和跳帽？原图在哪里，哪些标注待核实？ | 固件、硬件、维护负责人 |
@@ -34,4 +35,4 @@
 
 活动文档修改后从仓库根运行 `python scripts/check_docs.py`，检查本地 Markdown 链接与章节锚点。外部交付物未入库前以编号登记，不建立不存在的文件链接。
 
-2026-09-06后续现场反馈已确认旧1.0离线准备升级被拒绝；用户选择无设备测试机完整备份后空库重装。新增脚本及用户重装结果按[专项记录](verification/2026-09-06-test-reinstall.md)独立验证，不能由rc.4历史发布证据推定已通过。
+2026-09-06后续现场反馈已确认旧1.0离线准备升级被拒绝；用户选择无设备测试机完整备份后空库重装。新增脚本的Windows CI与用户后续手工清理残留服务后的安装结果按[专项记录](verification/2026-09-06-test-reinstall.md)分别记录；未确认用户执行过该脚本或已取得完整备份/空库验收。

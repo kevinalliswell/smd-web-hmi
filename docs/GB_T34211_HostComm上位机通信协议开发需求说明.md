@@ -1,6 +1,8 @@
 # HostComm 契约：当前约定、目标要求与冻结边界
 
-> 适用范围：本文记录 `0.3.0-rc.2` 的 HostComm **1.0** 及当时的候选要求，供兼容维护和历史核查。当前候选 `0.3.0-rc.3` 已增加 [HostComm v2.0](hostcomm/v2/README.md) 上位机适配与无执行器模拟器，见[运行与配对](hostcomm/v2/runtime.md)、[软件验证](verification/2026-09-06-hostcomm-v2-runtime.md)。固件尚未开发；新固件按2.0契约实施，下文不构成真实固件或真机验收证据。
+> 适用范围：本文记录 `0.3.0-rc.2` 的 HostComm **1.0** 及当时的候选要求，供兼容维护和历史核查。`0.3.0-rc.3` 起已增加 [HostComm v2.0](hostcomm/v2/README.md) 上位机适配与无执行器模拟器，见[运行与配对](hostcomm/v2/runtime.md)、[软件验证](verification/2026-09-06-hostcomm-v2-runtime.md)。固件尚未开发；新固件按2.0契约实施，下文不构成真实固件或真机验收证据。
+
+新固件交接采用 [doc.2 交接说明](hostcomm/v2/firmware-handoff.md)，本页继续保留1.0兼容语境。
 
 维护角色：后端负责人、STM32 固件负责人。历史审查基线 `dev@855c84d`；以下软件约定于2026-09-06记录，适用版本0.3.0-rc.2。这里的“当前约定”仅指该历史版本的1.0客户端和 Mock，尚未证明与真实固件一致。原 V0.1 需求全文已[归档](archive/dev-855c84d/docs/GB_T34211_HostComm上位机通信协议开发需求说明.md)；供应商冻结表、数据字典、SOP 等仍见[外部依赖清单](待确认事项与接口对齐清单.md)。
 
