@@ -1,0 +1,192 @@
+{
+  "schema_version": 1,
+  "recorded_on": "2026-09-08",
+  "scope": "Local controlled SQLite probes and test regression; not Windows installation or firmware acceptance.",
+  "environment": {
+    "os": "macOS-26.3-arm64-arm-64bit-Mach-O",
+    "python": "3.13.12 (main, Mar 10 2026, 18:26:32) [Clang 21.1.4 ]",
+    "sqlite": "3.50.4",
+    "packages": {
+      "SQLAlchemy": "2.0.36",
+      "aiosqlite": "0.20.0",
+      "greenlet": "3.5.5",
+      "pytest": "8.3.4",
+      "pytest-asyncio": "0.24.0"
+    },
+    "capture_note": "Rechecked on 2026-09-08 after these runs using the same unchanged interpreter; the original probe stdout did not embed an environment snapshot."
+  },
+  "source_identity": {
+    "production": [
+      {
+        "commit": "9cc47c0d57135ba1ddde2b6a6d9de2a5ebd90d04",
+        "path": "backend/app/services/v2_operations.py",
+        "sha256": "1fbc33725475fe55e6a0597c868c6f7d59ec57d30d933d38fcb91dfa90164779"
+      },
+      {
+        "commit": "9cc47c0d57135ba1ddde2b6a6d9de2a5ebd90d04",
+        "path": "backend/app/db/database.py",
+        "sha256": "3f320114bde24a53fd8d941df610b6c4f6ad5dc758c8a921def39a7aae452891"
+      }
+    ],
+    "contention_fixture": {
+      "commit": "9cc47c0d57135ba1ddde2b6a6d9de2a5ebd90d04",
+      "path": "backend/tests/test_v2_operations.py",
+      "sha256": "8a087f086345dcea4ca7d1c2fe366bb2a0b5338cb692a9058c058c8eee9576e8"
+    },
+    "corrected_fixture": {
+      "commit": "abdf18b3f45eb96aafcf35e2792c69d9a2ba7f13",
+      "path": "backend/tests/test_v2_operations.py",
+      "sha256": "d6b5e0c7b4ab68b32210b68ddb4cbad2b4a4ea7edf1dd152c36225174083b52d",
+      "git_blob": "583dca29a057b15bfd3e06f872e9b67a4e6174ae"
+    },
+    "execution_note": "Corrected tests were run before committing; their unchanged bytes are identified by the later abdf18b commit and SHA256 here.",
+    "execution_head": "9cc47c0d57135ba1ddde2b6a6d9de2a5ebd90d04"
+  },
+  "reproduction": {
+    "cwd": "backend",
+    "python": "Python 3.13.12 environment with the recorded package versions",
+    "environment": {
+      "PYTHONPATH": "Set to . for the two probe script commands; not explicitly set for the two pytest commands."
+    },
+    "embedded_scripts": "Extract the exact text of each script entry to an external .py file before running it with this environment. The contention script reads tests/test_v2_operations.py and writes ../../allocator-contention-probe.json; use an isolated checkout so that path is an owned output location. The mutation changes only its Python process, not source files."
+  },
+  "contention": {
+    "source_commit": "9cc47c0d57135ba1ddde2b6a6d9de2a5ebd90d04",
+    "command": "PYTHONPATH=. ../../implementation-venv/bin/python ../../probe_allocator_contention.py > ../../allocator-contention-probe.log 2>&1",
+    "script": {
+      "original_filename": "probe_allocator_contention.py",
+      "sha256": "f76b35918d6bf6ae89ca4352471245a3a7466a059dcac86676e9f6e118019a98",
+      "text": "\"\"\"Controlled SQLite writer latency; repo sources remain unchanged.\"\"\"\nimport asyncio,json,runpy,tempfile,time\nfrom pathlib import Path\nimport aiosqlite\nfrom sqlalchemy import text\nfrom sqlalchemy.ext.asyncio import async_sessionmaker,create_async_engine\nfrom app.db.database import _create_engine\nfrom app.db.models import Base\nns=runpy.run_path('tests/test_v2_operations.py')\n\nasync def case(label,wal,shared):\n    with tempfile.TemporaryDirectory(prefix='allocator-contention-') as directory:\n        url='sqlite+aiosqlite:///'+str(Path(directory)/'state.db')\n        engine=_create_engine(url) if wal else create_async_engine(url)\n        async with engine.begin() as con:\n            await con.exec_driver_sql('BEGIN');await con.run_sync(Base.metadata.create_all)\n        factory=async_sessionmaker(engine,expire_on_commit=False)\n        a,_=await ns['coordinator'](factory);b,_=await ns['coordinator'](factory)\n        if shared:b.write_lock=a.write_lock\n        async with engine.connect() as con:\n            journal=await con.scalar(text('PRAGMA journal_mode'))\n            busy=await con.scalar(text('PRAGMA busy_timeout'))\n        commit=aiosqlite.Connection.commit\n        commits=0\n        async def slow_commit(connection):\n            nonlocal commits\n            if connection.in_transaction:\n                commits+=1\n                await asyncio.sleep(.6)\n            return await commit(connection)\n        aiosqlite.Connection.commit=slow_commit\n        started=time.monotonic()\n        try:\n            outcomes=await asyncio.gather(*(ns['stop'](a if i%2 else b) for i in range(12)),return_exceptions=True)\n        finally:\n            aiosqlite.Connection.commit=commit\n        errors=[{'type':type(item).__name__,'reason':str(item).splitlines()[0]} for item in outcomes if isinstance(item,BaseException)]\n        seqs=sorted(int(item['command_seq']) for item in outcomes if isinstance(item,dict))\n        result={'case':label,'journal':journal,'busy_ms':busy,'commits':commits,'elapsed':round(time.monotonic()-started,3),'errors':errors,'seqs':seqs}\n        await engine.dispose()\n        print(json.dumps(result),flush=True)\n        return result\nasync def main():\n    output=[]\n    for arguments in [('old-delete-separate',False,False),('wal-separate',True,False),('production-wal-shared',True,True)]:\n        output.append(await case(*arguments))\n    Path('../../allocator-contention-probe.json').write_text(json.dumps(output,indent=2),encoding='utf-8')\nasyncio.run(main())\n"
+    },
+    "result": [
+      {
+        "case": "old-delete-separate",
+        "journal": "delete",
+        "busy_ms": 5000,
+        "commits": 32,
+        "elapsed": 19.569,
+        "errors": [
+          {
+            "type": "OperationalError",
+            "reason": "(sqlite3.OperationalError) database is locked"
+          }
+        ],
+        "seqs": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11
+        ]
+      },
+      {
+        "case": "wal-separate",
+        "journal": "wal",
+        "busy_ms": 5000,
+        "commits": 30,
+        "elapsed": 18.325,
+        "errors": [
+          {
+            "type": "OperationalError",
+            "reason": "(sqlite3.OperationalError) database is locked"
+          },
+          {
+            "type": "OperationalError",
+            "reason": "(sqlite3.OperationalError) database is locked"
+          }
+        ],
+        "seqs": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10
+        ]
+      },
+      {
+        "case": "production-wal-shared",
+        "journal": "wal",
+        "busy_ms": 5000,
+        "commits": 36,
+        "elapsed": 21.994,
+        "errors": [],
+        "seqs": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12
+        ]
+      }
+    ],
+    "stdout": {
+      "original_filename": "allocator-contention-probe.log",
+      "sha256": "23fdb0b753dac433e3428093f1493db56bb242065d31f6323c0871339ff897f6",
+      "text": "{\"case\": \"old-delete-separate\", \"journal\": \"delete\", \"busy_ms\": 5000, \"commits\": 32, \"elapsed\": 19.569, \"errors\": [{\"type\": \"OperationalError\", \"reason\": \"(sqlite3.OperationalError) database is locked\"}], \"seqs\": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]}\n{\"case\": \"wal-separate\", \"journal\": \"wal\", \"busy_ms\": 5000, \"commits\": 30, \"elapsed\": 18.325, \"errors\": [{\"type\": \"OperationalError\", \"reason\": \"(sqlite3.OperationalError) database is locked\"}, {\"type\": \"OperationalError\", \"reason\": \"(sqlite3.OperationalError) database is locked\"}], \"seqs\": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]}\n{\"case\": \"production-wal-shared\", \"journal\": \"wal\", \"busy_ms\": 5000, \"commits\": 36, \"elapsed\": 21.994, \"errors\": [], \"seqs\": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]}\n"
+    },
+    "qualification": "The injected 600ms commit delay illustrates finite writer-wait contention. Exact counts and timings are observed outputs, not fixed expectations or proof of the CI lock holder. All cases retain busy_timeout=5000."
+  },
+  "mutation": {
+    "source_commit": "abdf18b3f45eb96aafcf35e2792c69d9a2ba7f13",
+    "command": "PYTHONPATH=. ../../implementation-venv/bin/python ../../probe_remove_allocator_reservation.py > ../../v2-operation-concurrency-mutation.log 2>&1",
+    "script": {
+      "original_filename": "probe_remove_allocator_reservation.py",
+      "sha256": "f681192ee3297d7aa1baee909605175ad8ddc1c8c69daa647d240bc08dadf9b6",
+      "text": "\"\"\"Mutation only in this outside-repository Python process; no source edits.\"\"\"\nimport inspect,textwrap\nimport pytest\nimport app.services.v2_operations as module\nsource=textwrap.dedent(inspect.getsource(module.V2OperationCoordinator._intent.__wrapped__))\nreservation='''        await db.execute(\n            update(V2ControllerIdentity)\n            .where(V2ControllerIdentity.device_id == self.device_id)\n            .values(last_seq=V2ControllerIdentity.last_seq)\n        )\n'''\nassert source.count(reservation)==1\nnamespace={}\nexec(source.replace(reservation,''),vars(module),namespace)\nmodule.V2OperationCoordinator._intent=namespace['_intent']\nraise SystemExit(pytest.main(['tests/test_v2_operations.py','-k','independent_allocators_reserve','-q']))\n"
+    },
+    "observed_exit_code": 1,
+    "result": "1 failed, 17 deselected in 0.27s",
+    "exception": "sqlalchemy.exc.IntegrityError",
+    "constraint": "UNIQUE constraint failed: v2_operation.device_id, v2_operation.controller_epoch, v2_operation.command_seq",
+    "conflicting_sequence": "1",
+    "raw_log_sha256": "5c834482da4c8814988b1e2874b9aeec905bd563afd6b26490f4f5ac3d8d46d1",
+    "qualification": "This is the intended negative outcome after removing the reservation; it is a unique sequence conflict, not a timeout. Only the fixed failure summary is published, not the raw traceback."
+  },
+  "passing_tests": [
+    {
+      "source_commit": "abdf18b3f45eb96aafcf35e2792c69d9a2ba7f13",
+      "command": "../../implementation-venv/bin/python -m pytest tests/test_v2_operations.py -q > ../../v2-operation-concurrency-after-final.log 2>&1",
+      "observed_exit_code": 0,
+      "stdout": {
+        "original_filename": "v2-operation-concurrency-after-final.log",
+        "sha256": "166b1b115b4d87dbf5e85184db0f1aa8bd41d048d04a092b8ba0c943365a43d6",
+        "text": "..................                                                       [100%]\n18 passed in 1.33s\n"
+      }
+    },
+    {
+      "source_commit": "abdf18b3f45eb96aafcf35e2792c69d9a2ba7f13",
+      "command": "../../implementation-venv/bin/python -m pytest tests/test_v2_operations.py tests/test_v2_cancellation.py tests/test_v2_metadata_concurrency.py tests/test_v2_command_lifecycle.py tests/test_database_resilience.py -q > ../../v2-operation-concurrency-regressions.log 2>&1",
+      "observed_exit_code": 0,
+      "stdout": {
+        "original_filename": "v2-operation-concurrency-regressions.log",
+        "sha256": "ff485aff05024cae7ee221da41433ed15edd3acf4e5b381e96c7c93382295217",
+        "text": ".............................................                            [100%]\n45 passed in 2.39s\n"
+      }
+    }
+  ],
+  "windows_context": {
+    "failed_main_run": 34173118792,
+    "failed_main_commit": "9cc47c0d57135ba1ddde2b6a6d9de2a5ebd90d04",
+    "corrected_pr_run": 34174233120,
+    "corrected_pr_checkout": "580f64e1021a50f4cba17f2ef9dd82fc4b372571",
+    "qualification": "These local probes do not identify the exact owner or scheduling of the lock in the failed Windows run. The corrected PR Windows run independently passed all required checks."
+  }
+}

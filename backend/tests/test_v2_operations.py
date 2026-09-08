@@ -10,19 +10,22 @@ import sys
 import uuid
 from pathlib import Path
 
+import aiosqlite
 import pytest
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import async_sessionmaker
 
+from app.db.database import _create_engine
 from app.db.models import Base
-from app.db.v2_models import V2Operation, V2OperationReview
+from app.db.v2_models import V2ControllerIdentity, V2Operation, V2OperationReview
+from app.hostcomm.v2_contract.codec import command_digest
 from app.hostcomm.v2_lease import LeaseContext
 from app.services.v2_operations import V2OperationCoordinator, ensure_v2_identity
 
 
 @pytest.fixture
 async def factory(tmp_path):
-    engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path}/v2.db")
+    engine = _create_engine(f"sqlite+aiosqlite:///{tmp_path}/v2.db")
     async with engine.begin() as connection:
         # Keep schema DDL in one durable transaction, preserving runtime DML behavior.
         await connection.exec_driver_sql("BEGIN")
@@ -84,10 +87,10 @@ class Transport:
         return {"type": "command_result" if kind == "command" else "operation_snapshot", "payload": result}
 
 
-async def coordinator(factory, transport=None):
+async def coordinator(factory, transport=None, *, write_lock=None):
     transport = transport or Transport(factory)
     value = V2OperationCoordinator(
-        factory, transport, device_id="3" * 32, controller_id="4" * 32, controller_epoch="5" * 32
+        factory, transport, device_id="3" * 32, controller_id="4" * 32, controller_epoch="5" * 32, write_lock=write_lock
     )
     await value.initialize()
     return value, transport
@@ -113,11 +116,77 @@ async def test_intent_exists_before_wire_and_retry_never_resends(factory):
     assert first["command_seq"] == "1"
 
 
-async def test_concurrent_allocators_keep_unique_sequences(factory):
-    a, _ = await coordinator(factory)
-    b, _ = await coordinator(factory)
-    results = await asyncio.gather(*(stop(a if i % 2 else b) for i in range(12)))
+async def test_concurrent_commands_share_production_writer_and_keep_unique_sequences(factory):
+    # The production V2Client shares its short-write lock across operation and archive services.
+    write_lock = asyncio.Lock()
+    a, _ = await coordinator(factory, write_lock=write_lock)
+    b, _ = await coordinator(factory, write_lock=write_lock)
+    results = await asyncio.gather(*(stop(a if i % 2 else b) for i in range(12)), return_exceptions=True)
+    assert all(isinstance(row, dict) and row["status"] == "applied" for row in results), results
     assert sorted(int(row["command_seq"]) for row in results) == list(range(1, 13))
+
+
+async def test_independent_allocators_reserve_writer_before_reading_sequence(factory, monkeypatch):
+    a, first_wire = await coordinator(factory)
+    b, second_wire = await coordinator(factory)
+    assert a.write_lock is not b.write_lock
+    reserved, contender_started, release = asyncio.Event(), asyncio.Event(), asyncio.Event()
+    loop = asyncio.get_running_loop()
+    execute = aiosqlite.Connection._execute
+    connections = []
+
+    async def observe_reservation(connection, function, *args, **kwargs):
+        if not args or not isinstance(args[0], str) or not args[0].startswith("UPDATE v2_controller_identity SET"):
+            return await execute(connection, function, *args, **kwargs)
+        connections.append(connection)
+        current = len(connections)
+        if current == 2:
+            original = function
+
+            def function(*values, **options):
+                # The contender is in its own SQLite worker, not queued on the first allocator's asyncio lock.
+                loop.call_soon_threadsafe(contender_started.set)
+                return original(*values, **options)
+
+        result = await execute(connection, function, *args, **kwargs)
+        if current == 1:
+            reserved.set()  # The first real UPDATE has reserved the SQLite writer, before the counter SELECT.
+            await release.wait()
+        return result
+
+    monkeypatch.setattr(aiosqlite.Connection, "_execute", observe_reservation)
+    tasks = []
+    try:
+        tasks.append(asyncio.create_task(stop(a)))
+        await asyncio.wait_for(reserved.wait(), 10)
+        tasks.append(asyncio.create_task(stop(b)))
+        await asyncio.wait_for(contender_started.wait(), 10)
+        assert connections[0] is not connections[1]
+        assert not tasks[1].done() and not first_wire.sent and not second_wire.sent
+        release.set()
+        first, second = await asyncio.wait_for(asyncio.gather(*tasks), 15)
+        assert [first["command_seq"], second["command_seq"]] == ["1", "2"]
+        assert first["status"] == second["status"] == "applied"
+        assert len(first_wire.sent) == len(second_wire.sent) == 1
+        async with factory() as db:
+            rows = list((await db.scalars(select(V2Operation))).all())
+            identity = await db.get(V2ControllerIdentity, "3" * 32)
+        assert identity.last_seq == "2" and len(rows) == 2
+        assert {row.operation_id: row.command_seq for row in rows} == {
+            first["operation_id"]: "1",
+            second["operation_id"]: "2",
+        }
+        for row in rows:
+            request = json.loads(row.request_json)
+            result = json.loads(row.result_json)
+            assert row.status == result["status"] == "applied"
+            assert row.command_seq == request["command_seq"] == result["command_seq"]
+            assert row.operation_id == request["operation_id"] == result["operation_id"]
+            assert row.controller_epoch == request["controller_epoch"] == result["controller_epoch"]
+            assert row.request_digest == command_digest(request) == result["request_digest"]
+    finally:
+        release.set()
+        await asyncio.wait_for(asyncio.gather(*tasks, return_exceptions=True), 15)
 
 
 async def test_timeout_restart_and_unknown_request_do_not_retry_side_effect(factory):
