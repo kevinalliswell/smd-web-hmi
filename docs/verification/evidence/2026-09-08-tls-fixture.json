@@ -1,0 +1,176 @@
+{
+  "schema_version": 1,
+  "recorded_on": "2026-09-08",
+  "environment": {
+    "os": "macOS-26.3-arm64-arm-64bit-Mach-O",
+    "python": "3.13.12 (main, Mar 10 2026, 18:26:32) [Clang 21.1.4 ]",
+    "sqlite": "3.50.4",
+    "packages": {
+      "SQLAlchemy": "2.0.36",
+      "aiosqlite": "0.20.0",
+      "greenlet": "3.5.5",
+      "pytest": "8.3.4",
+      "pytest-asyncio": "0.24.0"
+    },
+    "capture_note": "Rechecked after the runs using the same unchanged interpreter; original stdout did not embed environment versions."
+  },
+  "source_identity": {
+    "execution_head": "8e96af02476bd651bd171143c2b64d145aa2cca8",
+    "original_fixture": {
+      "commit": "8e96af02476bd651bd171143c2b64d145aa2cca8",
+      "path": "backend/tests/test_v2_tls_application.py",
+      "sha256": "74b060ed794f4afcc6e63af2d091c99a49248be68239d42e1d8a59fae93c2dd6",
+      "git_blob": "f0507d0d73edf53ca717c1e3e54b1f41975da2fb"
+    },
+    "corrected_fixture": {
+      "commit": "9fac041f27e5af2163c0f29b086d5eed93b15e06",
+      "path": "backend/tests/test_v2_tls_application.py",
+      "sha256": "3a149c2300de0f599694a5fd3e43776c0649a3787714f5476681fe0347aa5ab8",
+      "git_blob": "f60c50b1331a4ac962d8008eb0724168fcf76391"
+    },
+    "qualification": "The four passing tests ran with the corrected fixture uncommitted. Its unchanged bytes were then archived in the identified 9fac041 commit. Production code was unchanged."
+  },
+  "schema_probe": {
+    "cwd": "backend",
+    "command": "PYTHONPATH=. ../../implementation-venv/bin/python ../../probe_tls_schema_transactions.py > ../../tls-schema-transaction-probe.log 2>&1",
+    "script": {
+      "filename": "probe_tls_schema_transactions.py",
+      "sha256": "e6cfd4fd206a2a65638da2585c0105b4f5ec8615ea6e6d7770321f209bca53b5",
+      "text": "\"\"\"Observe real TLS scenario DDL ownership without editing repository sources.\"\"\"\nimport json,os,subprocess,sys,tempfile\nfrom pathlib import Path\nfrom app.hostcomm.v2_security import OPENSSL_AES128_POLICY\nROOT=Path.cwd()\nsource=ROOT/'tests/test_v2_tls_application.py'\nCHILD=r'''\nimport asyncio,json,sys,time\nfrom pathlib import Path\nimport aiosqlite\nsource=Path(sys.argv[1]); directory=Path(sys.argv[2]); explicit=sys.argv[3]=='1'\ncode=source.read_text(encoding='utf-8')\nif explicit:\n    code=code.replace('            await connection.run_sync(Base.metadata.create_all)',\n      '            await connection.exec_driver_sql(\"BEGIN\")\\n            await connection.run_sync(Base.metadata.create_all)')\nstate={'phase':'imports','ddl_inside':0,'ddl_outside':0,'schema_commits_in_transaction':0}\nstarted=time.monotonic()\ndef mark(phase):\n    state['phase']=phase\n    print(json.dumps({'phase':phase,'elapsed':round(time.monotonic()-started,3)}),flush=True)\ncode=code.replace('        async with engine.begin() as connection:', '        mark(\"schema\")\\n        async with engine.begin() as connection:')\ncode=code.replace('        factory = async_sessionmaker', '        mark(\"schema_ready\")\\n        factory = async_sessionmaker')\ncode=code.replace('        await board.start()', '        await board.start()\\n        mark(\"board_started\")')\ncode=code.replace('        assert not client.mock', '        mark(\"client_ready\")\\n        assert not client.mock')\ncode=code.replace('        activated = await client.send_command(', '        mark(\"activate\")\\n        activated = await client.send_command(')\ncode=code.replace('        started = await client.send_command(', '        mark(\"start\")\\n        started = await client.send_command(')\ncode=code.replace('        await client.recover_logs()', '        mark(\"logs\")\\n        await client.recover_logs()')\ncode=code.replace('        if client:\\n', '        mark(\"cleanup\")\\n        if client:\\n')\nnamespace={'__name__':'tls_schema_probe','__file__':str(source),'mark':mark}\nexec(compile(code,str(source),'exec'),namespace)\nexecute=aiosqlite.Cursor.execute\ncommit=aiosqlite.Connection.commit\nasync def observe_execute(cursor,statement,parameters=None):\n    if state['phase']=='schema' and statement.lstrip().upper().startswith('CREATE '):\n        state['ddl_inside' if cursor._conn.in_transaction else 'ddl_outside']+=1\n    return await execute(cursor,statement,parameters)\nasync def observe_commit(connection):\n    if state['phase']=='schema' and connection.in_transaction:\n        state['schema_commits_in_transaction']+=1\n    return await commit(connection)\naiosqlite.Cursor.execute=observe_execute\naiosqlite.Connection.commit=observe_commit\nasyncio.run(namespace['_application_scenario'](directory,True))\nstate.update(elapsed=round(time.monotonic()-started,3),explicit_begin=explicit)\nprint(json.dumps(state),flush=True)\n'''\nresults=[]\nfor explicit in (False,True):\n    with tempfile.TemporaryDirectory(prefix='tls-schema-probe-') as private:\n        directory=Path(private)\n        policy=directory/'openssl.cnf';policy.write_text(OPENSSL_AES128_POLICY,encoding='ascii')\n        key=directory/'synthetic-pairing.psk';key.write_text('37'*32+'\\n',encoding='ascii');key.chmod(0o600)\n        env={**os.environ,'OPENSSL_CONF':str(policy),'PYTHONPATH':str(ROOT)}\n        run=subprocess.run([sys.executable,'-c',CHILD,str(source),str(directory),str(int(explicit))],env=env,cwd=ROOT,capture_output=True,text=True,timeout=25)\n        assert run.returncode==0,run.stdout+run.stderr\n        lines=[json.loads(line) for line in run.stdout.splitlines() if line.startswith('{')]\n        results.append({'explicit_begin':explicit,'observations':lines})\n        print(json.dumps(results[-1]),flush=True)\nPath('../../tls-schema-transaction-probe.json').write_text(json.dumps(results,indent=2),encoding='utf-8')\n"
+    },
+    "result": [
+      {
+        "explicit_begin": false,
+        "observations": [
+          {
+            "phase": "schema",
+            "elapsed": 0.338
+          },
+          {
+            "phase": "schema_ready",
+            "elapsed": 0.359
+          },
+          {
+            "phase": "board_started",
+            "elapsed": 0.36
+          },
+          {
+            "phase": "client_ready",
+            "elapsed": 0.408
+          },
+          {
+            "phase": "activate",
+            "elapsed": 1.426
+          },
+          {
+            "phase": "start",
+            "elapsed": 1.478
+          },
+          {
+            "phase": "logs",
+            "elapsed": 1.572
+          },
+          {
+            "phase": "logs",
+            "elapsed": 1.639
+          },
+          {
+            "phase": "cleanup",
+            "elapsed": 1.667
+          },
+          {
+            "phase": "cleanup",
+            "ddl_inside": 0,
+            "ddl_outside": 41,
+            "schema_commits_in_transaction": 0,
+            "elapsed": 1.669,
+            "explicit_begin": false
+          }
+        ]
+      },
+      {
+        "explicit_begin": true,
+        "observations": [
+          {
+            "phase": "schema",
+            "elapsed": 0.185
+          },
+          {
+            "phase": "schema_ready",
+            "elapsed": 0.202
+          },
+          {
+            "phase": "board_started",
+            "elapsed": 0.202
+          },
+          {
+            "phase": "client_ready",
+            "elapsed": 0.244
+          },
+          {
+            "phase": "activate",
+            "elapsed": 1.254
+          },
+          {
+            "phase": "start",
+            "elapsed": 1.305
+          },
+          {
+            "phase": "logs",
+            "elapsed": 1.397
+          },
+          {
+            "phase": "logs",
+            "elapsed": 1.468
+          },
+          {
+            "phase": "cleanup",
+            "elapsed": 1.495
+          },
+          {
+            "phase": "cleanup",
+            "ddl_inside": 41,
+            "ddl_outside": 0,
+            "schema_commits_in_transaction": 1,
+            "elapsed": 1.496,
+            "explicit_begin": true
+          }
+        ]
+      }
+    ],
+    "stdout": {
+      "filename": "tls-schema-transaction-probe.log",
+      "sha256": "2fa8154bd2bf741a29a1ac5d04dc1667013e8332b2c9ffef4e40b67b44fd03a7",
+      "text": "{\"explicit_begin\": false, \"observations\": [{\"phase\": \"schema\", \"elapsed\": 0.338}, {\"phase\": \"schema_ready\", \"elapsed\": 0.359}, {\"phase\": \"board_started\", \"elapsed\": 0.36}, {\"phase\": \"client_ready\", \"elapsed\": 0.408}, {\"phase\": \"activate\", \"elapsed\": 1.426}, {\"phase\": \"start\", \"elapsed\": 1.478}, {\"phase\": \"logs\", \"elapsed\": 1.572}, {\"phase\": \"logs\", \"elapsed\": 1.639}, {\"phase\": \"cleanup\", \"elapsed\": 1.667}, {\"phase\": \"cleanup\", \"ddl_inside\": 0, \"ddl_outside\": 41, \"schema_commits_in_transaction\": 0, \"elapsed\": 1.669, \"explicit_begin\": false}]}\n{\"explicit_begin\": true, \"observations\": [{\"phase\": \"schema\", \"elapsed\": 0.185}, {\"phase\": \"schema_ready\", \"elapsed\": 0.202}, {\"phase\": \"board_started\", \"elapsed\": 0.202}, {\"phase\": \"client_ready\", \"elapsed\": 0.244}, {\"phase\": \"activate\", \"elapsed\": 1.254}, {\"phase\": \"start\", \"elapsed\": 1.305}, {\"phase\": \"logs\", \"elapsed\": 1.397}, {\"phase\": \"logs\", \"elapsed\": 1.468}, {\"phase\": \"cleanup\", \"elapsed\": 1.495}, {\"phase\": \"cleanup\", \"ddl_inside\": 41, \"ddl_outside\": 0, \"schema_commits_in_transaction\": 1, \"elapsed\": 1.496, \"explicit_begin\": true}]}\n"
+    },
+    "observed_exit_code": 0,
+    "qualification": "Both original and modified real TLS interrupted-upload scenarios completed locally. The probe confirms 41 CREATE statements outside a real SQLite transaction before the change, and 41 inside one transaction with one commit after explicit BEGIN. It does not reproduce the Windows 25s timeout or identify its exact blocking stage.",
+    "reproduction": "Use the original_fixture commit in an isolated checkout; extract the embedded script outside the repository and run from backend with Python/PYTHONPATH as recorded. The script only compiles a modified fixture in its child process, uses temporary synthetic device databases and a deterministic synthetic test key, and writes ../../tls-schema-transaction-probe.json to an owned output directory. No live device is used."
+  },
+  "corrected_tests": {
+    "cwd": "repository root",
+    "command": "../implementation-venv/bin/python -m pytest -c backend/pytest.ini backend/tests/test_v2_tls_application.py -q > ../tls-application-fixture-after.log 2>&1",
+    "stdout": {
+      "filename": "tls-application-fixture-after.log",
+      "sha256": "e6f365cb84b4d952e529ebdbeffbb5bcb299d99dbaa62ebf671f06cc7be0d5bb",
+      "text": "....                                                                     [100%]\n4 passed in 2.17s\n"
+    },
+    "observed_exit_code": 0,
+    "coverage": "Two real TLS recipe/run/stop/cooling/log-recovery branches and str/bytes fixed-stage diagnostic filtering.",
+    "deadlines_seconds": {
+      "child_total": 25,
+      "initial_ready": 6,
+      "reconnect_ready": 10
+    },
+    "qualification": "This is local source-test evidence, not a Windows installer or firmware result. Success is emitted only after client, simulator and database cleanup."
+  },
+  "failed_windows_run": {
+    "run_id": 34176927793,
+    "checkout_commit": "526a3b948b05b7cf6deecb6fca71fdb92406bc2f",
+    "test": "test_real_tls_recipe_run_stop_cooling_and_source_log_recovery[True]",
+    "exception": "subprocess.TimeoutExpired",
+    "limit_seconds": 25,
+    "qualification": "The retained CI log has no child progress output. It cannot establish the exact timeout stage."
+  },
+  "publication_boundary": "Only source text, fixed synthetic observations and passing-test summaries are retained here; no database, generated credential, raw application output or traceback is included."
+}
