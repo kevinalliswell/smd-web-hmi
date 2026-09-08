@@ -50,6 +50,7 @@ def project_status(
     status_receipt: dict | None = None,
     telemetry_receipt: dict | None = None,
     alarm_snapshot: dict | None = None,
+    lease_evidence: dict | None = None,
     now_monotonic: float | None = None,
 ) -> dict:
     """Only status.run determines phase; source/receipt ages determine whether points remain usable."""
@@ -126,7 +127,19 @@ def project_status(
         and int(status.get("lease_expires_uptime_ms") or "0")
         > int(status_frame["uptime_ms"]) + (status_age or 0) * 1000
     )
-    lease_available = status.get("lease_id") is None or lease_current
+    if lease_evidence is not None:
+        status_fresh = bool(
+            status_fresh
+            and lease_evidence["session_id"] == status_frame["session_id"]
+            and lease_evidence["boot_id"] == status_frame["boot_id"]
+            and int(run["state_revision"]) >= lease_evidence["minimum_state_revision"]
+        )
+        lease_current = bool(
+            lease_current and lease_evidence["valid"] and lease_evidence["lease_id"] == status.get("lease_id")
+        )
+    lease_available = (status.get("lease_id") is None or lease_current) and not (
+        lease_evidence and lease_evidence["renewals_paused"]
+    )
     ready = bool(
         control_ready
         and status_fresh
@@ -140,6 +153,7 @@ def project_status(
         {
             "system": {
                 "protocol_version": "2.0",
+                "handshake_control_ready_hint": hello.get("control_ready"),
                 "fw_version": hello.get("fw_version"),
                 "hw_version": hello.get("hw_version"),
                 "control_lease_acquire_required": bool(ready and status.get("lease_id") is None),

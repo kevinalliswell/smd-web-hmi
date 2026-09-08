@@ -3,13 +3,14 @@
 import asyncio
 import copy
 import json
+import time
 import uuid
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
-from app.hostcomm.v2_contract.codec import encode_message, strict_loads
+from app.hostcomm.v2_contract.codec import command_digest, encode_message, strict_loads
 from app.hostcomm.v2_transport import V2CapacityError, V2RemoteError, V2Transport, V2TransportError
 
 VECTORS = json.loads(
@@ -121,6 +122,18 @@ def transport(peer, **options):
     )
 
 
+def seed_lease(client, lease_id):
+    if lease_id is None:
+        client.clear_lease(client.lease_token())
+        return
+    frame = example("status_snapshot")
+    frame.update(session_id=client.session_id, boot_id=client.boot_id)
+    frame["payload"].update(
+        lease_id=lease_id, lease_owner_controller_id=client.controller_id, lease_owner_session_id=client.session_id
+    )
+    assert client.leases.confirm(frame, client.lease_token(), lease_id, started=time.monotonic(), now=time.monotonic())
+
+
 async def eventually(check, seconds=1):
     async with asyncio.timeout(seconds):
         while not check():
@@ -163,8 +176,11 @@ async def test_command_timeout_never_retransmits_and_reconnect_clears_lease():
     client = transport(peer)
     try:
         await client.start()
-        client.set_lease("a" * 32)
+        seed_lease(client, "a" * 32)
         payload = example("command")["payload"]
+        payload["lease_id"] = client.lease_id
+        payload["expected_state_revision"] = str(client.leases.minimum_revision)
+        payload["request_digest"] = command_digest(payload)
         with pytest.raises(TimeoutError):
             await client.request("command", payload)
         assert peer.commands == 1
@@ -199,7 +215,7 @@ async def test_connectivity_heartbeat_never_adopts_or_erases_a_lease(local_lease
     client = transport(peer, heartbeat_interval=30)
     try:
         await client.start()
-        client.set_lease(local_lease)
+        seed_lease(client, local_lease)
         reply = await client.request("heartbeat", {"lease_id": None})
         assert reply["payload"]["lease_id"] == "a" * 32
         assert client.is_online
@@ -215,7 +231,7 @@ async def test_renewal_heartbeat_rejects_different_or_missing_lease(mode):
     client = transport(peer, heartbeat_interval=30)
     try:
         await client.start()
-        client.set_lease("b" * 32)
+        seed_lease(client, "b" * 32)
         with pytest.raises(V2TransportError):
             await client.request("heartbeat", {"lease_id": "b" * 32})
         assert not client.is_online
@@ -367,3 +383,33 @@ def test_saturated_read_slots_have_structured_capacity_error_but_do_not_take_the
         client._check_capacity("get_status", {})
     client._check_capacity("command", {"command": "stop_run"})
     client._check_capacity("heartbeat", {})
+
+
+@pytest.mark.parametrize("lease,expiry", [(None, "20000"), ("a" * 32, None), ("a" * 32, "50000")])
+async def test_single_correlated_invalid_lease_ack_disconnects_immediately(lease, expiry):
+    class InvalidLeasePeer(Peer):
+        async def reply(self, writer, request, kind, payload):
+            if kind != "heartbeat_ack":
+                return await super().reply(writer, request, kind, payload)
+            frame = example(kind)
+            frame.update(msg_id=uuid.uuid4().hex, reply_to=request["msg_id"], session_id=self.session)
+            frame["payload"].update(lease_id=lease, lease_expires_uptime_ms=expiry)
+            writer.write((json.dumps(frame) + "\n").encode("utf-8"))
+            await writer.drain()
+
+    peer = await InvalidLeasePeer().start()
+    client = transport(peer, response_timeout=3, heartbeat_interval=30)
+    request = None
+    try:
+        await client.start()
+        request = asyncio.create_task(client.request("heartbeat", {"lease_id": None}))
+        await eventually(lambda: not client.is_online, seconds=0.5)
+        with pytest.raises(V2TransportError):
+            await request
+        assert client.invalid_frames <= 1
+    finally:
+        if request:
+            request.cancel()
+            await asyncio.gather(request, return_exceptions=True)
+        await client.close()
+        await peer.close()

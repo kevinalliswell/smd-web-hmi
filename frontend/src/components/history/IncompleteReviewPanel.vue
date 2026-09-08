@@ -14,6 +14,7 @@ const open = ref(false),
   message = ref('')
 const safe = computed(
   () =>
+    !props.test.measurement_basis?.v2 && !props.test.measurement_basis?.recovery &&
     device.isFresh &&
     device.operationState === 'idle' &&
     device.snapshot.measurement?.burden_temp_valid === true &&
@@ -52,8 +53,12 @@ async function close() {
     <p>
       仅在现场处置完成后，将无法正常对账的会话归档为“不完整”。此操作不会补造测定完成或有效实验结果。
     </p>
+    <p v-if="test.measurement_basis?.v2 || test.measurement_basis?.recovery" class="muted">
+      HostComm v2 必须恢复本次运行的板端安全完成边界，现场确认或其他运行的待机状态不能替代。
+      <RouterLink to="/run-recoveries">打开运行恢复</RouterLink>
+    </p>
     <p
-      v-if="!safe"
+      v-else-if="!safe"
       class="muted"
     >
       须设备在线、数据新鲜、处于待机，且有效料层温度低于 200℃。

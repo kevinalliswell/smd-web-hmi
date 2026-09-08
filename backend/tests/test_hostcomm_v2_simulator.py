@@ -98,6 +98,47 @@ class Peer:
         await self.writer.wait_closed()
 
 
+async def test_reboot_resets_automatic_sampling_schedule_and_next_start(tmp_path):
+    clock = [0]
+    device = V2Simulator(
+        tmp_path / "reboot-sampling.sqlite",
+        test_plaintext=True,
+        clock=lambda: clock[0],
+        profile=synthetic_profile(approved=True),
+        auto_sample=True,
+    )
+
+    async def wait_for(predicate):
+        async with asyncio.timeout(3):
+            while not predicate():
+                await asyncio.sleep(0.01)
+
+    peer = None
+    try:
+        await device.start()
+        await asyncio.sleep(0)  # Let the periodic sampler establish its first boot's schedule.
+        clock[0] = 180000
+        await wait_for(lambda: int(device.state.data["sample_seq"]) >= 2)
+        previous_boot = device.boot_id
+        await device.reboot()
+        assert device.now() == 0 and device.boot_id != previous_boot
+        peer = Peer(device)
+        await peer.connect()
+        run_id, _ = await running(peer, tick=False)
+        assert device.state.run["state"] == "preparing"
+        clock[0] += device.sample_period_ms
+        # No private tick or resent start: the first new-boot scheduled sample
+        # must apply the accepted command without waiting 180 seconds to catch up.
+        await wait_for(lambda: device.state.run["state"] == "measuring")
+        assert device.state.run["run_id"] == run_id
+        assert device.state.run["measurement_start"]["boot_id"] == device.boot_id
+        assert device.now() == device.sample_period_ms
+    finally:
+        if peer:
+            await peer.close()
+        await device.close()
+
+
 @pytest.fixture
 async def device(tmp_path):
     sim = V2Simulator(

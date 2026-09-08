@@ -23,6 +23,23 @@ def migrate() -> None:
     command.upgrade(config, "head")
 
 
+def create_server(settings):
+    """SCM waits for actual exit; only HTTP/WebSocket request draining is bounded."""
+    import uvicorn
+
+    config = uvicorn.Config(
+        "app.main:app",
+        host=settings.smd_host,
+        port=settings.smd_port,
+        workers=1,
+        log_config=None,
+        proxy_headers=False,
+        timeout_graceful_shutdown=15,
+        **tls_options(settings.smd_host),
+    )
+    return uvicorn.Server(config)
+
+
 def main() -> None:
     data, version = data_root(), version_root()
     load_environment(data, version)
@@ -58,8 +75,6 @@ def main() -> None:
                 self.server.should_exit = True
 
         def SvcDoRun(self):
-            import uvicorn
-
             from app.core.config import get_settings
 
             with single_instance("SmdHmi.Backend", data / "backend.lock"):
@@ -71,16 +86,7 @@ def main() -> None:
                 )
                 logging.basicConfig(handlers=[handler], level=logging.INFO, force=True)
                 sys.stdout = sys.stderr = LogStream(logging.getLogger("backend.stdout"))
-                config = uvicorn.Config(
-                    "app.main:app",
-                    host=settings.smd_host,
-                    port=settings.smd_port,
-                    workers=1,
-                    log_config=None,
-                    proxy_headers=False,
-                    **tls_options(settings.smd_host),
-                )
-                self.server = uvicorn.Server(config)
+                self.server = create_server(settings)
                 self.server.should_exit = self.stop_requested
                 self.server.run()
 

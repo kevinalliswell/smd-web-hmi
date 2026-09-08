@@ -16,6 +16,7 @@ from datetime import datetime, timezone
 from app.core.logging import get_logger
 from app.hostcomm.v2_contract.codec import decode_chunk, encode_message, strict_loads, validate_message
 from app.hostcomm.v2_contract.types import MAX_FRAME_BYTES
+from app.hostcomm.v2_lease import LeaseContext, LeaseToken
 from app.hostcomm.v2_security import V2SecurityError, create_client_context, psk_identity, verify_tls
 
 logger = get_logger("hostcomm.v2_transport")
@@ -68,6 +69,9 @@ class Pending:
     payload: dict
     future: asyncio.Future
     progress: float = field(default_factory=time.monotonic)
+    started_at: float = field(default_factory=time.monotonic)
+    lease_token: LeaseToken | None = None
+    deadline: float | None = None
     log_received_offset: int = 0
     log_acked_offset: int = 0
 
@@ -89,6 +93,7 @@ class V2Transport:
         client_version: str,
         on_message: Callback | None = None,
         on_connection: Callback | None = None,
+        on_state_revision: Callable[[int], None] | None = None,
         mock: bool = False,
         response_timeout: float = 3.0,
         heartbeat_interval: float = 2.0,
@@ -101,6 +106,7 @@ class V2Transport:
         self.device_id, self.controller_id, self.controller_epoch = device_id, controller_id, controller_epoch
         self.psk_file, self.client_version, self.mock = psk_file, client_version, mock
         self.on_message, self.on_connection = on_message, on_connection
+        self.on_state_revision = on_state_revision
         self.response_timeout, self.heartbeat_interval = response_timeout, heartbeat_interval
         self.frame_timeout, self.connect_timeout, self.reconnect_base = frame_timeout, connect_timeout, reconnect_base
         if (
@@ -108,7 +114,8 @@ class V2Transport:
             or min(response_timeout, heartbeat_interval, frame_timeout, connect_timeout, reconnect_base) <= 0
         ):
             raise ValueError("Transport timeouts and bounded queue capacity must be positive")
-        self.boot_id = self.session_id = self.lease_id = None
+        self.boot_id = self.session_id = None
+        self.leases = LeaseContext(controller_id)
         self.hello_payload: dict | None = None
         self._online = False
         self._callback_fault = False
@@ -128,19 +135,71 @@ class V2Transport:
         self.frames_received = self.invalid_frames = self.dropped_callbacks = 0
         self.last_error: str | None = None
         self._credentials_notice_identity = None
+        self._connected_at = None
+        self._valid_heartbeat = False
+        self._recipe_transfer = None
 
     @property
     def is_online(self) -> bool:
         return self._online and not self._stopping and not self._callback_fault
 
-    def set_lease(self, lease_id: str | None) -> None:
-        if lease_id is not None:
-            if not self.is_online:
-                raise V2OfflineError("Cannot retain a lease for an offline connection")
-            uuid.UUID(hex=lease_id)
-            if len(lease_id) != 32 or lease_id != lease_id.lower():
-                raise ValueError("lease_id must be lowercase UUID hex")
-        self.lease_id = lease_id
+    @property
+    def lease_id(self):
+        return self.leases.lease_id
+
+    def lease_token(self):
+        return self.leases.token()
+
+    def lease_evidence(self):
+        if self.leases.expire(time.monotonic()):
+            self._disconnect("lease_expired")
+        return self.leases.evidence(time.monotonic())
+
+    def confirm_lease(self, frame, token, lease_id):
+        receipt = self.receipt_metadata(frame["msg_id"])
+        started = receipt.get("request_started_monotonic")
+        if not self.is_online or started is None:
+            return False
+        try:
+            return self.leases.confirm(frame, token, lease_id, started=started, now=time.monotonic())
+        except ValueError:
+            return False
+
+    def clear_lease(self, token):
+        return self.leases.clear(token)
+
+    async def quiesce_lease(self, lease_id):
+        token = self.lease_token()
+        if token.lease_id != lease_id or lease_id is None:
+            raise V2ProtocolError("Release does not match the current lease")
+        self.leases.renewals_paused = True
+        # An already-written renewal must settle before release is sent. Its
+        # original request owns the deadline; waiting never creates a new one.
+        pending = [
+            item.future
+            for item in self._pending.values()
+            if item.kind == "heartbeat" and item.payload["lease_id"] is not None
+        ]
+        try:
+            if pending:
+                await asyncio.gather(*(asyncio.shield(item) for item in pending))
+        except BaseException:
+            if token == self.lease_token():
+                self._disconnect("lease_release_interrupted")
+            raise
+        if token != self.lease_token() or not self.is_online:
+            raise V2OfflineError("Lease context changed before release")
+        return token
+
+    def finish_release(self, token, *, applied):
+        if token != self.lease_token():
+            return
+        if applied:
+            self.clear_lease(token)
+            self.leases.renewals_paused = False
+        else:
+            # An ambiguous release must not silently restart renewal.
+            self._disconnect("lease_release_unconfirmed")
 
     def receipt_metadata(self, msg_id: str) -> dict:
         result = dict(self._receipts.get(msg_id, {}))
@@ -191,7 +250,6 @@ class V2Transport:
                 self._disconnected.clear()
                 try:
                     await self._open()
-                    delay = self.reconnect_base
                     if not self._initial.done():
                         self._initial.set_result(None)
                     await self._disconnected.wait()
@@ -207,14 +265,26 @@ class V2Transport:
                 finally:
                     if not self._initial.done():
                         self._initial.set_result(None)
+                    if self._stable_connection():
+                        delay = self.reconnect_base
                     await self._teardown()
                 if not self._stopping:
-                    await asyncio.sleep(delay * random.uniform(0.9, 1.1))
+                    await asyncio.sleep(self._retry_delay(delay))
                     delay = min(delay * 2, 30.0)
         finally:
             self._online = False
 
+    def _retry_delay(self, base):
+        return random.uniform(min(base * 0.9, 30.0), min(base * 1.1, 30.0))
+
+    def _stable_connection(self):
+        return bool(
+            self._connected_at is not None and self._valid_heartbeat and time.monotonic() - self._connected_at >= 30.0
+        )
+
     async def _open(self) -> None:
+        self._connected_at = None
+        self._valid_heartbeat = False
         identity = psk_identity(self.device_id, self.controller_id, self.controller_epoch)
         if self.mock:
             try:
@@ -264,6 +334,7 @@ class V2Transport:
         self.boot_id, self.session_id, self.hello_payload = response["boot_id"], response["session_id"], payload
         self._online = True
         self.last_error = None
+        self._connected_at = time.monotonic()
         self._notify("online", "handshake_complete")
         self._heartbeat_task = asyncio.create_task(self._heartbeats(), name="hostcomm-v2-heartbeat")
 
@@ -284,7 +355,8 @@ class V2Transport:
     def _disconnect(self, reason: str) -> None:
         already = self._disconnected.is_set()
         self._online = False
-        self.lease_id = None
+        self.leases.reset()
+        self._recipe_transfer = None
         self._disconnected.set()
         for pending in self._pending.values():
             if not pending.future.done():
@@ -315,7 +387,8 @@ class V2Transport:
             except (TimeoutError, ConnectionError):
                 pass
         self._reader_task = self._heartbeat_task = None
-        self.boot_id = self.session_id = self.lease_id = None
+        self.boot_id = self.session_id = None
+        self.leases.reset()
 
     def _frame(self, kind: str, payload: dict, msg_id: str | None, reply_to: str | None) -> dict:
         return {
@@ -338,6 +411,7 @@ class V2Transport:
         frame = self._frame(message_type, payload, msg_id, reply_to)
         raw = encode_message(frame)
         writer = self._writer
+        lease_token = self.lease_token()
         log_pending = None
         if message_type == "log_ack":
             log_pending = next(
@@ -359,6 +433,41 @@ class V2Transport:
             async with self._write_lock:
                 if writer is not self._writer or writer.is_closing():
                     raise V2OfflineError("Connection changed before write")
+                if message_type in {"recipe_begin", "recipe_chunk"}:
+                    evidence = self.lease_evidence()
+                    if (
+                        not evidence["valid"]
+                        or lease_token != self.lease_token()
+                        or self.leases.status_revision < self.leases.minimum_revision
+                    ):
+                        raise V2ProtocolError("Current lease and status evidence do not permit recipe upload")
+                    if message_type == "recipe_begin":
+                        if payload["lease_id"] != self.lease_id:
+                            raise V2ProtocolError("Recipe upload lease does not match current ownership")
+                        self._recipe_transfer = (payload["transfer_id"], lease_token)
+                    elif self._recipe_transfer != (payload["transfer_id"], lease_token):
+                        raise V2ProtocolError("Recipe chunk does not belong to the original lease context")
+                if message_type == "command" and payload["command"] != "stop_run":
+                    self.lease_evidence()
+                    if not self.is_online:
+                        raise V2OfflineError("Current lease context expired before command write")
+                if (
+                    message_type == "command"
+                    and self.leases.renewals_paused
+                    and payload["command"] not in {"stop_run", "release_lease"}
+                ):
+                    raise V2ProtocolError("Lease release is in progress; ordinary writes are paused")
+                if message_type == "command" and payload["command"] not in {"stop_run", "acquire_lease"}:
+                    evidence = self.lease_evidence()
+                    release = payload["command"] == "release_lease"
+                    if (
+                        payload["lease_id"] != self.lease_id
+                        or self.lease_id is None
+                        or self.leases.expires_at <= time.monotonic()
+                        or (evidence["renewals_paused"] and not release)
+                        or int(payload["expected_state_revision"] or "0") < self.leases.minimum_revision
+                    ):
+                        raise V2ProtocolError("Current lease or state evidence does not permit this write")
                 writer.write(raw)
                 if log_pending is not None:
                     log_pending.log_acked_offset = payload["next_offset"]
@@ -389,6 +498,8 @@ class V2Transport:
     ) -> dict:
         if message_type not in REPLIES:
             raise V2ProtocolError("Message does not have a request/response contract")
+        if message_type == "heartbeat" and payload["lease_id"] is not None and self.leases.renewals_paused:
+            raise V2ProtocolError("Lease release has paused new renewal requests")
         self._check_capacity(message_type, payload)
         mid = msg_id or uuid.uuid4().hex
         if mid in self._pending or mid in self._retired:
@@ -396,11 +507,21 @@ class V2Transport:
         total = timeout if timeout is not None else (60.0 if message_type == "log_request" else self.response_timeout)
         if not 0 < total <= 1800:
             raise ValueError("Request deadline must be within 0..1800 seconds")
-        pending = Pending(message_type, payload, asyncio.get_running_loop().create_future())
+        pending = Pending(
+            message_type, payload, asyncio.get_running_loop().create_future(), lease_token=self.lease_token()
+        )
         self._pending[mid] = pending
         try:
-            await self.send(message_type, payload, msg_id=mid)
-            deadline = time.monotonic() + total
+            if message_type == "heartbeat":
+                deadline = pending.started_at + total
+                pending.deadline = deadline
+                try:
+                    await asyncio.wait_for(self.send(message_type, payload, msg_id=mid), total)
+                except TimeoutError:
+                    raise V2RequestTimeout("Heartbeat write and acknowledgement deadline exceeded") from None
+            else:
+                await self.send(message_type, payload, msg_id=mid)
+                deadline = time.monotonic() + total
             while True:
                 remaining = deadline - time.monotonic()
                 if message_type == "log_request":
@@ -451,7 +572,19 @@ class V2Transport:
                             try:
                                 if b"\r" in buffer:
                                     raise ValueError("CRLF is forbidden")
-                                message = validate_message(strict_loads(bytes(buffer))).model_dump(mode="python")
+                                parsed = strict_loads(bytes(buffer))
+                                try:
+                                    message = validate_message(parsed).model_dump(mode="python")
+                                except ValueError:
+                                    if isinstance(parsed, dict) and parsed.get("type") == "heartbeat_ack":
+                                        reply = parsed.get("reply_to")
+                                        pending = self._pending.get(reply) if isinstance(reply, str) else None
+                                        if pending is not None and pending.kind == "heartbeat":
+                                            self.invalid_frames += 1
+                                            raise V2ProtocolError(
+                                                "Invalid correlated heartbeat acknowledgement"
+                                            ) from None
+                                    raise
                             except (ValueError, UnicodeError):
                                 self.invalid_frames += 1
                                 consecutive += 1
@@ -485,6 +618,8 @@ class V2Transport:
             raise V2ProtocolError("Message does not belong to current session and boot")
         self.frames_received += 1
         self._receipts[message["msg_id"]] = {"received_at": utc_now(), "received_monotonic": time.monotonic()}
+        if pending is not None:
+            self._receipts[message["msg_id"]]["request_started_monotonic"] = pending.started_at
         if len(self._receipts) > 512:
             self._receipts.popitem(last=False)
         if reply is not None:
@@ -533,6 +668,7 @@ class V2Transport:
                 # context before resolving the handshake waiter, not after a task switch.
                 self.boot_id, self.session_id, self.hello_payload = message["boot_id"], message["session_id"], payload
                 self._online = True
+                self.leases.reset(self.session_id, self.boot_id)
             if pending.kind in {"command", "get_operation"}:
                 for key in ("operation_id", "controller_epoch", "command_seq"):
                     if message["payload"][key] != pending.payload[key]:
@@ -546,6 +682,26 @@ class V2Transport:
                 and message["payload"]["lease_id"] != pending.payload["lease_id"]
             ):
                 raise V2ProtocolError("Heartbeat did not confirm the requested lease")
+            if kind == "heartbeat_ack":
+                if pending.deadline is None or time.monotonic() >= pending.deadline:
+                    raise V2ProtocolError("Heartbeat acknowledgement arrived after its absolute deadline")
+                old_revision = self.leases.minimum_revision
+                self.leases.heartbeat(
+                    message,
+                    pending.lease_token,
+                    pending.payload["lease_id"],
+                    started=pending.started_at,
+                    now=time.monotonic(),
+                )
+                self._valid_heartbeat = True
+                if self.leases.minimum_revision > old_revision and self.on_state_revision is not None:
+                    # The callback only schedules a refresh; it must not do I/O
+                    # or wait behind the durable source-record callback queue.
+                    self.on_state_revision(self.leases.minimum_revision)
+            elif kind == "status_snapshot":
+                self.leases.observe_status(message, started=pending.started_at, now=time.monotonic())
+                if self.leases.revoked:
+                    self._disconnect("lease_expired")
             if not pending.future.done():
                 pending.future.set_result(message)
             return
@@ -593,9 +749,18 @@ class V2Transport:
 
     async def _heartbeats(self) -> None:
         try:
+            next_due = time.monotonic() + self.heartbeat_interval
             while self.is_online:
-                await asyncio.sleep(self.heartbeat_interval)
-                await self.request("heartbeat", {"lease_id": self.lease_id})
+                await asyncio.sleep(max(0, next_due - time.monotonic()))
+                if not self.is_online:
+                    break
+                started = time.monotonic()
+                self.lease_evidence()
+                if not self.is_online:
+                    break
+                lease = None if self.leases.renewals_paused else self.lease_id
+                await self.request("heartbeat", {"lease_id": lease})
+                next_due = started + self.heartbeat_interval
         except asyncio.CancelledError:
             raise
         except Exception:

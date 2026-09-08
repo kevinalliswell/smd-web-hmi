@@ -35,9 +35,14 @@ def main():
     runtime = check(ROOT / "backend/requirements.txt", ROOT / "backend/requirements.lock")
     development = check(ROOT / "backend/requirements-dev.txt", ROOT / "backend/requirements-dev.lock")
     desktop = check(ROOT / "desktop/requirements.in", ROOT / "desktop/requirements.lock")
+    bench = check(ROOT / "tools/bench/requirements.in", ROOT / "tools/bench/requirements.lock")
     for name, versions in runtime.items():
         if development.get(name) != versions or (name in desktop and desktop[name] != versions):
             raise ValueError(f"{name}: runtime/development/desktop locks disagree")
+    for name, versions in bench.items():
+        for shared in (runtime, development, desktop):
+            if name in shared and shared[name] != versions:
+                raise ValueError(f"{name}: independent bench and application locks disagree")
     print("Dependency declarations and locks agree")
 
 

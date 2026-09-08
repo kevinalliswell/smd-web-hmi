@@ -298,36 +298,63 @@ class V2OperationCoordinator:
         return await self.get(operation_id)
 
     async def acquire_lease(self, *, actor, role, operation_id=None):
+        token = self.transport.lease_token()
         row = await self.submit("acquire_lease", {"lease_ms": 8000}, actor=actor, role=role, operation_id=operation_id)
         result = row["result"] or {}
         if row["status"] == "applied" and result.get("result_boot_id") == self.transport.boot_id:
             frame = await self.transport.request("get_status", {})
-            snapshot = StatusSnapshot.model_validate(frame["payload"])
-            if (
-                frame.get("boot_id") == self.transport.boot_id
-                and frame.get("session_id") == self.transport.session_id
-                and frame.get("uptime_ms") is not None
-                and int(snapshot.lease_expires_uptime_ms or "0") > int(frame["uptime_ms"])
-                and snapshot.lease_id == result.get("lease_id")
-                and snapshot.lease_id
-                and snapshot.lease_owner_controller_id == self.controller_id
-                and snapshot.lease_owner_session_id == self.transport.session_id
-            ):
-                self.transport.set_lease(snapshot.lease_id)
+            StatusSnapshot.model_validate(frame["payload"])
+            self.transport.confirm_lease(frame, token, result.get("lease_id"))
         return row
 
+    @finish_db_work
+    async def _applied_lease(self, lease_id):
+        async with self.factory() as db:
+            rows = await db.scalars(
+                select(V2Operation)
+                .where(
+                    V2Operation.device_id == self.device_id,
+                    V2Operation.controller_epoch == self.controller_epoch,
+                    V2Operation.command == "acquire_lease",
+                    V2Operation.status == "applied",
+                )
+                .order_by(V2Operation.updated_at.desc())
+                .limit(128)
+            )
+            for row in rows:
+                result = OperationResult.model_validate(json.loads(row.result_json))
+                request = COMMAND_ADAPTER.validate_python(json.loads(row.request_json))
+                if (
+                    result.lease_id == lease_id
+                    and result.result_boot_id == self.transport.boot_id
+                    and request.expected_boot_id == self.transport.boot_id
+                ):
+                    return True
+        return False
+
+    async def confirm_owned_lease(self, frame):
+        token = self.transport.lease_token()
+        lease_id = frame["payload"]["lease_id"]
+        if token.lease_id != lease_id and not await self._applied_lease(lease_id):
+            return False
+        return self.transport.confirm_lease(frame, token, lease_id)
+
     async def release_lease(self, *, actor, role, lease_id, state_revision, reason="operator_release"):
-        row = await self.submit(
-            "release_lease",
-            {"reason": reason},
-            actor=actor,
-            role=role,
-            lease_id=lease_id,
-            state_revision=state_revision,
-        )
-        if row["status"] == "applied":
-            self.transport.set_lease(None)
-        return row
+        token = await self.transport.quiesce_lease(lease_id)
+        applied = False
+        try:
+            row = await self.submit(
+                "release_lease",
+                {"reason": reason},
+                actor=actor,
+                role=role,
+                lease_id=lease_id,
+                state_revision=state_revision,
+            )
+            applied = row["status"] == "applied"
+            return row
+        finally:
+            self.transport.finish_release(token, applied=applied)
 
     async def reconcile_unknown(self, operation_id, *, actor, reason):
         """Read a fresh authenticated snapshot ourselves; never accept an HTTP safety boolean."""

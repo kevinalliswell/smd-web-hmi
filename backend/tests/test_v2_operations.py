@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.db.models import Base
 from app.db.v2_models import V2Operation, V2OperationReview
+from app.hostcomm.v2_lease import LeaseContext
 from app.services.v2_operations import V2OperationCoordinator, ensure_v2_identity
 
 
@@ -40,10 +41,21 @@ class Transport:
         self.factory, self.sent = factory, []
         self.timeout = False
         self.block = None
-        self.lease = None
+        self.leases = LeaseContext("4" * 32)
+        self.leases.reset(self.session_id, self.boot_id)
 
-    def set_lease(self, value):
-        self.lease = value
+    @property
+    def lease(self):
+        return self.leases.lease_id
+
+    def lease_token(self):
+        return self.leases.token()
+
+    def confirm_lease(self, frame, token, lease_id):
+        try:
+            return self.leases.confirm(frame, token, lease_id, started=100, now=100)
+        except ValueError:
+            return False
 
     async def request(self, kind, payload, **kwargs):
         self.sent.append((kind, copy.deepcopy(payload), kwargs))
@@ -333,11 +345,11 @@ def test_v2_migration_preserves_old_source_order_as_unknown(tmp_path):
             "SELECT test_id,source_boot_id,source_sequence,source_run_id,source_uptime_ms FROM sample_point"
         ).fetchall() == [("old", None, None, None, None)]
         tables = {row[0] for row in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
-        assert len({name for name in tables if name.startswith("v2_")}) == 12
+        assert len({name for name in tables if name.startswith("v2_")}) == 15
         db.execute(
             "INSERT INTO v2_log_cursor(device_id,log_id,verified_from_seq,verified_through_seq,updated_at) VALUES(?,?,?,?,?)",
             ("a" * 32, "b" * 32, "1", "2", "2026-09-06T00:00:00Z"),
         )
         assert db.execute("SELECT scanned_through_seq FROM v2_log_cursor").fetchone() == (None,)
-        assert db.execute("SELECT version_num FROM alembic_version").fetchone() == ("hostcommv2001",)
+        assert db.execute("SELECT version_num FROM alembic_version").fetchone() == ("hostcommv2002",)
         assert db.execute("PRAGMA integrity_check").fetchone() == ("ok",)

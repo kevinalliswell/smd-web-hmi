@@ -24,6 +24,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
 from app.db.models import AlarmLog, EventLog, ParameterSnapshot, SamplePoint
+from app.services.recovery_queries import recovery_log_condition
 from app.services.test_id import validate_test_id
 
 LOG_TYPES = ("sample", "event", "alarm", "parameter")
@@ -197,9 +198,12 @@ async def export_test_logs(
             for log_type, model, order_column, columns, suffix in definitions:
                 if log_type not in types:
                     continue
-                statement = (
-                    select(model).where(model.test_id == test_id).order_by(getattr(model, order_column), model.id)
+                condition = (
+                    recovery_log_condition(model, test_id)
+                    if model in (EventLog, AlarmLog)
+                    else model.test_id == test_id
                 )
+                statement = select(model).where(condition).order_by(getattr(model, order_column), model.id)
                 uncompressed_bytes = await _stream_csv_entry(
                     session,
                     archive,

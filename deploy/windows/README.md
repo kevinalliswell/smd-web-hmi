@@ -96,3 +96,7 @@ Fixed WebView2 来源和 SHA-256 锁定在 `desktop/webview2.lock.json`。构建
 - Windows Task Scheduler/SCM 故障恢复、卸载保留数据、Fixed WebView2 原生窗口，以及选定现场 LAN/TLS 策略验收。
 
 参考：[pywebview API](https://pywebview.flowrl.com/api/)、[Microsoft Fixed Runtime 分发](https://learn.microsoft.com/microsoft-edge/webview2/concepts/distribution)、[PyInstaller onedir](https://www.pyinstaller.org/en/stable/usage.html)。
+
+## 独立软件联调工具
+
+本轮提供单独的 `SmdBench-<SemVer>-windows-x64.zip`，自带模拟器和Chromium。它只接受干净专用测试机，完整操作安装、配对、页面实验、报告和故障恢复，并清理本轮安装。已有现场安装会被拒绝接管。命令、证据白名单和清理办法见[工具说明](../../tools/bench/README.md)。工具不随生产安装器运行，也不代替Windows桌面人工验收或固件/真机测试。发布验收以同版本的 `bench-acceptance.json` 为准。

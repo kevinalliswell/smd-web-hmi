@@ -1,6 +1,6 @@
 # HostComm 2.0 报文、连接与事务
 
-文档修订 `2.0-doc.2`；设计基线 `2.0-design.1`；线上 `protocol_version` 仍为 `2.0`，握手 `design_revision` 仍为 `2.0-design.1`。本次只补交接说明和实现边界，不增加协议字段或更改冻结语义。交接入口见 [README](README.md) 和[固件交接资料](firmware-handoff.md)。
+文档修订 `2.0-doc.3`；设计基线 `2.0-design.1`；线上 `protocol_version` 仍为 `2.0`，握手 `design_revision` 仍为 `2.0-design.1`。本次明确租约和调度语义并补齐主机校验，不增加线协议字段。交接入口见 [README](README.md) 和[固件交接资料](firmware-handoff.md)。
 
 本文区分目标协议与当前 SmdHmi 实现。已实现的 2.0 客户端、参考模拟器和自动测试不等于 STM32 固件验收；保留的 1.0 客户端不能因名称相似而视为兼容。字段名称、必填项、枚举和消息样例须与[机器契约](../../../contracts/hostcomm/v2/README.md)一并校验；第 10 节记录本次审查确认的实现差异。
 
@@ -60,7 +60,7 @@ hello 的 session_id、boot_id 和 reply_to 为 null，uptime_ms 固定为 "0"�
 | 身份/水位 | hello_ack 不回传 controller_id；身份来自 TLS 配对及 hello，controller_epoch 必须回显一致；last_command_seq 是该配对代际的持久水位十进制字符串，不能返回全设备无归属的计数 |
 | 工程配置 | profile_digest 必须与随后 get_profile 和 status_snapshot 一致；工程配置变化需重新握手，不能沿用旧摘要连接继续控制 |
 
-本版不通过 hello 协商帧长、心跳时限或动态字段集合；固定值按本文执行，工程资源另由 get_profile 返回。get_status/get_profile 的 payload 是空对象 `{}`，不能省略或使用 null。`control_ready` 与当前上位机门控之间的差异见第 10 节；任何一个握手标记都不能代替实时安全检查。
+本版不通过 hello 协商帧长、心跳时限或动态字段集合；固定值按本文执行，工程资源另由 get_profile 返回。get_status/get_profile 的 payload 是空对象 `{}`，不能省略或使用 null。`control_ready` 是握手时的提示，不是持续许可或永久否决。主机恢复完成后依据当前角色、批准配置、新鲜状态与有效租约判断；板端持续禁止的原因必须在当前状态和实际执行点体现。
 
 当前主机允许 hello_ack 后在同一 TCP 数据段紧跟合法 telemetry/event；它在处理 ACK 时先安装新 session/boot。非 error 响应的 type 必须属于 reply_to 对应请求定义的响应集合：普通请求接收对应响应，log_request 还可接收 log_chunk 流；command_result/operation_snapshot 另须逐项匹配 operation_id、controller_epoch 和 command_seq。
 
@@ -70,7 +70,7 @@ hello 的 session_id、boot_id 和 reply_to 为 null，uptime_ms 固定为 "0"�
 
 ## 4. 心跳、租约与队列
 
-- 心跳周期 2000 ms，每次请求独立关联；每个 hello/普通响应默认等待 3000 ms，TLS/连接建立限时 5000 ms。超时是“未收到结果”，不能推导动作失败。
+- 心跳按发送起点间隔2000 ms调度，每次请求独立关联且仅一个在途。写锁等待、发送和ACK共用3000 ms总期限；ACK耗时2—3秒时完成后尽快发送下一次，不补发积压节拍。hello/普通响应默认等待3000 ms，TLS/连接建立限时5000 ms。超时不能推导动作失败。
 - 写租约持续 8000 ms，基于板端单调时钟；只有持有当前租约的已认证会话在 heartbeat 携带匹配 lease_id 才续期，heartbeat_ack 回读板端单调时钟下的 lease_expires_uptime_ms，主机结合响应时钟计算剩余有效期。无关消息、诊断读取和错误心跳不能续期。
 - heartbeat 的 lease_id 为 null 时仅探测连通性，不续期；heartbeat_ack 可返回板端当前租约信息，主机不能据此取得或替换租约。申请租约的回执归档及所有权回读可能与这种心跳并行。请求携带非空 lease_id 时，ACK 必须确认同一租约；不同标识或 null 均不能作为有效续期，主机关闭连接并撤销控制就绪。
 - TCP 断开立即撤销该连接的租约；检测不到的半开连接在租约到期时撤销。运行中进入批准的安全处置，重连不取消停止。8000 ms 是网络租约界限，不是 CO/急停的硬件响应指标。
@@ -78,7 +78,7 @@ hello 的 session_id、boot_id 和 reply_to 为 null，uptime_ms 固定为 "0"�
 - `state_revision` 仅在会影响控制许可的状态、配置、报警/联锁、租约授予/撤销/所有权或运行身份改变时递增，不因续期或每个温度样本变化而递增；任何温度条件仍在执行点重新检查。
 - 上位机同一控制身份最多一个普通副作用操作在受理等待中，未知结果未对账前停止普通写请求；stop_run 使用独立安全通道。只读在途请求最多 4 个，上传事务和日志传输各最多 1 个/会话。
 - 板端通信任务不得执行阻塞的仪表 I/O、擦 Flash 或配方循环。优先调度本地安全、远程安全停止、命令结果/心跳、报警、实时遥测、历史日志；普通队列满返回 busy，不能阻塞安全入口。采样日志丢失必须可见，显示合并不能删除原始记录。
-- 重连按 1、2、4、8、16、30 秒上限退避，加入抖动；重连后先对账，不自动重发 start/activate 等副作用请求。
+- 重连基数依次1、2、4、8、16、30秒，实际抖动区间为 `[0.9×基数, min(1.1×基数, 30)]`。连接稳定30秒且收到有效心跳后才重置基数。重连后先对账，不自动重发start/activate等副作用请求。
 
 当前 SmdHmi 的容量和调度边界见下表。它描述主机实现，不能替代固件按目标优先级实现独立任务：
 
@@ -185,14 +185,12 @@ ACK 只是接收持久化证明，不直接授权永久擦除全部历史。固�
 
 参考检查覆盖字段/编码/摘要与所列边界；TLS、租约计时、持久化原子性、队列公平性、停机动作和断点补传状态机必须分别实现并故障注入。收发日志记录消息 ID、操作 ID、结果与统计，不记录 PSK。验收至少包含分字节拆包、粘包、超长行尾伪指令、损坏 UTF-8、重复键、重复命令、丢 ACK、缓存淘汰重放、跨重启旧租约、配方断电和补传损坏；详见[实施清单](firmware-plan.md)。
 
-## 10. 本次审查保留的实现差异
+## 10. 主机租约证据与兼容边界
 
-以下项目尚未通过本次文档修订修改代码或冻结协议。固件团队不能把未检查字段当作可任意填写；联调前需由接口负责人确认行为并补相应故障用例。
+`heartbeat_ack.lease_id` 与 `lease_expires_uptime_ms` 必须同空或同时非空。非空续租回读须匹配请求租约，且 `0 < expiry - uptime_ms <= 8000`；相互矛盾的租约回执立即断连并撤销控制许可，不等到普通坏帧计数阈值。
 
-| 项目 | 冻结要求与当前实现差异 | 处理边界 |
-|---|---|---|
-| 心跳租约期限 | HeartbeatAck Schema 分别允许 lease_id、lease_expires_uptime_ms 为 null，尚未联合验证；传输层对非空续期请求只核对 ID。当前控制许可依据新鲜 status_snapshot 的期限、boot/session/owner，不消费心跳期限作为门控 | 板端仍返回真实、相互一致的租约信息；不能以主机接收了矛盾 ACK 证明续约契约通过。依据：[消息模型](../../../backend/app/hostcomm/v2_contract/messages.py)、[状态投影](../../../backend/app/hostcomm/v2_projection.py) |
-| 握手 control_ready | 必填布尔字段，但当前主机门控使用恢复完成、新鲜状态、批准的 profile/safety、租约和 granted_role，没有读取此标志 | 字段是否为强制门禁还是握手时提示需明确；不能仅据该标志宣称主机已禁止/允许控制。依据：[状态投影](../../../backend/app/hostcomm/v2_projection.py) |
-| 心跳/重连计时 | 目标心跳周期 2000 ms；当前循环在上一 ACK 返回后再等待 2000 ms，实际起点间隔包含响应耗时。重连退避基数最高 30 秒，当前 ±10% 抖动后实际可达 33 秒 | 这是待对齐的调度差异，不把板端 8000 ms 租约延长为新的容差。依据：[心跳与重连实现](../../../backend/app/hostcomm/v2_transport.py) |
+主机保存boot/session/lease_id/本地代次，按“请求开始单调时间 + 响应剩余租期”建立保守截止时间。空租约心跳永不获取、替换或清除本地租约；过期或旧代次回执不能恢复控制。心跳的更高state_revision触发状态重读，对应状态到达前禁止普通写操作，不能直接改写实验阶段。
 
-当前真实 TLS 端到端软件路径已有[配方—启动—停止—冷却—日志恢复测试](../../../backend/tests/test_v2_tls_application.py)。这些代码和测试链接是可追溯入口，不是本次新执行或实体设备通过的声明。
+获取租约先持久保存applied结果，再核对当前会话状态所有权。释放时暂停新续租与普通写操作，已有续租在原期限内收尾；停止通道独立。释放只能清除它捕获的代次，未知结果保留并查询，不能自动恢复续租。
+
+以上由[ADR-010](../../decisions/ADR-010-installed-hostcomm-loop.md)明确。rc.4旧行为及当时缺口保留在doc.2历史提交；本轮实现与测试见[验证记录](../../verification/2026-09-08-installed-hostcomm-loop.md)。固件仍独立验证8秒租约、持久化和实际安全动作。

@@ -20,17 +20,19 @@ from reportlab.lib.units import mm
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.cidfonts import UnicodeCIDFont
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
-from sqlalchemy import and_, func, or_, select
+from sqlalchemy import and_, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
 from app.db.models import AlarmLog, ParameterSnapshot, ReportExport, SamplePoint, TestSession
-from app.db.v2_models import V2LogCursor, V2LogGap, V2SourceRecord
+from app.db.v2_models import V2LogCursor, V2LogGap, V2RunRecovery, V2SourceRecord
 from app.hostcomm.protocol import now_iso
 from app.hostcomm.v2_contract.types import SampleRef
+from app.services.recovery_queries import recovery_log_condition
 from app.services.snapshot_data import json_object, object_value
 from app.services.standard_metrics import MetricAccumulator, V2MetricAccumulator, number
 from app.services.test_id import InvalidTestIdError, validate_test_id
+from app.services.v2_run_recovery import V2RecoveryError, require_recovery_report_ready
 
 SUPPORTED_FORMATS = {"html", "pdf", "xlsx"}
 
@@ -262,8 +264,9 @@ def _provenance_rows(test, metrics):
         ("工艺偏离项", ", ".join(validation.get("deviations", [])) or "未记录偏离项；不能据此认定符合标准"),
         ("判定规则依据", basis.get("rules_reference") or "未确认"),
         ("固件/协议", f"{recipe.get('firmware', 'unknown')} / {recipe.get('protocol_version', 'unknown')}"),
-        ("实验模式", "标准模板" if metrics.get("mode") == "standard" else "非标 / 历史未标定"),
+        ("实验模式", {"standard": "标准模板", "custom": "非标"}.get(metrics.get("mode"), "未知")),
         ("算法版本", metrics.get("algorithm_version", "unknown")),
+        ("符合性状态", metrics.get("compliance", "not_certified")),
         ("全实验数据完整性", metrics.get("data_integrity", "unknown")),
         ("测定段数据完整性", metrics.get("measurement_data_integrity", "unknown")),
         ("测定窗口采样点", str(metrics.get("measurement_sample_count", 0))),
@@ -273,6 +276,16 @@ def _provenance_rows(test, metrics):
         ("符合性", "未签发国标符合性结论；缺失数据、原文争议和现场条件须复核"),
     ]
 
+    if "recovery" in basis:
+        rows.extend(
+            [
+                ("档案来源", "恢复档案；缺失资料保持未知，发现时间不代表真实开始时间"),
+                ("发现时间", getattr(test, "discovered_at", None) or "未知"),
+            ]
+        )
+    profile = object_value(recipe.get("safety_profile"))
+    if str(profile.get("profile_id", "")).startswith("SIMULATOR-ONLY/"):
+        rows.append(("数据来源", "模拟实验；无实体执行器，未经真机认证（not_certified）"))
     return rows
 
 
@@ -334,7 +347,7 @@ def _render_html(
 <table class="meta">
  {row("试验编号", test.test_id)}
  {row("操作员", test.operator_id)}
- {row("开始时间", test.start_time)}
+ {row("开始时间", test.start_time or "未知")}
  {row("结束时间", test.end_time or "进行中")}
  {row("结束原因", test.end_reason or "—")}
  {row("样品标识", test.sample_label or "—")}
@@ -374,6 +387,7 @@ def _render_pdf(
     styles = getSampleStyleSheet()
     for style_name in ("Title", "Heading2", "BodyText"):
         styles[style_name].fontName = font_name
+    styles["Heading2"].keepWithNext = True
     document = SimpleDocTemplate(
         buffer,
         pagesize=A4,
@@ -388,7 +402,7 @@ def _render_pdf(
     metadata = [
         ["试验编号", test.test_id],
         ["操作员", test.operator_id],
-        ["开始时间", test.start_time],
+        ["开始时间", test.start_time or "未知"],
         ["结束时间", test.end_time or "进行中"],
         ["结束原因", test.end_reason or "—"],
         ["样品标识", test.sample_label or "—"],
@@ -419,7 +433,7 @@ def _render_pdf(
     meta_table.setStyle(table_style)
     story.extend([meta_table, Spacer(1, 5 * mm), Paragraph("结果指标", styles["Heading2"])])
     metric_data = [["指标", "结果"]] + [
-        [label, _fmt(metrics[key], digits, unit)] for label, key, digits, unit in METRIC_ROWS
+        [label.replace("−", "-"), _fmt(metrics[key], digits, unit)] for label, key, digits, unit in METRIC_ROWS
     ]
     metrics_table = Table(metric_data, colWidths=[82 * mm, 81 * mm], repeatRows=1)
     metrics_table.setStyle(table_style)
@@ -445,7 +459,7 @@ def _render_pdf(
         [
             alarm_table,
             Spacer(1, 5 * mm),
-            Paragraph(f"生成时间：{now_iso()} · smd-web-hmi 自动生成", styles["BodyText"]),
+            Paragraph(f"生成时间：{now_iso()} | smd-web-hmi 自动生成", styles["BodyText"]),
         ]
     )
     document.build(story)
@@ -469,7 +483,7 @@ def _render_xlsx(
     for item in (
         ("试验编号", test.test_id),
         ("操作员", test.operator_id),
-        ("开始时间", test.start_time),
+        ("开始时间", test.start_time or "未知"),
         ("结束时间", test.end_time or "进行中"),
         ("结束原因", test.end_reason or "—"),
         ("样品标识", test.sample_label or "—"),
@@ -535,9 +549,29 @@ async def generate_report(
     if fmt not in SUPPORTED_FORMATS:
         raise ValueError(f"不支持的报告格式: {fmt}")
 
-    test = await session.scalar(select(TestSession).where(TestSession.test_id == test_id))
+    await require_recovery_report_ready(session, test_id)
+    source_watermark = (
+        select(func.coalesce(func.max(V2SourceRecord.id), 0))
+        .where(V2SourceRecord.device_id == V2RunRecovery.device_id, V2SourceRecord.run_id == V2RunRecovery.run_id)
+        .correlate(V2RunRecovery)
+        .scalar_subquery()
+    )
+    recovery_snapshot = (
+        await session.execute(
+            select(
+                V2RunRecovery.id,
+                V2RunRecovery.review_revision,
+                V2RunRecovery.replay_through_id,
+                source_watermark.label("source_watermark"),
+            ).where(V2RunRecovery.test_id == test_id)
+        )
+    ).first()
+    test = await session.scalar(
+        select(TestSession).where(TestSession.test_id == test_id).execution_options(populate_existing=True)
+    )
     if test is None:
         raise ValueError(f"试验不存在: {test_id}")
+    await require_recovery_report_ready(session, test_id)
 
     sample_count = await session.scalar(
         select(func.count()).select_from(SamplePoint).where(SamplePoint.test_id == test_id)
@@ -546,7 +580,7 @@ async def generate_report(
         (
             await session.execute(
                 select(AlarmLog)
-                .where(AlarmLog.test_id == test_id)
+                .where(recovery_log_condition(AlarmLog, test_id))
                 .order_by(AlarmLog.level.desc(), AlarmLog.id.desc())
                 .limit(50)
             )
@@ -564,6 +598,8 @@ async def generate_report(
     metrics = await compute_metrics_from_database(session, test_id, original_height_mm)
     renderers = {"html": _render_html, "pdf": _render_pdf, "xlsx": _render_xlsx}
     content = renderers[fmt](test, metrics, int(sample_count or 0), alarms, params)
+    # Recheck after the data snapshot/render, before creating a final artifact.
+    await require_recovery_report_ready(session, test_id)
 
     settings = get_settings()
     stamp = datetime.now().strftime("%Y%m%d%H%M%S")
@@ -575,6 +611,29 @@ async def generate_report(
     await _write_report_file(path, content)
     size = (await asyncio.to_thread(path.stat)).st_size
 
+    if recovery_snapshot is not None:
+        # Compare-and-lock in the committing transaction. A completed replay may
+        # have changed twice while we rendered; checking only its current status
+        # would publish a report assembled from different archive revisions.
+        unchanged = await session.execute(
+            update(V2RunRecovery)
+            .where(
+                V2RunRecovery.id == recovery_snapshot.id,
+                V2RunRecovery.test_id == test_id,
+                V2RunRecovery.review_state == "bound",
+                V2RunRecovery.replay_status == "complete",
+                V2RunRecovery.review_revision == recovery_snapshot.review_revision,
+                V2RunRecovery.replay_through_id == recovery_snapshot.replay_through_id,
+                source_watermark == recovery_snapshot.source_watermark,
+            )
+            .values(review_revision=V2RunRecovery.review_revision)
+            .execution_options(synchronize_session=False)
+        )
+        if unchanged.rowcount != 1:
+            await session.rollback()
+            await asyncio.to_thread(path.unlink, missing_ok=True)
+            raise V2RecoveryError("recovery_changed_during_report", "恢复档案在生成报告期间发生变化，请重新生成")
+
     record = ReportExport(
         test_id=test_id,
         generated_at=now_iso(),
@@ -582,7 +641,16 @@ async def generate_report(
         format=fmt,
         file_path=str(path),
         file_size_bytes=size,
-        notes=json.dumps({"metrics": metrics}, ensure_ascii=False),
+        notes=json.dumps(
+            {
+                "metrics": metrics,
+                "measurement_basis": json_object(test.measurement_basis_json)[0],
+                "start_time": test.start_time,
+                "discovered_at": test.discovered_at,
+                "recovery_snapshot": dict(recovery_snapshot._mapping) if recovery_snapshot else None,
+            },
+            ensure_ascii=False,
+        ),
     )
     session.add(record)
     # 试验会话登记报告路径

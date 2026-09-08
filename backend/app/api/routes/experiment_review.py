@@ -7,12 +7,14 @@ import math
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field, ValidationError
-from sqlalchemy import select
+from sqlalchemy import select, update
 
 from app.api.deps import DbDep, UserDep, get_hostcomm_client, require_role
 from app.api.schemas import err, ok
 from app.api.validation import TestIdPath
+from app.db.cancellation import finish_db_work
 from app.db.models import EventLog, TestSession
+from app.db.v2_models import V2RunBinding
 from app.hostcomm.protocol import now_iso
 from app.services.cache import status_cache
 from app.services.experiment_metadata import ReportContext, SpecimenMetadata
@@ -30,7 +32,9 @@ class MetadataRequest(BaseModel):
 
 
 async def _get_test(db, test_id):
-    row = await db.scalar(select(TestSession).where(TestSession.test_id == test_id))
+    row = await db.scalar(
+        select(TestSession).where(TestSession.test_id == test_id).execution_options(populate_existing=True)
+    )
     if row is None:
         raise HTTPException(404, err("test_not_found", "实验不存在"))
     return row
@@ -54,6 +58,20 @@ def _basis(row):
 @router.patch("/{test_id}/metadata", dependencies=[Depends(require_role("operator"))])
 async def update_metadata(test_id: TestIdPath, body: MetadataRequest, user: UserDep, db: DbDep):
     async with maintenance_manager.command_guard():
+        return await _commit_metadata(test_id, body, user, db)
+
+
+@finish_db_work
+async def _commit_metadata(test_id, body, user, db):
+    try:
+        # Reserve the same SQLite writer used by source projection before reading
+        # the whole basis JSON; cached evidence must not replace a newer archive.
+        await db.execute(
+            update(TestSession)
+            .where(TestSession.test_id == test_id)
+            .values(measurement_basis_json=TestSession.measurement_basis_json)
+            .execution_options(synchronize_session=False)
+        )
         row = await _get_test(db, test_id)
         basis = _basis(row)
         before = row.measurement_basis_json
@@ -92,6 +110,9 @@ async def update_metadata(test_id: TestIdPath, body: MetadataRequest, user: User
         )
         await db.commit()
         return ok({"test_id": test_id, "original_height_mm": row.original_height_mm, "measurement_basis": basis})
+    except BaseException:
+        await db.rollback()
+        raise
 
 
 class CloseReviewRequest(BaseModel):
@@ -104,6 +125,43 @@ async def close_review(test_id: TestIdPath, body: CloseReviewRequest, request: R
     async with maintenance_manager.command_guard():
         row = await _get_test(db, test_id)
         if row.end_time is not None:
+            return ok({"test_id": test_id, "phase": row.phase, "data_integrity": row.data_integrity})
+        basis = _basis(row)
+        binding = await db.scalar(select(V2RunBinding).where(V2RunBinding.test_id == test_id))
+        if binding is not None or "v2" in basis or "recovery" in basis:
+            # A manual checkbox or an unrelated current idle snapshot cannot establish
+            # the historical run's safe terminal boundary.
+            v2 = basis.get("v2", {})
+            if not (
+                binding
+                and v2.get("device_id") == binding.device_id
+                and v2.get("run_id") == binding.run_id
+                and v2.get("safe_complete") is True
+                and v2.get("safe_boundary")
+                and row.safety_completed_at
+            ):
+                raise HTTPException(
+                    409, err("v2_safe_evidence_required", "须恢复该运行的板端安全完成边界，人工确认不能替代原始证据")
+                )
+            row.end_time = row.safety_completed_at
+            row.end_reason, row.phase, row.data_integrity = (
+                "reviewed_safe_incomplete",
+                "archived_incomplete",
+                "incomplete",
+            )
+            db.add(
+                EventLog(
+                    test_id=test_id,
+                    ts=now_iso(),
+                    source="hmi_review",
+                    event_code="INCOMPLETE_ARCHIVED",
+                    operator_id=user.username,
+                    level=1,
+                    text=body.reason,
+                    detail_json=json.dumps({"v2_safe_evidence": v2}, ensure_ascii=False),
+                )
+            )
+            await db.commit()
             return ok({"test_id": test_id, "phase": row.phase, "data_integrity": row.data_integrity})
         snapshot = await status_cache.get_snapshot()
         measurement = snapshot.get("measurement") or {}

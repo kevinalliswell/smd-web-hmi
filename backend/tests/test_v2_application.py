@@ -534,7 +534,8 @@ async def test_optional_status_refresh_cannot_hold_up_durable_log_ack(system, mo
         release.set()
 
 
-async def test_cleared_unacknowledged_alarm_can_be_confirmed_before_run_ack(system):
+@pytest.mark.parametrize("renew_before_confirm", [False, True])
+async def test_cleared_unacknowledged_alarm_can_be_confirmed_before_run_ack(system, monkeypatch, renew_before_confirm):
     http, client, sim, factory = system
     recipe = await deploy(http)
     wire_id = await sim.raise_alarm("clock_unsynced", severity="warning")
@@ -557,6 +558,24 @@ async def test_cleared_unacknowledged_alarm_can_be_confirmed_before_run_ack(syst
     snapshot = await client.get_status()
     assert snapshot["alarm"]["ack_required"] is True
     assert snapshot["system"]["can_ack_run"] is False
+    if renew_before_confirm:
+        client.transport._heartbeat_task.cancel()
+        await asyncio.gather(client.transport._heartbeat_task, return_exceptions=True)
+        confirm_owned = client.operations.confirm_owned_lease
+
+        async def renewal_arrives_before_confirmation(frame):
+            # Reproduce a renewal arriving after the status read but before
+            # its application/database processing finishes, for both commands.
+            async with asyncio.timeout(1):
+                while True:
+                    ack = await client.transport.request("heartbeat", {"lease_id": client.transport.lease_id})
+                    if int(ack["uptime_ms"]) > int(frame["uptime_ms"]):
+                        break
+                    await asyncio.sleep(0.001)
+            assert ack["payload"]["state_revision"] == frame["payload"]["run"]["state_revision"]
+            return await confirm_owned(frame)
+
+        monkeypatch.setattr(client.operations, "confirm_owned_lease", renewal_arrives_before_confirmation)
     acknowledged = await http.post(f"/api/alarms/{alarm['id']}/ack")
     assert acknowledged.status_code == 200, acknowledged.text
     assert acknowledged.json()["data"]["device_confirmed"] is True

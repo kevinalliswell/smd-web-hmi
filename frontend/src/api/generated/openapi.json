@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "smd-web-hmi 后端",
-    "version": "0.3.0-rc.4"
+    "version": "0.3.0-rc.5"
   },
   "paths": {
     "/api/auth/login": {
@@ -2282,6 +2282,272 @@
         }
       }
     },
+    "/api/run-recoveries": {
+      "get": {
+        "tags": [
+          "run recovery"
+        ],
+        "summary": "List Recoveries",
+        "operationId": "list_recoveries_api_run_recoveries_get",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecoveryResponse_list_RecoverySummary__"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/run-recoveries/{recovery_id}": {
+      "get": {
+        "tags": [
+          "run recovery"
+        ],
+        "summary": "Recovery Detail",
+        "operationId": "recovery_detail_api_run_recoveries__recovery_id__get",
+        "parameters": [
+          {
+            "name": "recovery_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Recovery Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecoveryResponse_RecoveryDetail_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/run-recoveries/{recovery_id}/binding": {
+      "post": {
+        "tags": [
+          "run recovery"
+        ],
+        "summary": "Bind Recovery",
+        "operationId": "bind_recovery_api_run_recoveries__recovery_id__binding_post",
+        "parameters": [
+          {
+            "name": "recovery_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Recovery Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecoveryBindingRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecoveryResponse_RecoverySummary_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/run-recoveries/{recovery_id}/replays": {
+      "post": {
+        "tags": [
+          "run recovery"
+        ],
+        "summary": "Replay Recovery",
+        "operationId": "replay_recovery_api_run_recoveries__recovery_id__replays_post",
+        "parameters": [
+          {
+            "name": "recovery_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Recovery Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecoveryReviewRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecoveryResponse_RecoverySummary_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/recipes/template/standard": {
       "get": {
         "tags": [
@@ -4250,6 +4516,464 @@
         },
         "type": "object",
         "title": "RecoverSourceLogsRequest"
+      },
+      "RecoveryAudit": {
+        "properties": {
+          "actor": {
+            "type": "string",
+            "title": "Actor"
+          },
+          "role": {
+            "type": "string",
+            "title": "Role"
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason"
+          },
+          "action": {
+            "type": "string",
+            "title": "Action"
+          },
+          "created_at": {
+            "type": "string",
+            "title": "Created At"
+          },
+          "evidence": {
+            "type": "object",
+            "title": "Evidence"
+          }
+        },
+        "type": "object",
+        "required": [
+          "actor",
+          "role",
+          "reason",
+          "action",
+          "created_at",
+          "evidence"
+        ],
+        "title": "RecoveryAudit"
+      },
+      "RecoveryBindingRequest": {
+        "properties": {
+          "reason": {
+            "type": "string",
+            "maxLength": 2000,
+            "minLength": 2,
+            "title": "Reason"
+          },
+          "idempotency_key": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_.:-]+$",
+            "title": "Idempotency Key"
+          },
+          "expected_review_revision": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Expected Review Revision"
+          },
+          "target_test_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 64,
+                "minLength": 1,
+                "pattern": "^[A-Za-z0-9_-]+$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Test Id"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "reason",
+          "idempotency_key",
+          "expected_review_revision"
+        ],
+        "title": "RecoveryBindingRequest"
+      },
+      "RecoveryDetail": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "readOnly": true
+          },
+          "device_id": {
+            "type": "string",
+            "title": "Device Id",
+            "readOnly": true
+          },
+          "run_id": {
+            "type": "string",
+            "title": "Run Id",
+            "readOnly": true
+          },
+          "first_seen_at": {
+            "type": "string",
+            "title": "First Seen At"
+          },
+          "last_seen_at": {
+            "type": "string",
+            "title": "Last Seen At"
+          },
+          "review_revision": {
+            "type": "integer",
+            "title": "Review Revision"
+          },
+          "review_state": {
+            "type": "string",
+            "enum": [
+              "unreviewed",
+              "bound",
+              "conflict"
+            ],
+            "title": "Review State"
+          },
+          "test_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Test Id"
+          },
+          "replay_status": {
+            "type": "string",
+            "enum": [
+              "not_bound",
+              "pending",
+              "running",
+              "complete",
+              "failed"
+            ],
+            "title": "Replay Status"
+          },
+          "replay_through_id": {
+            "type": "integer",
+            "title": "Replay Through Id"
+          },
+          "replay_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Replay Error"
+          },
+          "state": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "State"
+          },
+          "evidence": {
+            "type": "object",
+            "title": "Evidence"
+          },
+          "start_time": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start Time"
+          },
+          "discovered_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Discovered At"
+          },
+          "source_count": {
+            "type": "integer",
+            "title": "Source Count"
+          },
+          "log_gaps": {
+            "items": {
+              "$ref": "#/components/schemas/RecoveryLogGap"
+            },
+            "type": "array",
+            "title": "Log Gaps"
+          },
+          "reviews": {
+            "items": {
+              "$ref": "#/components/schemas/RecoveryAudit"
+            },
+            "type": "array",
+            "title": "Reviews"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "device_id",
+          "run_id",
+          "first_seen_at",
+          "last_seen_at",
+          "review_revision",
+          "review_state",
+          "test_id",
+          "replay_status",
+          "replay_through_id",
+          "replay_error",
+          "state",
+          "evidence",
+          "start_time",
+          "discovered_at",
+          "source_count",
+          "log_gaps",
+          "reviews"
+        ],
+        "title": "RecoveryDetail"
+      },
+      "RecoveryLogGap": {
+        "properties": {
+          "log_id": {
+            "type": "string",
+            "title": "Log Id"
+          },
+          "first_record_seq": {
+            "type": "string",
+            "title": "First Record Seq"
+          },
+          "last_record_seq": {
+            "type": "string",
+            "title": "Last Record Seq"
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason"
+          }
+        },
+        "type": "object",
+        "required": [
+          "log_id",
+          "first_record_seq",
+          "last_record_seq",
+          "reason"
+        ],
+        "title": "RecoveryLogGap"
+      },
+      "RecoveryResponse_RecoveryDetail_": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/RecoveryDetail"
+          },
+          "ts": {
+            "type": "string",
+            "title": "Ts"
+          }
+        },
+        "type": "object",
+        "required": [
+          "data",
+          "ts"
+        ],
+        "title": "RecoveryResponse[RecoveryDetail]"
+      },
+      "RecoveryResponse_RecoverySummary_": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/RecoverySummary"
+          },
+          "ts": {
+            "type": "string",
+            "title": "Ts"
+          }
+        },
+        "type": "object",
+        "required": [
+          "data",
+          "ts"
+        ],
+        "title": "RecoveryResponse[RecoverySummary]"
+      },
+      "RecoveryResponse_list_RecoverySummary__": {
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/RecoverySummary"
+            },
+            "type": "array",
+            "title": "Data"
+          },
+          "ts": {
+            "type": "string",
+            "title": "Ts"
+          }
+        },
+        "type": "object",
+        "required": [
+          "data",
+          "ts"
+        ],
+        "title": "RecoveryResponse[list[RecoverySummary]]"
+      },
+      "RecoveryReviewRequest": {
+        "properties": {
+          "reason": {
+            "type": "string",
+            "maxLength": 2000,
+            "minLength": 2,
+            "title": "Reason"
+          },
+          "idempotency_key": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_.:-]+$",
+            "title": "Idempotency Key"
+          },
+          "expected_review_revision": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Expected Review Revision"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "reason",
+          "idempotency_key",
+          "expected_review_revision"
+        ],
+        "title": "RecoveryReviewRequest"
+      },
+      "RecoverySummary": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "readOnly": true
+          },
+          "device_id": {
+            "type": "string",
+            "title": "Device Id",
+            "readOnly": true
+          },
+          "run_id": {
+            "type": "string",
+            "title": "Run Id",
+            "readOnly": true
+          },
+          "first_seen_at": {
+            "type": "string",
+            "title": "First Seen At"
+          },
+          "last_seen_at": {
+            "type": "string",
+            "title": "Last Seen At"
+          },
+          "review_revision": {
+            "type": "integer",
+            "title": "Review Revision"
+          },
+          "review_state": {
+            "type": "string",
+            "enum": [
+              "unreviewed",
+              "bound",
+              "conflict"
+            ],
+            "title": "Review State"
+          },
+          "test_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Test Id"
+          },
+          "replay_status": {
+            "type": "string",
+            "enum": [
+              "not_bound",
+              "pending",
+              "running",
+              "complete",
+              "failed"
+            ],
+            "title": "Replay Status"
+          },
+          "replay_through_id": {
+            "type": "integer",
+            "title": "Replay Through Id"
+          },
+          "replay_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Replay Error"
+          },
+          "state": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "State"
+          },
+          "evidence": {
+            "type": "object",
+            "title": "Evidence"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "device_id",
+          "run_id",
+          "first_seen_at",
+          "last_seen_at",
+          "review_revision",
+          "review_state",
+          "test_id",
+          "replay_status",
+          "replay_through_id",
+          "replay_error",
+          "state",
+          "evidence"
+        ],
+        "title": "RecoverySummary"
       },
       "RepeatabilityRequest": {
         "properties": {

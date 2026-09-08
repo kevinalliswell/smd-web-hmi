@@ -29,6 +29,7 @@ from app.api.routes import (
     parameters,
     recipes,
     reports,
+    run_recoveries,
     status,
     system,
     tests,
@@ -54,6 +55,8 @@ from app.services.state_policy import enrich_status_snapshot
 from app.services.test_runtime import active_test
 from app.services.test_session_service import advance_test_session, reconcile_test_sessions
 from app.services.v2_operations import V2OperationError
+from app.services.v2_recovery_worker import V2RecoveryWorker
+from app.services.v2_run_recovery import V2RunRecoveryService
 
 logger = get_logger("main")
 
@@ -317,6 +320,7 @@ async def lifespan(app: FastAPI):
     lease = None if settings.hostcomm_mock else GatewayLease(settings.hostcomm_host, settings.hostcomm_port)
     with nullcontext() if lease is None else lease:
         client = None
+        recovery_worker = None
         try:
             # 开发/联调允许按 ORM 元数据建表；生产必须由安装/升级流程执行受控迁移。
             if settings.hostcomm_mock:
@@ -333,6 +337,11 @@ async def lifespan(app: FastAPI):
 
             client = _build_hostcomm_client(settings, device_host=None if settings.hostcomm_mock else lease.host)
             app.state.hostcomm_client = client
+            recovery_worker = V2RecoveryWorker(
+                V2RunRecoveryService(get_sessionmaker(), write_lock=getattr(client, "_write_lock", None))
+            )
+            app.state.run_recovery_worker = recovery_worker
+            await recovery_worker.start()
             await client.start()  # 失败不阻断启动，转后台重连
             if client.is_online and active_test.needs_device_reconcile:
                 try:
@@ -345,6 +354,8 @@ async def lifespan(app: FastAPI):
                 if client is not None:
                     await client.close()
             finally:
+                if recovery_worker is not None:
+                    await recovery_worker.close()
                 await maintenance_manager.stop()
                 await background_jobs.shutdown()
                 await dispose_engine()
@@ -416,6 +427,7 @@ def create_app() -> FastAPI:
         parameters,
         logs,
         reports,
+        run_recoveries,
         recipes,
         analytics,
         users,

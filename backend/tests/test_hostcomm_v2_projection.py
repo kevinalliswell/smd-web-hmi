@@ -166,3 +166,55 @@ def test_fault_reset_permission_covers_completed_and_idle_without_resuming_an_un
     assert not permissions("idle", safe=True)["can_reset_fault"]
     for phase in ("preparing", "measuring", "safe_disposal", "cooling", "maintenance"):
         assert not permissions(phase, safe=True)["can_reset_fault"]
+
+
+def test_handshake_readiness_is_only_a_hint_and_newer_revision_revokes_old_phase():
+    status, profile = example("status_snapshot"), example("profile_snapshot")
+    profile["payload"]["approved"] = True
+    profile["payload"]["profile_digest"] = digest(
+        {k: v for k, v in profile["payload"].items() if k != "profile_digest"}
+    )
+    status["payload"]["profile_digest"] = profile["payload"]["profile_digest"]
+    status["payload"]["safety"].update(profile_approved=True, hardwired_permit=True)
+    status["payload"]["run"].update(
+        state="idle",
+        run_id=None,
+        recipe_digest=None,
+        safety_profile_digest=None,
+        stage_index=None,
+        measurement_start=None,
+    )
+    status["payload"].update(
+        lease_id=None, lease_owner_controller_id=None, lease_owner_session_id=None, lease_expires_uptime_ms=None
+    )
+    hello = example("hello_ack")["payload"]
+
+    def view(hint, revision=12):
+        hello["control_ready"] = hint
+        return project_status(
+            status,
+            profile_frame=profile,
+            hello_payload=hello,
+            online=True,
+            control_ready=True,
+            status_receipt={"received_monotonic": 99},
+            now_monotonic=100,
+            lease_evidence={
+                "session_id": status["session_id"],
+                "boot_id": status["boot_id"],
+                "lease_id": None,
+                "valid": False,
+                "renewals_paused": False,
+                "minimum_state_revision": revision,
+            },
+        )
+
+    for hint in (False, True):
+        snapshot = view(hint)
+        assert snapshot["system"]["can_start_test"]
+        assert snapshot["system"]["handshake_control_ready_hint"] is hint
+        stale = view(hint, 13)
+        assert stale["system"]["can_start_test"] is False
+        assert stale["state_machine"]["current_state"] == "idle"
+    status["payload"]["safety"]["emergency_stop"] = True
+    assert view(True)["system"]["can_start_test"] is False

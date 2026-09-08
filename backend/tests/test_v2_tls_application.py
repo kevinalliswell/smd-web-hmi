@@ -12,7 +12,8 @@ from tests.v2_test_support import private_test_directory
 
 
 @pytest.mark.skipif(not getattr(ssl, "HAS_PSK", False), reason="TLS-PSK requires Python 3.13/OpenSSL")
-def test_real_tls_recipe_run_stop_cooling_and_source_log_recovery(tmp_path):
+@pytest.mark.parametrize("disconnect_upload", [False, True])
+def test_real_tls_recipe_run_stop_cooling_and_source_log_recovery(tmp_path, disconnect_upload):
     # OPENSSL_CONF must be set before ssl/OpenSSL initializes in a fresh process.
     from app.hostcomm.v2_security import OPENSSL_AES128_POLICY
 
@@ -28,7 +29,7 @@ def test_real_tls_recipe_run_stop_cooling_and_source_log_recovery(tmp_path):
     backend = Path(__file__).resolve().parents[1]
     environment["PYTHONPATH"] = str(backend)
     completed = subprocess.run(
-        [sys.executable, str(Path(__file__).resolve()), "--child", str(directory)],
+        [sys.executable, str(Path(__file__).resolve()), "--child", str(directory), str(int(disconnect_upload))],
         cwd=backend,
         env=environment,
         capture_output=True,
@@ -40,7 +41,7 @@ def test_real_tls_recipe_run_stop_cooling_and_source_log_recovery(tmp_path):
     assert key.read_text(encoding="ascii").strip() not in completed.stdout + completed.stderr
 
 
-async def _application_scenario(directory):
+async def _application_scenario(directory, disconnect_upload=False):
     import asyncio
     import json
     import uuid
@@ -110,6 +111,40 @@ async def _application_scenario(directory):
                     test_id=test_id, operator_id="admin", start_time="2026-09-06T00:00:00Z", original_height_mm=20.0
                 )
             )
+        if disconnect_upload:
+            from app.hostcomm.client import HostCommNotConnectedError
+
+            original_dispatch = board._dispatch
+            dropped = False
+            prior_session = client.transport.session_id
+
+            def close_during_upload(session, message):
+                nonlocal dropped
+                if message["type"] == "recipe_chunk" and not dropped:
+                    dropped = True
+                    session.writer.close()
+                    return
+                return original_dispatch(session, message)
+
+            board._dispatch = close_during_upload
+            with pytest.raises(HostCommNotConnectedError):
+                await client.send_command(
+                    "set_parameters",
+                    {"values": {"recipe": recipe}},
+                    operator_id="admin",
+                    role="admin",
+                    msg_id="tls-interrupted-upload",
+                )
+            assert dropped
+            async with asyncio.timeout(10):
+                while not (client.is_online and client._ready and client.transport.session_id != prior_session):
+                    if client.transport._main_task.done():
+                        raise RuntimeError(
+                            "TLS connection manager stopped"
+                        ) from client.transport._main_task.exception()
+                    await asyncio.sleep(0.01)
+            assert client._status_frame["payload"]["active_recipe_digest"] is None
+
         activated = await client.send_command(
             "set_parameters", {"values": {"recipe": recipe}}, operator_id="admin", role="admin", msg_id="tls-activate"
         )
@@ -176,5 +211,5 @@ async def _application_scenario(directory):
 if __name__ == "__main__":
     import asyncio
 
-    assert len(sys.argv) == 3 and sys.argv[1] == "--child"
-    asyncio.run(_application_scenario(Path(sys.argv[2])))
+    assert len(sys.argv) == 4 and sys.argv[1] == "--child"
+    asyncio.run(_application_scenario(Path(sys.argv[2]), sys.argv[3] == "1"))

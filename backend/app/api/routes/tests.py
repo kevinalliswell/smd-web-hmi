@@ -5,14 +5,16 @@ from __future__ import annotations
 import json
 import re
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import func, select
 
-from app.api.deps import DbDep, get_current_user
+from app.api.deps import DbDep, get_current_user, get_hostcomm_client
 from app.api.schemas import err, ok
 from app.api.validation import EventLimit, MaxPoints, Page, PageSize, TestIdPath
 from app.db.models import AlarmLog, EventLog, SamplePoint, TestSession
+from app.db.v2_models import V2RunBinding
 from app.hostcomm.protocol import now_iso
+from app.services.recovery_queries import recovery_log_condition
 from app.services.trend_service import query_downsampled_points
 
 router = APIRouter(prefix="/api/tests", tags=["tests"], dependencies=[Depends(get_current_user)])
@@ -38,6 +40,7 @@ async def list_tests(db: DbDep, page: Page = 1, size: PageSize = 20):
                 "test_id": r.test_id,
                 "operator_id": r.operator_id,
                 "start_time": r.start_time,
+                "discovered_at": r.discovered_at,
                 "end_time": r.end_time,
                 "end_reason": r.end_reason,
                 "original_height_mm": r.original_height_mm,
@@ -60,9 +63,18 @@ async def list_tests(db: DbDep, page: Page = 1, size: PageSize = 20):
 
 
 @router.get("/current")
-async def current_test(db: DbDep):
+async def current_test(request: Request, db: DbDep):
     """当前进行中的试验（end_time 为空）。权限：Observer+。"""
-    result = await db.execute(select(TestSession).where(TestSession.end_time.is_(None)).order_by(TestSession.id.desc()))
+    client = get_hostcomm_client(request)
+    query = select(TestSession).where(TestSession.end_time.is_(None)).order_by(TestSession.id.desc())
+    if getattr(client, "protocol_version", None) == "2.0":
+        identity = client.current_run_identity
+        if identity is None:
+            return ok(None)
+        query = query.join(V2RunBinding, V2RunBinding.test_id == TestSession.test_id).where(
+            V2RunBinding.device_id == identity["device_id"], V2RunBinding.run_id == identity["run_id"]
+        )
+    result = await db.execute(query)
     r = result.scalars().first()
     if r is None:
         return ok(None)
@@ -71,6 +83,7 @@ async def current_test(db: DbDep):
             "test_id": r.test_id,
             "operator_id": r.operator_id,
             "start_time": r.start_time,
+            "discovered_at": r.discovered_at,
             "original_height_mm": r.original_height_mm,
             "sample_label": r.sample_label,
             "phase": r.phase,
@@ -109,12 +122,15 @@ async def test_detail(test_id: TestIdPath, db: DbDep):
     if r is None:
         return ok(None)
     sample_count = await db.scalar(select(func.count()).select_from(SamplePoint).where(SamplePoint.test_id == test_id))
-    alarm_count = await db.scalar(select(func.count()).select_from(AlarmLog).where(AlarmLog.test_id == test_id))
+    alarm_count = await db.scalar(
+        select(func.count()).select_from(AlarmLog).where(recovery_log_condition(AlarmLog, test_id))
+    )
     return ok(
         {
             "test_id": r.test_id,
             "operator_id": r.operator_id,
             "start_time": r.start_time,
+            "discovered_at": r.discovered_at,
             "end_time": r.end_time,
             "end_reason": r.end_reason,
             "state_at_end": r.state_at_end,
@@ -145,7 +161,11 @@ async def test_samples(test_id: TestIdPath, db: DbDep, max_points: MaxPoints = 1
 async def test_events(test_id: TestIdPath, db: DbDep, limit: EventLimit = 500):
     """该试验事件日志。权限：Observer+。"""
     rows = (
-        (await db.execute(select(EventLog).where(EventLog.test_id == test_id).order_by(EventLog.ts).limit(limit)))
+        (
+            await db.execute(
+                select(EventLog).where(recovery_log_condition(EventLog, test_id)).order_by(EventLog.ts).limit(limit)
+            )
+        )
         .scalars()
         .all()
     )
@@ -160,7 +180,10 @@ async def test_alarms(test_id: TestIdPath, db: DbDep, limit: EventLimit = 500):
     rows = (
         (
             await db.execute(
-                select(AlarmLog).where(AlarmLog.test_id == test_id).order_by(AlarmLog.occur_time).limit(limit)
+                select(AlarmLog)
+                .where(recovery_log_condition(AlarmLog, test_id))
+                .order_by(AlarmLog.occur_time)
+                .limit(limit)
             )
         )
         .scalars()

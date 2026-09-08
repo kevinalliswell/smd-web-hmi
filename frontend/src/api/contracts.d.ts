@@ -1,6 +1,8 @@
 import type { components } from './generated/schema'
 
 export type CommandRequest = components['schemas']['CommandRequest']
+export type RecoverySummary = components['schemas']['RecoverySummary']
+export type RecoveryDetail = components['schemas']['RecoveryDetail']
 export type OperationStatus = 'pending' | 'sent' | 'accepted' | 'verified' | 'rejected' | 'unknown'
 export type WireOperationStatus = 'pending' | 'sent' | 'accepted' | 'applied' | 'rejected' | 'interrupted' | 'unknown' | 'result_expired' | 'not_found'
 export interface WireOperation {
@@ -49,6 +51,7 @@ export interface DeviceSnapshot {
     can_ack_run?: boolean
     can_ack_alarm?: boolean
     can_reset_fault?: boolean
+    run_recovery_required?: boolean
     control_lease_acquire_required?: boolean
     can_start_test?: boolean
     can_stop_test?: boolean
@@ -57,7 +60,7 @@ export interface DeviceSnapshot {
   }
   _hostcomm?: { protocol_version?: string; capabilities?: string[] }
   alarm?: { ack_required?: boolean | null; latched_alarm_count?: number | null }
-  _v2?: { alarms_reconciled?: boolean; status?: Record<string, unknown>; telemetry?: Record<string, unknown>; profile?: Record<string, unknown>; channel_quality?: Record<string, unknown> }
+  _v2?: { recovery?: RecoverySummary | null; alarms_reconciled?: boolean; status?: Record<string, unknown>; telemetry?: Record<string, unknown>; profile?: Record<string, unknown>; channel_quality?: Record<string, unknown> }
   state_machine?: { current_state?: string; test_id?: string; run_id?: string; stage_index?: number | null; measurement_complete?: boolean; safe_complete?: boolean; outcome?: string }
   temperature?: Record<string, unknown>
   measurement?: Record<string, unknown>

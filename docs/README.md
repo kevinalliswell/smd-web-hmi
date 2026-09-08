@@ -1,6 +1,8 @@
 # 文档入口
 
-维护角色：项目维护者。当前候选软件版本为 `0.3.0-rc.4`；2026-09-07用户确认清理rc.2残留服务后安装成功，见[安装排查记录](verification/2026-09-06-windows-installer-errors.md)。这不证明覆盖升级、空库或HostComm联调已验收。固件文档修订为 `2.0-doc.2`，协议仍为2.0/design.1；当前实现限制和交接目标见[固件交接](hostcomm/v2/firmware-handoff.md)、[兼容核对](hostcomm/v2/compatibility.md)。
+维护角色：项目维护者。本轮候选 `0.3.0-rc.5` 已完成 HOST-2006—2009 的软件实现及 Windows CI 安装版联调，完整构建身份、实际产物摘要和清理结果见[安装版闭环验证](verification/2026-09-08-installed-hostcomm-loop.md)。候选交付状态、最终提交与字节以对应标签流水线及 Release 附件为准。固件文档修订为 `2.0-doc.3`，协议仍为 `2.0 / 2.0-design.1`；交接要求与未验边界见[固件交接](hostcomm/v2/firmware-handoff.md)和[兼容核对](hostcomm/v2/compatibility.md)。Win10/11 WebView2 人工验收、真实 STM32、安全联锁与持续运行验收仍未完成。
+
+2026-09-07 用户确认清理 rc.2 残留服务后 rc.4 安装成功，见[安装排查记录](verification/2026-09-06-windows-installer-errors.md)。该现场结果不证明当时已完成覆盖升级、空库核验或 HostComm 联调，本轮 CI 结果也不代替该现场验收。
 
 历史整改审查基线为 `dev@855c84d425f35279cabb9ac9ed6dc322711c335c`（`0.3.0-rc.1`，2026-09-05）；上一轮软件检查、合并和分支清理见[历史软件验证](verification/2026-09-06-software.md#最终集成软件验证)。基线不冻结后续实现；各任务的提交与验收在任务和证据记录中更新。
 

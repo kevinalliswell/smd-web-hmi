@@ -17,6 +17,7 @@ from app.db.models import ReportExport, TestSession
 from app.services import report_service
 from app.services.background_jobs import BackgroundJobCapacityError, background_jobs
 from app.services.test_id import InvalidTestIdError, validate_test_id
+from app.services.v2_run_recovery import V2RecoveryError, require_recovery_report_ready
 
 router = APIRouter(prefix="/api/reports", tags=["reports"])
 
@@ -59,6 +60,10 @@ async def generate_report(body: GenerateReportRequest, user: UserDep, db: DbDep)
         raise HTTPException(status_code=422, detail=err("invalid_test_id", str(exc)))
     if await db.scalar(select(TestSession.id).where(TestSession.test_id == test_id)) is None:
         raise HTTPException(status_code=404, detail=err("test_not_found", f"试验不存在: {test_id}"))
+    try:
+        await require_recovery_report_ready(db, test_id)
+    except V2RecoveryError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=err(exc.code, exc.message)) from exc
 
     async def run_report():
         sessionmaker = get_sessionmaker()

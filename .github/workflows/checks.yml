@@ -17,8 +17,8 @@ jobs:
       - run: python scripts/release/metadata.py && python scripts/release/check_locks.py
       - run: python scripts/check_docs.py
       - run: python scripts/check_hostcomm_contract.py
-      - run: black --config backend/pyproject.toml --check backend/app backend/tests desktop scripts/release contracts scripts/check_hostcomm_contract.py
-      - run: isort --settings-path backend/pyproject.toml --check-only backend/app backend/tests desktop scripts/release contracts scripts/check_hostcomm_contract.py
+      - run: black --config backend/pyproject.toml --check backend/app backend/tests desktop tools/bench scripts/release contracts scripts/check_hostcomm_contract.py
+      - run: isort --settings-path backend/pyproject.toml --check-only backend/app backend/tests desktop tools/bench scripts/release contracts scripts/check_hostcomm_contract.py
   backend:
     strategy:
       fail-fast: false
@@ -48,6 +48,11 @@ jobs:
       - name: Desktop transaction and process tests
         if: matrix.python == '3.13'
         run: pytest -c backend/pytest.ini desktop/tests -q
+      - name: Independent bench behavior tests
+        if: matrix.python == '3.13'
+        run: |
+          pip install --require-hashes -r tools/bench/requirements.lock
+          pytest -c backend/pytest.ini tools/bench/tests -q
       - name: Backend tests and coverage gate
         timeout-minutes: 15
         working-directory: backend
@@ -101,6 +106,7 @@ jobs:
           python-version: '3.13'
       - run: pipx run pip-audit -r backend/requirements.lock --no-deps --disable-pip
       - run: pipx run pip-audit -r desktop/requirements.lock --no-deps --disable-pip
+      - run: pipx run pip-audit -r tools/bench/requirements.lock --no-deps --disable-pip
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
@@ -109,6 +115,7 @@ jobs:
   windows-package:
     needs: [lint, backend, frontend, audit]
     runs-on: windows-latest
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -127,12 +134,33 @@ jobs:
       - name: Freeze service, shell and updater; verify Fixed Runtime; compile NSIS
         shell: pwsh
         run: ./scripts/release/build-windows.ps1
+      - name: Build the separate offline bench and bundled Chromium
+        shell: pwsh
+        run: |
+          pip install --require-hashes -r tools/bench/requirements.lock
+          if ($LASTEXITCODE -ne 0) { throw 'Bench dependency installation failed' }
+          python tools/bench/freeze.py --output artifacts/bench --work artifacts/bench-work
+          if ($LASTEXITCODE -ne 0) { throw 'Bench freeze failed' }
+          & ./artifacts/bench/SmdBench/SmdBench.exe self-check
+          if ($LASTEXITCODE -ne 0) { throw 'Frozen bench process and browser self-check failed' }
+          python scripts/release/package_bench.py --bundle artifacts/bench/SmdBench --inventory-only
+          if ($LASTEXITCODE -ne 0) { throw 'Frozen bench self-check changed the bundle inventory' }
       - name: Install NSIS and verify the isolated LocalService backend
         shell: pwsh
         run: |
           $Version = (& python scripts/release/metadata.py).Trim()
           if ($LASTEXITCODE -ne 0) { throw 'Source version mismatch' }
           ./scripts/release/smoke-windows.ps1 -Installer "artifacts/SmdHmi-$Version-windows-x64.exe" -Manifest artifacts/manifest.json -Evidence artifacts/windows-install-smoke.json
+      - name: Installed TLS, experiment, recovery and report loop
+        shell: pwsh
+        timeout-minutes: 25
+        run: |
+          $Version = (& python scripts/release/metadata.py).Trim()
+          if ($LASTEXITCODE -ne 0) { throw 'Source version mismatch' }
+          & ./artifacts/bench/SmdBench/SmdBench.exe run --installer "artifacts/SmdHmi-$Version-windows-x64.exe" --manifest artifacts/manifest.json --evidence artifacts/bench-evidence --scenario all
+          if ($LASTEXITCODE -ne 0) { throw 'Installed HostComm bench failed; inspect sanitized evidence' }
+          python scripts/release/package_bench.py --bundle artifacts/bench/SmdBench --output artifacts --evidence artifacts/bench-evidence
+          if ($LASTEXITCODE -ne 0) { throw 'Bench packaging or acceptance gate failed' }
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -140,6 +168,8 @@ jobs:
           path: |
             artifacts/windows-install-smoke.json
             artifacts/freeze-work/**/warn-*.txt
+            artifacts/bench-evidence/**
+            artifacts/bench-work/**/warn-*.txt
           if-no-files-found: ignore
           retention-days: 14
       - uses: actions/upload-artifact@v4
@@ -147,6 +177,9 @@ jobs:
           name: windows-offline-installer
           path: |
             artifacts/*.exe
+            artifacts/*.zip
+            artifacts/bench-manifest.json
+            artifacts/bench-acceptance.json
             artifacts/manifest.json
             artifacts/sbom.cdx.json
             artifacts/SHA256SUMS.txt
@@ -158,6 +191,8 @@ jobs:
           name: windows-release-metadata
           path: |
             artifacts/manifest.json
+            artifacts/bench-manifest.json
+            artifacts/bench-acceptance.json
             artifacts/sbom.cdx.json
             artifacts/SHA256SUMS.txt
             artifacts/*.md

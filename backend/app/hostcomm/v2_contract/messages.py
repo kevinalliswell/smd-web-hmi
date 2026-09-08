@@ -66,6 +66,12 @@ class HeartbeatAck(StrictModel):
     lease_expires_uptime_ms: U64 | None
     state_revision: U64
 
+    @model_validator(mode="after")
+    def lease_pair(self):
+        if (self.lease_id is None) != (self.lease_expires_uptime_ms is None):
+            raise ValueError("lease identity and expiry must both be present or absent")
+        return self
+
 
 class AcquireLease(StrictModel):
     lease_ms: Literal[8000]
@@ -743,6 +749,10 @@ class Envelope(StrictModel):
         if self.type == "event" and self.payload.kind == "first_drip":
             if self.payload.sample.boot_id != self.boot_id:
                 raise ValueError("first drip sample must belong to live event boot")
+        if self.type == "heartbeat_ack" and self.payload.lease_id is not None:
+            remaining = int(self.payload.lease_expires_uptime_ms) - int(self.uptime_ms)
+            if not 0 < remaining <= 8000:
+                raise ValueError("heartbeat lease expiry must be within eight seconds of device uptime")
         if self.type == "command" and self.payload.expected_boot_id != self.boot_id:
             raise ValueError("command boot precondition differs from session boot")
         return self

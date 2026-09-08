@@ -142,6 +142,13 @@ def enrich_status_snapshot(snapshot: dict[str, Any] | None, *, control_ready: bo
             or (phase == "completed" and run.get("safe_complete") is True)
             or (phase == "idle" and run.get("run_id") is None)
         )
+        recovery = source.get("recovery")
+        # This enrichment runs again for cache/HTTP/WS delivery. Recompute the
+        # ownership gate from durable recovery evidence instead of overwriting
+        # the adapter's refusal. Replay completeness governs reports separately.
+        recovery_ack_allowed = recovery is None or (
+            isinstance(recovery, dict) and recovery.get("review_state") == "bound"
+        )
         system.update(
             {
                 "operation_state": operation_state if coherent else "unknown",
@@ -159,6 +166,7 @@ def enrich_status_snapshot(snapshot: dict[str, Any] | None, *, control_ready: bo
                 ),
                 "can_ack_run": bool(
                     ready
+                    and recovery_ack_allowed
                     and phase == "completed"
                     and run.get("safe_complete") is True
                     and no_trip

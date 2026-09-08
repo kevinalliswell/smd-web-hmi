@@ -357,7 +357,7 @@ class V2SourceLogStore:
     async def _archive(self, db, row, record, origin):
         if self.on_record is not None and not row.archived:
             transaction = db.get_transaction()
-            archived = await self.on_record(db, record, origin)
+            archived = await self.on_record(db, {**record, "received_at": row.received_at}, origin)
             if db.get_transaction() is not transaction:
                 raise RuntimeError("archive callback must not commit or replace the source transaction")
             # Unknown runs may be linked later; a callback can explicitly defer projection.
