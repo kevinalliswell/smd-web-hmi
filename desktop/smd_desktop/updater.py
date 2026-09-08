@@ -9,6 +9,7 @@ import secrets
 import shutil
 import subprocess
 import sys
+import time
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
@@ -229,6 +230,9 @@ def main():
     logs = data_root() / "logs"
     logs.mkdir(parents=True, exist_ok=True)
     handler = RotatingFileHandler(logs / "updater.log", maxBytes=5_000_000, backupCount=5, encoding="utf-8")
+    formatter = logging.Formatter("%(asctime)sZ %(levelname)s %(name)s %(message)s", datefmt="%Y-%m-%dT%H:%M:%S")
+    formatter.converter = time.gmtime
+    handler.setFormatter(formatter)
     logging.basicConfig(handlers=[handler], level=logging.INFO, force=True)
     try:
         run()

@@ -1,13 +1,44 @@
 """Windows SCM 适配：状态查询不依赖本地化 sc.exe 输出。"""
 
 import json
+import logging
 import os
+import re
+import socket
+import ssl
 import subprocess
 import time
+import urllib.error
 import urllib.request
+from http.client import HTTPException
 from pathlib import Path
 
 from . import windows_powershell
+
+
+def _health_version(value: object) -> str:
+    # This is a log allowlist, not a new version/installation gate.
+    pattern = r"[0-9]{1,6}\.[0-9]{1,6}\.[0-9]{1,6}(?:-(?:alpha|beta|rc)\.[0-9]{1,6})?"
+    return value if isinstance(value, str) and re.fullmatch(pattern, value) else "unknown"
+
+
+def _health_choice(value: object, allowed: set[str]) -> str:
+    return value if isinstance(value, str) and value in allowed else "unknown"
+
+
+def _health_network_error(error: BaseException) -> str:
+    cause = error.reason if isinstance(error, urllib.error.URLError) else error
+    for kind, name in (
+        (TimeoutError, "timeout"),
+        (ConnectionRefusedError, "connection_refused"),
+        (ConnectionResetError, "connection_reset"),
+        (ssl.SSLError, "tls_error"),
+        (socket.gaierror, "dns_error"),
+        (HTTPException, "http_protocol_error"),
+    ):
+        if isinstance(cause, kind):
+            return name
+    return "network_error"
 
 
 class WindowsPlatform:
@@ -211,17 +242,72 @@ class WindowsPlatform:
         with self.opener.open(request, timeout=3) as response:
             return json.load(response)["data"]
 
-    def healthy(self, version: str):
+    def healthy(self, version: str) -> None:
         deadline = time.monotonic() + self.timeout
+        last = None
+        diagnostic = {"phase": "client", "reason": "deadline_elapsed", "expected_version": _health_version(version)}
         while time.monotonic() < deadline:
+            diagnostic = {
+                "phase": "client",
+                "reason": "invalid_client_config",
+                "expected_version": _health_version(version),
+            }
             try:
-                state = self.request("/api/system/health")
-                if state["version"] == version and state["status"] == "ready":
+                client = json.loads((self.data / "client.json").read_text(encoding="utf-8"))
+                request = urllib.request.Request(client["url"].rstrip("/") + "/api/system/health")
+                diagnostic.update(phase="backend", reason="invalid_response")
+                with self.opener.open(request, timeout=3) as response:
+                    diagnostic["http_status"] = response.status
+                    state = json.load(response)["data"]
+                diagnostic.update(
+                    observed_version=_health_version(state["version"]),
+                    observed_status=_health_choice(state["status"], {"ready", "not_ready"}),
+                )
+                checks = state.get("checks", {})
+                checks = checks if isinstance(checks, dict) else {}
+                diagnostic["checks"] = {
+                    name: _health_choice(checks.get(name), allowed)
+                    for name, allowed in {
+                        "database": {"ok", "error"},
+                        "schema": {"ok", "outdated"},
+                        "storage": {"ok", "low", "error"},
+                        "backup": {"ok", "error"},
+                        "hostcomm": {"online", "offline", "degraded", "good"},
+                    }.items()
+                }
+                free_bytes = checks.get("storage_free_bytes")
+                diagnostic["checks"]["storage_free_bytes"] = (
+                    free_bytes if type(free_bytes) is int and 0 <= free_bytes <= 2**64 - 1 else "unknown"
+                )
+                if state["version"] != version:
+                    diagnostic["reason"] = "version_mismatch"
+                elif state["status"] != "ready":
+                    diagnostic["reason"] = "backend_not_ready"
+                else:
+                    diagnostic.update(phase="client", reason="invalid_client_config")
+                    diagnostic.pop("http_status", None)
                     client = json.loads((self.data / "client.json").read_text(encoding="utf-8"))
+                    diagnostic.update(phase="frontend", reason="invalid_response")
                     with self.opener.open(client["url"], timeout=3) as page:
-                        if page.status == 200 and "text/html" in page.headers.get("Content-Type", ""):
+                        diagnostic["http_status"] = page.status
+                        html = "text/html" in page.headers.get("Content-Type", "")
+                        if page.status == 200 and html:
                             return
-            except (OSError, ValueError, KeyError):
+                        diagnostic["reason"] = "frontend_http_status" if page.status != 200 else "frontend_not_html"
+            except urllib.error.HTTPError as exc:
+                diagnostic.update(reason="http_status", http_status=exc.code)
+                exc.close()
+            except (OSError, HTTPException) as exc:
+                if diagnostic["phase"] != "client":
+                    diagnostic.update(reason="network_error", network_type=_health_network_error(exc))
+            except (ValueError, KeyError, TypeError, AttributeError):
+                # Never log response bodies, URLs, configuration or exception text.
                 pass
+            if diagnostic != last:
+                logging.getLogger(__name__).warning("upgrade_health_probe %s", json.dumps(diagnostic, sort_keys=True))
+                last = diagnostic
             time.sleep(0.5)
-        raise RuntimeError(f"版本 {version} 未通过数据库/schema/存储/备份及前端健康检查")
+        detail = json.dumps(diagnostic, sort_keys=True)
+        raise RuntimeError(
+            f"版本 {_health_version(version)} 未通过数据库/schema/存储/备份及前端健康检查; health_diagnostic={detail}"
+        )

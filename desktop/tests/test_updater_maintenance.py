@@ -5,6 +5,7 @@ import logging
 import sqlite3
 import sys
 from contextlib import closing, nullcontext
+from datetime import datetime, timezone
 from types import SimpleNamespace
 from unittest.mock import Mock
 
@@ -83,7 +84,11 @@ def updater_logger(monkeypatch):
             logger.addHandler(handler)
 
     monkeypatch.setattr(
-        updater, "logging", SimpleNamespace(INFO=logging.INFO, basicConfig=configure, exception=logger.exception)
+        updater,
+        "logging",
+        SimpleNamespace(
+            INFO=logging.INFO, Formatter=logging.Formatter, basicConfig=configure, exception=logger.exception
+        ),
     )
     yield logger
     for handler in logger.handlers:
@@ -99,6 +104,7 @@ def test_main_records_utf8_guidance_and_returns_exit_20_without_upgrading(instal
         updater.main()
     assert failure.value.code == 20
     log = (installed.data / "logs/updater.log").read_text(encoding="utf-8")
+    assert datetime.fromisoformat(log.split(" ", 1)[0]).tzinfo is timezone.utc
     assert TARGET in log
     assert "旧版→系统设置→离线升级" in log
     assert "private-ticket-value" not in log

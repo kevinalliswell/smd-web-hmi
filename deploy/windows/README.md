@@ -55,6 +55,17 @@ Get-Content "$env:ProgramData\SmdHmi\logs\updater.log" -Tail 80 -Encoding UTF8
 
 如果显式设置了 `SMD_DATA_ROOT`，使用该目录下的 `logs\updater.log`。反馈错误时提供安装方式、原版本及末尾错误，不提供 `service.env`、初始密码或配对密钥。日志不存在可能表示更新器尚未启动，或日志目录尚未创建成功；需结合安装器退出码、Windows 应用拦截记录和磁盘/目录访问情况继续定位，不能直接推断是维护票据缺失。
 
+若新版本与回退旧版本均报“未通过数据库/schema/存储/备份及前端健康检查”，先读取以下信息。默认目录命令如下；使用自定义 `SMD_DATA_ROOT` 时替换其中的数据目录。命令仅查询，不启动或停止服务：
+
+```powershell
+Get-CimInstance Win32_Service -Filter "Name='SmdHmi'" | Select-Object Name,State,ProcessId,PathName
+$smdUrl = (Get-Content -LiteralPath 'C:\ProgramData\SmdHmi\client.json' -Raw -Encoding UTF8 | ConvertFrom-Json).url
+Invoke-RestMethod -Uri ($smdUrl.TrimEnd('/') + '/api/system/health') -TimeoutSec 8 | ConvertTo-Json -Depth 5
+Get-Content -LiteralPath 'C:\ProgramData\SmdHmi\logs\service.log' -Tail 80 -Encoding UTF8
+```
+
+连接失败时检查服务启动日志；返回健康JSON时按 `data.checks` 定位数据库、schema、存储或备份问题，并核对 `data.version` 和 `data.status`。`hostcomm=offline` 本身不导致应用验活失败。健康响应正常仍需核对首页；本次查询只能反映当前状态。保留命令报错，不因旧日志中的1073重复删除服务。新旧版本均失败时，应先处理已定位的原因，再执行下面的恢复命令；恢复通过前保留 `updates` 和维护票据。
+
 `0.3.0-rc.3` 安装器的通用错误提示存在中文乱码，并把错误日志路径写成了 `updates`；这不代表安装失败的具体原因。不要仅凭该提示删除数据或维护记录。已安装版本的覆盖升级仍须按上述维护步骤准备目标版本，不能通过重新双击安装器跳过门禁。
 
 异常时升级器停止服务，校验并恢复迁移前数据库及配置，切回旧版本目录，验证健康后解除维护锁。不会使用降级迁移代替整库恢复。断电后由开机任务读取阶段日志执行同一路径；恢复动作可重复执行。
