@@ -98,6 +98,18 @@ PR #75合入`main@9cc47c0d57135ba1ddde2b6a6d9de2a5ebd90d04`后，[主线检查](
 
 修正后的测试执行时尚未提交，文件blob `f60c50b1331a4ac962d8008eb0724168fcf76391`随后归档于`9fac041f27e5af2163c0f29b086d5eed93b15e06`；两项真实TLS场景及两项诊断边界共4项通过。环境为同一macOS 26.3 arm64、Python 3.13.12、SQLite 3.50.4解释器，事后复核的依赖版本、完整命令和stdout摘要均保存在上述JSON；这是本机来源证据，后续Windows检查仍须重新通过。
 
+## 模拟器测试客户端的响应期限
+
+[PR #77最终检查](https://github.com/kevinalliswell/smd-web-hmi/actions/runs/34178257613)实际快照为`dc6e871ea1e6daddd4bdf2f41072117574af4724`（分支`5707c0269f938b9fafa00e5b7bd2098423cfdaf3`），七项必要检查全部通过。Windows后端769通过/4跳过、覆盖率87.66%，桌面189通过/2跳过、工具86通过。实际安装、17项业务/故障断言、10份报告、归属清理和最终封装通过，非预期页面/API/控制台错误均为0。下载的清单与验收记录一致，报告大小和SHA256已逐一复核；安装器摘要为`ece6a0955fa31cb3f78647060630ca45a7b38f1d93c0da901c668ff820a449ee`，工具清单摘要为`5cbc6a5730a53bf007ceda63bee0f2b657b1961313c6c04141cc8aeeb01bee8a`。
+
+PR #77合入`main@4c9f1a8552224bab014f8bbfa389e68319ece92b`后，[主线检查](https://github.com/kevinalliswell/smd-web-hmi/actions/runs/34180667584)在Windows的`test_stop_can_cancel_reserved_start_and_does_not_end_sampling[False]`失败。实际等待点是前置`start_run`的受理回执，`stop_run`尚未发送；测试辅助客户端Peer的每次`readline`使用1秒期限。失败前253项通过/4项跳过，其余五项基础检查通过，安装包按门禁跳过。日志没有当时的存储提交耗时或事件循环调度记录，不能把具体磁盘/调度原因或停止语义缺陷视为已证实。
+
+既有[通信契约](../hostcomm/v2/wire.md)规定普通响应默认等待3秒。生产普通请求的发送阶段自身限时3秒，随后另有3秒响应等待；只有心跳将发送与ACK共用3秒总预算。测试Peer的逐帧1秒还会被连续无关报文反复重置，且原`drain`没有受同一期限约束。测试客户端现使用更严格的单一3秒绝对截止限制发送及全部响应帧，独立调用`response`也有界；这不修改生产的通信或租约时限。
+
+[本地响应期限证据](evidence/2026-09-08-simulator-deadline.json)保留执行基线、源文件blob、原命令、探针与红测补丁，以及脱敏输出和SHA256。受控同步存储暂停1100ms时，旧Peer超时但启动已持久受理；修正后的预算允许同一场景继续完成停止、采样和冷却。这只证明可行触发路径，不等于精确重现Windows当时的调度。独立真实回环正例将合法关联回执延迟1.1秒，旧Peer按预期失败，修正后通过；连续无关遥测和阻塞`drain`由Peer自身期限结束，不能靠外层诊断上界制造通过。
+
+测试执行HEAD为`4c9f1a8552224bab014f8bbfa389e68319ece92b`，修正测试当时未提交，其blob `eac0ef0470e83c0ae7f6428f9bd785cafc2bb2f8`随后归档于`a6f66d19c609ff59f5f30f8a4aa581f932e32846`。macOS 26.3 arm64、Python 3.13.12、SQLite 3.50.4环境下，模拟器30项及相邻传输/运行时/时序/租约72项通过，Black/isort/diff及文档链接检查通过。原停止和丢回执查询语义断言保留，后续Windows与最终标签仍须重新通过。
+
 ## PDF 导出目视核查
 
 第十一轮实际 Windows 报告（SHA256 `09e7d7498b9f3b6d0c10aa0efb62d53fafe6b5de434909d58c78d620f504c71d`）经 Poppler 渲染后发现三处温度差减号和页尾中点显示为方框，且“结果指标”标题孤立在前页。独立核对 `UniGB-UCS2-H` 字体映射确认 U+2212、U+00B7 无对应 CID；该报告其他非 ASCII 字符均有映射。`Heading2` 默认不保持与后文同页。这些问题未被原有文本内容断言识别，原 CI 通过记录不代表版式没有问题。
