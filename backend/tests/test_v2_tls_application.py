@@ -10,6 +10,36 @@ import pytest
 
 from tests.v2_test_support import private_test_directory
 
+_STAGE_PREFIX = "TLS_APPLICATION_STAGE:"
+_STAGES = {"imports", "schema", "connect", "connected", "reconnect", "recipe", "run", "logs", "cleanup", "complete"}
+
+
+def _stage(name):
+    assert name in _STAGES
+    print(_STAGE_PREFIX + name, flush=True)
+
+
+def _stage_summary(output):
+    if isinstance(output, bytes):
+        output = output.decode("utf-8", errors="replace")
+    observed = []
+    for line in (output or "").splitlines():
+        if line.startswith(_STAGE_PREFIX):
+            name = line[len(_STAGE_PREFIX) :]
+            if name in _STAGES:
+                observed.append(name)
+    return " -> ".join(observed[-16:]) or "none observed"
+
+
+@pytest.mark.parametrize("as_bytes", [False, True])
+def test_timeout_stage_summary_excludes_credentials_and_arbitrary_output(as_bytes):
+    secret = "synthetic-pairing-value-do-not-publish"
+    output = f"{secret}\n{_STAGE_PREFIX}imports\n{_STAGE_PREFIX}run {secret}\n{_STAGE_PREFIX}cleanup\n"
+    if as_bytes:
+        output = output.encode("utf-8") + b"\xff"
+    assert _stage_summary(output) == "imports -> cleanup"
+    assert _stage_summary(secret) == _stage_summary(None) == "none observed"
+
 
 @pytest.mark.skipif(not getattr(ssl, "HAS_PSK", False), reason="TLS-PSK requires Python 3.13/OpenSSL")
 @pytest.mark.parametrize("disconnect_upload", [False, True])
@@ -28,20 +58,27 @@ def test_real_tls_recipe_run_stop_cooling_and_source_log_recovery(tmp_path, disc
     # invoked from the repository root or through a Windows workflow.
     backend = Path(__file__).resolve().parents[1]
     environment["PYTHONPATH"] = str(backend)
-    completed = subprocess.run(
-        [sys.executable, str(Path(__file__).resolve()), "--child", str(directory), str(int(disconnect_upload))],
-        cwd=backend,
-        env=environment,
-        capture_output=True,
-        text=True,
-        timeout=25,
-    )
-    assert completed.returncode == 0, completed.stdout + completed.stderr
-    assert "TLS_APPLICATION_COMPLETE" in completed.stdout
-    assert key.read_text(encoding="ascii").strip() not in completed.stdout + completed.stderr
+    try:
+        completed = subprocess.run(
+            [sys.executable, str(Path(__file__).resolve()), "--child", str(directory), str(int(disconnect_upload))],
+            cwd=backend,
+            env=environment,
+            capture_output=True,
+            text=True,
+            timeout=25,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise AssertionError(f"TLS child exceeded 25s; stages: {_stage_summary(exc.stdout)}") from None
+    if key.read_text(encoding="ascii").strip() in completed.stdout + completed.stderr:
+        raise AssertionError("TLS child exposed synthetic pairing credentials")
+    if completed.returncode != 0 or "TLS_APPLICATION_COMPLETE" not in completed.stdout:
+        raise AssertionError(
+            f"TLS child did not complete ({completed.returncode}); stages: {_stage_summary(completed.stdout)}"
+        )
 
 
 async def _application_scenario(directory, disconnect_upload=False):
+    _stage("imports")
     import asyncio
     import json
     import uuid
@@ -58,6 +95,7 @@ async def _application_scenario(directory, disconnect_upload=False):
     from app.services.recipe_definition import standard_template
 
     key = directory / "synthetic-pairing.psk"
+    _stage("schema")
     board = V2Simulator(
         directory / "inert-board.sqlite",
         psk_file=key,
@@ -67,8 +105,11 @@ async def _application_scenario(directory, disconnect_upload=False):
     client = None
     try:
         async with engine.begin() as connection:
+            # sqlite3 legacy transaction mode otherwise commits each CREATE separately.
+            await connection.exec_driver_sql("BEGIN")
             await connection.run_sync(Base.metadata.create_all)
         factory = async_sessionmaker(engine, expire_on_commit=False)
+        _stage("connect")
         await board.start()
         p = board.pairing
         client = V2Client(
@@ -90,6 +131,7 @@ async def _application_scenario(directory, disconnect_upload=False):
         assert client.transport._writer.get_extra_info("ssl_object").cipher()[0] == "TLS_AES_128_GCM_SHA256"
         assert client.transport.lease_id is None  # Reading/recovery never claims device control.
 
+        _stage("connected")
         definition = standard_template()
         recipe = dict(
             recipe_id=uuid.uuid4().hex, version=1, digest=definition.digest(), definition=definition.model_dump()
@@ -111,6 +153,7 @@ async def _application_scenario(directory, disconnect_upload=False):
                     test_id=test_id, operator_id="admin", start_time="2026-09-06T00:00:00Z", original_height_mm=20.0
                 )
             )
+        _stage("recipe")
         if disconnect_upload:
             from app.hostcomm.client import HostCommNotConnectedError
 
@@ -136,6 +179,7 @@ async def _application_scenario(directory, disconnect_upload=False):
                     msg_id="tls-interrupted-upload",
                 )
             assert dropped
+            _stage("reconnect")
             async with asyncio.timeout(10):
                 while not (client.is_online and client._ready and client.transport.session_id != prior_session):
                     if client.transport._main_task.done():
@@ -150,6 +194,7 @@ async def _application_scenario(directory, disconnect_upload=False):
         )
         assert activated["wire_status"] == "applied"
         assert (await client.get_parameters())["params"]["recipe"] == recipe
+        _stage("run")
         started = await client.send_command(
             "start_test",
             {"test_id": test_id, "expected_recipe": recipe},
@@ -178,6 +223,7 @@ async def _application_scenario(directory, disconnect_upload=False):
         assert terminal["measurement_start"] == start_boundary
         assert int(terminal["safe_boundary"]["sample_seq"]) > int(start_boundary["sample_seq"])
 
+        _stage("logs")
         await client.recover_logs()
         catalog = client._status_frame["payload"]["log"]
         async with factory() as db:
@@ -200,12 +246,14 @@ async def _application_scenario(directory, disconnect_upload=False):
         assert acknowledged["wire_status"] == "applied"
         assert (await client.get_status())["state_machine"]["current_state"] == "idle"
         assert client.is_online
-        print("TLS_APPLICATION_COMPLETE")
     finally:
+        _stage("cleanup")
         if client:
             await client.close()
         await board.close()
         await engine.dispose()
+    _stage("complete")
+    print("TLS_APPLICATION_COMPLETE", flush=True)
 
 
 if __name__ == "__main__":
