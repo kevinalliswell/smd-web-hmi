@@ -1,0 +1,112 @@
+{
+  "schema_version": 1,
+  "scope": "Local test-peer response deadline evidence; does not certify Windows CI, firmware or physical behavior.",
+  "execution_head": "4c9f1a8552224bab014f8bbfa389e68319ece92b",
+  "archived_source_commit": "a6f66d19c609ff59f5f30f8a4aa581f932e32846",
+  "execution_note": "Probe ran on clean baseline test source. Red/green tests ran with uncommitted test edits over execution_head; archived_source_commit was created afterward and identifies the green source bytes, not the execution HEAD.",
+  "environment": {
+    "platform": "macOS-26.3-arm64-arm-64bit-Mach-O",
+    "python": "3.13.12",
+    "sqlite": "3.50.4",
+    "packages": {
+      "SQLAlchemy": "2.0.36",
+      "aiosqlite": "0.20.0",
+      "pytest": "8.3.4",
+      "pytest-asyncio": "0.24.0"
+    }
+  },
+  "environment_capture_utc": "2026-09-08T02:44:27.599280+00:00",
+  "environment_note": "Recorded during the same task from the unchanged implementation-venv interpreter; this is a separate environment check, not an embedded snapshot from each earlier execution.",
+  "baseline_sources": {
+    "backend/tests/test_hostcomm_v2_simulator.py": {
+      "sha256": "9fe6d38e90a3ba00bf576f394747c40914fcc3db313fe25d3784e743adee6cf6",
+      "git_blob": "8c23c70b9ce4b322c1b96d61abd9a7b126aa1a07"
+    },
+    "backend/app/hostcomm/v2_transport.py": {
+      "sha256": "5c7b4f048744ee78099e7f04106e72951a6229d81cdd2eb8f0cb2bdc9591b5bb",
+      "git_blob": "69971c0f54ad8d4c57982d37b4b542256534dfe6"
+    },
+    "backend/app/hostcomm/v2_simulator/server.py": {
+      "sha256": "91f4361a7e0eacdf50af67151e760f24464e0b3749dfbbc53d9b18cd31d430df",
+      "git_blob": "2d33701d667060360765ea14bf291dee7bdb6172"
+    },
+    "backend/app/hostcomm/v2_simulator/state.py": {
+      "sha256": "38fc15bfa3a22a8abe589146ff5c1d8e98749555e6962f81fe090bf89a833f99",
+      "git_blob": "5d67b2b43d16db2766254165d5889f5984cfb8a2"
+    },
+    "backend/app/hostcomm/v2_simulator/storage.py": {
+      "sha256": "3943b339e49b42a0430f4cd4712f53f6866cf11f9d74be904a9589a80f9e1b6c",
+      "git_blob": "1c81543c12e2ed9d06cf7d39803538fc4ad32dfb"
+    },
+    "docs/hostcomm/v2/wire.md": {
+      "sha256": "8ccbe8d6628b51b88a10d6b80786b29f20ce11a2bbc56090b7a27946776089a4",
+      "git_blob": "2b5606455fc7deff826780555991a89cdbe26baa"
+    }
+  },
+  "windows_failure": {
+    "run": 34180667584,
+    "job": 101918956814,
+    "sha256_log": "30065a121203152d5900a1d19c93ad76ed7b3df57bd3dd67e39cbbea30db0fda",
+    "failed_test": "test_stop_can_cancel_reserved_start_and_does_not_end_sampling[False]",
+    "waiting_at": "start_run response; stop_run not sent",
+    "deadline_seconds": 1,
+    "result": "253 passed, 4 skipped; suite stopped at first failure"
+  },
+  "green_source": {
+    "path": "backend/tests/test_hostcomm_v2_simulator.py",
+    "git_blob": "eac0ef0470e83c0ae7f6428f9bd785cafc2bb2f8",
+    "sha256": "78f113e6e46a3d25bbe9d4bc53d987c63878aebe32d608d8df258f9f2e0d1ae9"
+  },
+  "storage_probe": {
+    "cwd": "backend",
+    "command": "PYTHONPATH=. ../../implementation-venv/bin/python ../../probe_simulator_response_deadline.py > ../../simulator-response-deadline-probe.log 2>&1",
+    "reproduce": "Use execution_head and its original test source (baseline_sources) in an isolated checkout. Save script.text to the original relative probe filename before invoking. The script runpy-loads that test file; running against the fixed Peer would not reproduce the original comparison. Archived simulator-deadline-storage-probe files are byte-identical copies of the original probe files.",
+    "script": {
+      "sha256": "34fc8895fdfdc534e9a085555d3f3a0f4475e6c35a4c5d6bf935a59768265473",
+      "text": "\"\"\"Real inert device + controlled sync commit stall; no repository edits.\"\"\"\nimport asyncio,json,runpy,tempfile,time\nfrom pathlib import Path\nns=runpy.run_path('tests/test_hostcomm_v2_simulator.py')\nPeer=ns['Peer']; V2Simulator=ns['V2Simulator']; synthetic_profile=ns['synthetic_profile']\nOriginalRequest,OriginalResponse=Peer.request,Peer.response\nasync def total_response(self,request_id,*,deadline=None):\n    deadline=deadline if deadline is not None else asyncio.get_running_loop().time()+3\n    async with asyncio.timeout_at(deadline):\n        while True:\n            raw=await self.reader.readline()\n            assert raw\n            msg=ns['validate_message'](ns['strict_loads'](raw[:-1])).model_dump(mode='python')\n            if msg['reply_to']==request_id:return msg\nasync def total_request(self,kind,payload):\n    deadline=asyncio.get_running_loop().time()+3\n    async with asyncio.timeout_at(deadline):\n        frame=self.frame(kind,payload)\n        self.writer.write(ns['encode_message'](frame));await self.writer.drain()\n        return await total_response(self,frame['msg_id'],deadline=deadline)\nasync def case(fixed):\n    Peer.request=total_request if fixed else OriginalRequest\n    Peer.response=total_response if fixed else OriginalResponse\n    with tempfile.TemporaryDirectory(prefix='peer-deadline-') as temp:\n        device=V2Simulator(Path(temp)/'board.sqlite',test_plaintext=True,profile=synthetic_profile(approved=True))\n        peer=Peer(device);paused=False\n        await device.start()\n        save=device.store.save\n        def stalled_save(state,records=()):\n            nonlocal paused\n            if state['run']['state']=='preparing' and not paused:\n                paused=True;time.sleep(1.1)\n            return save(state,records)\n        device.store.save=stalled_save\n        started=time.monotonic();error=None\n        try:\n            await peer.connect()\n            run_id,_=await ns['running'](peer,tick=True)\n            _,reply=await peer.command('stop_run',{'run_id':run_id,'reason':'operator_stop'})\n            assert reply['payload']['status']=='applied'\n            first=(await peer.request('get_status',{}))['payload']\n            assert first['run']['state']=='safe_disposal'\n            await device.tick()\n            assert (await peer.request('get_status',{}))['payload']['latest_sample']!=first['latest_sample']\n            await device.complete_purge();await device.complete_cooling()\n            assert (await peer.request('get_status',{}))['payload']['run']['safe_complete']\n        except Exception as exc:error=type(exc).__name__\n        finally:\n            result={'candidate':fixed,'injected_sync_commit_pause_ms':1100,'paused':paused,'error':error,\n              'run_state':device.state.run['state'],'operation_statuses':[x['status'] for x in device.state.data['operations'].values()],\n              'elapsed':round(time.monotonic()-started,3)}\n            await peer.close();await device.close()\n        print(json.dumps(result),flush=True);return result\nasync def main():\n    result=[await case(False),await case(True)]\n    Path('../../simulator-response-deadline-probe.json').write_text(json.dumps(result,indent=2),encoding='utf-8')\nasyncio.run(main())\n"
+    },
+    "stdout": {
+      "sha256": "3644a9c0f2ab80c3dc5295c81c325a0db619595c820131d6bba58b3dd7f3b1bc",
+      "text": "{\"candidate\": false, \"injected_sync_commit_pause_ms\": 1100, \"paused\": true, \"error\": \"TimeoutError\", \"run_state\": \"preparing\", \"operation_statuses\": [\"applied\", \"applied\", \"accepted\"], \"elapsed\": 1.121}\n{\"candidate\": true, \"injected_sync_commit_pause_ms\": 1100, \"paused\": true, \"error\": null, \"run_state\": \"completed\", \"operation_statuses\": [\"applied\", \"applied\", \"applied\", \"applied\"], \"elapsed\": 1.148}\n"
+    },
+    "result": {
+      "sha256": "def98e399ed9c03b6bfe41d1889ce69b6326e5cd8654bd326e8b2f4aec2b2f66",
+      "text": "[\n  {\n    \"candidate\": false,\n    \"injected_sync_commit_pause_ms\": 1100,\n    \"paused\": true,\n    \"error\": \"TimeoutError\",\n    \"run_state\": \"preparing\",\n    \"operation_statuses\": [\n      \"applied\",\n      \"applied\",\n      \"accepted\"\n    ],\n    \"elapsed\": 1.121\n  },\n  {\n    \"candidate\": true,\n    \"injected_sync_commit_pause_ms\": 1100,\n    \"paused\": true,\n    \"error\": null,\n    \"run_state\": \"completed\",\n    \"operation_statuses\": [\n      \"applied\",\n      \"applied\",\n      \"applied\",\n      \"applied\"\n    ],\n    \"elapsed\": 1.148\n  }\n]"
+    },
+    "limitation": "Controlled 1100ms synchronous save pause demonstrates a possible triggering path only. Windows CI did not capture per-commit duration or event-loop scheduling."
+  },
+  "red_test": {
+    "cwd": "repository root",
+    "command": "../implementation-venv/bin/python -m pytest -c backend/pytest.ini backend/tests/test_hostcomm_v2_simulator.py -k test_peer_accepts_reply_after_one_second -q > ../simulator-deadline-before.log 2>&1",
+    "source_git_blob": "3e2a847a99c11df088161179f0d9ee0e1ed71acf",
+    "source_sha256": "2d07b49dbf2f2a80be4771f0a83cf1079f0e989f6f75d209dc5017aefff7e953",
+    "patch_from_execution_head": {
+      "sha256": "a961777a0bc5b0c019214680051b39d7fd2e0c8dc7a587acdfef84c92d0ec354",
+      "text": "--- a/backend/tests/test_hostcomm_v2_simulator.py\n+++ b/backend/tests/test_hostcomm_v2_simulator.py\n@@ -149,6 +149,34 @@\n     await sim.close()\n \n \n+async def test_peer_accepts_reply_after_one_second_within_response_budget(device, monkeypatch):\n+    peer = Peer(device)\n+    senders = []\n+    queue = device._queue\n+\n+    def delayed_reply(session, kind, payload, reply_to=None):\n+        if kind != \"status_snapshot\" or reply_to is None:\n+            return queue(session, kind, payload, reply_to)\n+\n+        async def send_later():\n+            await asyncio.sleep(1.1)\n+            queue(session, kind, payload, reply_to)\n+\n+        senders.append(asyncio.create_task(send_later()))\n+\n+    try:\n+        await peer.connect()\n+        monkeypatch.setattr(device, \"_queue\", delayed_reply)\n+        reply = await peer.request(\"get_status\", {})\n+        assert reply[\"type\"] == \"status_snapshot\" and reply[\"payload\"][\"run\"][\"state\"] == \"idle\"\n+    finally:\n+        for sender in senders:\n+            sender.cancel()\n+        await asyncio.gather(*senders, return_exceptions=True)\n+        if hasattr(peer, \"writer\"):\n+            await peer.close()\n+\n+\n async def test_handshake_status_does_not_allocate_source_samples(device):\n     peer = Peer(device)\n     ack = await peer.connect()\n"
+    },
+    "result": "Expected TimeoutError: 1 failed, 26 deselected in 1.23s. A valid correlated status_snapshot delayed 1.1 seconds on the actual loopback connection was rejected by the original 1 second per-read deadline.",
+    "private_trace_not_embedded": {
+      "sha256": "811f3ecd7aabdce4e9a727d39cd4175f1c43c9156328073cc435b3e3b0322b4f"
+    }
+  },
+  "green_tests": [
+    {
+      "cwd": "repository root",
+      "command": "../implementation-venv/bin/python -m pytest -c backend/pytest.ini backend/tests/test_hostcomm_v2_simulator.py -q > ../simulator-deadline-after.log 2>&1",
+      "stdout": {
+        "sha256": "0ee8161b8e6e428e7f4db604ee8e50c798bd16c1278763ac7eef849654044ff5",
+        "text": "..............................                                           [100%]\n30 passed in 13.74s\n"
+      }
+    },
+    {
+      "cwd": "repository root",
+      "command": "../implementation-venv/bin/python -m pytest -c backend/pytest.ini backend/tests/test_hostcomm_v2_transport.py backend/tests/test_v2_control_runtime.py backend/tests/test_v2_control_timing.py backend/tests/test_v2_lease_context.py -q > ../simulator-deadline-adjacent.log 2>&1",
+      "stdout": {
+        "sha256": "67d1ccf77cc0f66f641649eef3d913da88bedb42f599dccab124b3486c305933",
+        "text": "........................................................................ [100%]\n72 passed in 2.08s\n"
+      }
+    }
+  ],
+  "deadline_semantics": "The test Peer uses one absolute 3-second bound including drain and unrelated frames; standalone response also has a bound. Production ordinary send and response each retain their own 3-second budgets; heartbeat retains its combined 3-second budget. No production deadline, lease clock, retry, or wire capability changed.",
+  "public_evidence_policy": "Includes source patches, a synthetic fault probe and fixed test summaries only. Excludes full traceback, databases, configuration, passwords, PSK and session credentials."
+}

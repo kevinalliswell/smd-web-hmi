@@ -59,18 +59,24 @@ class Peer:
         }
 
     async def request(self, kind, payload):
-        frame = self.frame(kind, payload)
-        self.writer.write(encode_message(frame))
-        await self.writer.drain()
-        return await self.response(frame["msg_id"])
+        # The ordinary response contract is 3s. This test peer uses a stricter
+        # single budget for sending and receiving, including unrelated frames.
+        deadline = asyncio.get_running_loop().time() + 3
+        async with asyncio.timeout_at(deadline):
+            frame = self.frame(kind, payload)
+            self.writer.write(encode_message(frame))
+            await self.writer.drain()
+            return await self.response(frame["msg_id"], deadline=deadline)
 
-    async def response(self, request_id):
-        while True:
-            raw = await asyncio.wait_for(self.reader.readline(), 1)
-            assert raw, "connection ended before response"
-            msg = validate_message(strict_loads(raw[:-1])).model_dump(mode="python")
-            if msg["reply_to"] == request_id:
-                return msg
+    async def response(self, request_id, *, deadline=None):
+        deadline = deadline if deadline is not None else asyncio.get_running_loop().time() + 3
+        async with asyncio.timeout_at(deadline):
+            while True:
+                raw = await self.reader.readline()
+                assert raw, "connection ended before response"
+                msg = validate_message(strict_loads(raw[:-1])).model_dump(mode="python")
+                if msg["reply_to"] == request_id:
+                    return msg
 
     async def command(self, name, params):
         status = (await self.request("get_status", {}))["payload"]
@@ -147,6 +153,113 @@ async def device(tmp_path):
     await sim.start()
     yield sim
     await sim.close()
+
+
+async def test_peer_accepts_reply_after_one_second_within_response_budget(device, monkeypatch):
+    peer = Peer(device)
+    senders = []
+    queue = device._queue
+
+    def delayed_reply(session, kind, payload, reply_to=None):
+        if kind != "status_snapshot" or reply_to is None:
+            return queue(session, kind, payload, reply_to)
+
+        async def send_later():
+            await asyncio.sleep(1.1)
+            queue(session, kind, payload, reply_to)
+
+        senders.append(asyncio.create_task(send_later()))
+
+    try:
+        await peer.connect()
+        monkeypatch.setattr(device, "_queue", delayed_reply)
+        reply = await peer.request("get_status", {})
+        assert reply["type"] == "status_snapshot" and reply["payload"]["run"]["state"] == "idle"
+    finally:
+        for sender in senders:
+            sender.cancel()
+        await asyncio.gather(*senders, return_exceptions=True)
+        if hasattr(peer, "writer"):
+            await peer.close()
+
+
+@pytest.mark.parametrize("standalone_response", [False, True])
+async def test_peer_unrelated_telemetry_cannot_extend_response_deadline(device, monkeypatch, standalone_response):
+    peer = Peer(device)
+    senders, requests = [], []
+    queue, emitted = device._queue, 0
+    try:
+        await peer.connect()
+        device.state.sample()
+        device.state.commit()
+        kind, telemetry = device.state.notifications[-1]
+        assert kind == "telemetry"
+        device.state.notifications.clear()
+
+        def unrelated_only(session, kind, payload, reply_to=None):
+            if kind != "status_snapshot" or reply_to is None:
+                return queue(session, kind, payload, reply_to)
+
+            async def stream():
+                nonlocal emitted
+                while True:
+                    queue(session, "telemetry", telemetry)  # Legal unsolicited frames; none completes this request.
+                    emitted += 1
+                    await asyncio.sleep(0.1)
+
+            senders.append(asyncio.create_task(stream()))
+
+        monkeypatch.setattr(device, "_queue", unrelated_only)
+        if standalone_response:
+            frame = peer.frame("get_status", {})
+            peer.writer.write(encode_message(frame))
+            await peer.writer.drain()
+            pending = peer.response(frame["msg_id"])
+        else:
+            pending = peer.request("get_status", {})
+        request = asyncio.create_task(pending)
+        requests.append(request)
+        with pytest.raises(TimeoutError):
+            await asyncio.wait_for(asyncio.shield(request), 6)  # Diagnostic bound, not the peer's deadline.
+        assert request.done() and not request.cancelled(), "the outer guard, not the peer, ended the wait"
+        assert isinstance(request.exception(), TimeoutError) and emitted > 1
+    finally:
+        for task in senders + requests:
+            task.cancel()
+        await asyncio.gather(*senders, *requests, return_exceptions=True)
+        if hasattr(peer, "writer"):
+            await peer.close()
+
+
+async def test_peer_blocked_drain_shares_the_request_deadline(device, monkeypatch):
+    peer = Peer(device)
+    entered, release, cancelled = asyncio.Event(), asyncio.Event(), asyncio.Event()
+    request = None
+
+    async def blocked_drain():
+        entered.set()
+        try:
+            await release.wait()
+        except asyncio.CancelledError:
+            cancelled.set()
+            raise
+
+    try:
+        await peer.connect()
+        monkeypatch.setattr(peer.writer, "drain", blocked_drain)
+        request = asyncio.create_task(peer.request("get_status", {}))
+        await asyncio.wait_for(entered.wait(), 6)
+        with pytest.raises(TimeoutError):
+            await asyncio.wait_for(asyncio.shield(request), 6)
+        assert request.done() and not request.cancelled(), "the outer guard, not the peer, ended the wait"
+        assert isinstance(request.exception(), TimeoutError) and cancelled.is_set()
+    finally:
+        release.set()
+        if request:
+            request.cancel()
+            await asyncio.gather(request, return_exceptions=True)
+        if hasattr(peer, "writer"):
+            await peer.close()
 
 
 async def test_handshake_status_does_not_allocate_source_samples(device):
