@@ -52,6 +52,8 @@
 
 这些结果证明查询时rc.4后台已就绪，当前没有触发存储门槛；不能反推两次验活失败时的状态，也不能证明升级事务已收尾或首页通过。下一步只读查询配置地址首页的HTTP状态及Content-Type，以及 `updates/active.json` 的phase、target_version、backup_ready；不要求发送完整配置或票据。若事务仍未完成，恢复入口会再次停服务并按事务恢复数据库和配置，不能把它当作仅清除标志的命令。
 
+用户随后提供首页结果 `200 / text/html; charset=utf-8`，并在单独读取phase后文字回复“rolled back failed”（按当前枚举对应 `rollback_failed`）。当前后台及首页均已通过查询，而事务仍未完成。下一步使用已安装rc.4的 `SmdUpdate.exe --recover --install "C:\Program Files\SmdHmi"` 单次尝试既有事务恢复；通过提升权限的PowerShell等待进程结束并核对退出码，以及phase变为 `rolled_back`。该操作会用本次升级前的事务备份恢复数据库和配置，成功后运行rc.4并解除对应维护票据；不等于安装rc.5。此时尚未取得恢复执行结果，原验活失败原因仍未知。
+
 ### 本地诊断修补验证
 
 工作分支 `fix/upgrade-health-diagnostics` 在上述基线增加失败阶段、版本、检查项、磁盘可用字节、HTTP状态或固定网络错误类别；只记录白名单字段，重复诊断去重，最终异常保留最后摘要。更新器日志新增UTC时间。原版本/就绪/HTML判定、每请求3秒、0.5秒重试和外层等待期限保留；该修补尚未发布，不改变rc.5资产，也未解决尚待定位的现场原因。
