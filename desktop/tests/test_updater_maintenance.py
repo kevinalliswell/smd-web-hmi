@@ -37,7 +37,9 @@ def installed(tmp_path, monkeypatch):
     with closing(sqlite3.connect(database)) as connection, connection:
         connection.execute("CREATE TABLE samples(value TEXT)")
         connection.execute("INSERT INTO samples VALUES (?)", ("既有试验记录",))
-    (data / "config/service.env").write_text(f'SMD_DB_PATH="{database}"\n', encoding="utf-8")
+    (data / "config/service.env").write_text(
+        f"SMD_DB_PATH={json.dumps(str(database), ensure_ascii=False)}\n", encoding="utf-8"
+    )
     atomic_json(data / "installation.json", {"version": "0.3.0-rc.5"})
     for relative in REQUIRED:
         path = package / relative

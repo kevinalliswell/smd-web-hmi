@@ -38,7 +38,10 @@ def existing(tmp_path, monkeypatch):
     with closing(sqlite3.connect(database)) as connection, connection:
         connection.execute("CREATE TABLE sample(value TEXT)")
         connection.execute("INSERT INTO sample VALUES ('original')")
-    (data / "config/service.env").write_text(f'SMD_DB_PATH="{database}"\nSMD_JWT_SECRET="unchanged-secret"\n')
+    (data / "config/service.env").write_text(
+        f'SMD_DB_PATH={json.dumps(str(database), ensure_ascii=False)}\nSMD_JWT_SECRET="unchanged-secret"\n',
+        encoding="utf-8",
+    )
     (data / "config/device-psk.key").write_bytes(b"private-pairing-key")
     atomic_json(data / "client.json", {"url": "https://custom-host:9443"})
     previous = {"version": "0.3.0-rc.5", "manifest_sha256": "a" * 64}
@@ -67,12 +70,12 @@ def test_owned_reinstall_backs_up_custom_database_without_replacing_any_configur
     transaction = helper(existing)
     assert transaction.before_migrate() is True
     assert not platform.running
-    journal = json.loads((data / "updates/reinstall.json").read_text())
+    journal = json.loads((data / "updates/reinstall.json").read_text(encoding="utf-8"))
     backup = Path(journal["backup_dir"])
     assert value(backup / "database.sqlite") == "original"
     assert (backup / "config/device-psk.key").read_bytes() == b"private-pairing-key"
     assert (data / "config/device-psk.key").read_bytes() == b"private-pairing-key"
-    assert json.loads((data / "client.json").read_text())["url"] == "https://custom-host:9443"
+    assert json.loads((data / "client.json").read_text(encoding="utf-8"))["url"] == "https://custom-host:9443"
     assert (data / "uninstalled.json").exists()
 
 
@@ -88,7 +91,7 @@ def test_orphan_configuration_without_both_owned_uninstall_proofs_is_rejected(ex
 def test_mismatched_uninstall_identity_does_not_adopt_data(existing):
     _, data, _, platform = existing
     path = data / "uninstalled.json"
-    archived = json.loads(path.read_text())
+    archived = json.loads(path.read_text(encoding="utf-8"))
     atomic_json(path, {**archived, "uninstall_id": "d" * 32})
     with pytest.raises(ReinstallError, match="卸载"):
         helper(existing)
@@ -108,7 +111,7 @@ def test_reinstall_failure_restores_data_and_config_but_never_claims_old_program
     assert not platform.running
     assert (data / "uninstalled.json").exists()
     assert not (data / "installation.json").exists()
-    assert json.loads((data / "updates/reinstall.json").read_text())["phase"] == "rolled_back"
+    assert json.loads((data / "updates/reinstall.json").read_text(encoding="utf-8"))["phase"] == "rolled_back"
 
 
 def test_interruption_after_migration_retries_health_without_restoring_new_records(existing):
@@ -154,7 +157,7 @@ def test_commit_archives_uninstall_evidence_only_after_target_pointer_is_publish
     assert not (data / "uninstalled.json").exists()
     assert not (data / "updates/uninstall.json").exists()
     assert value(database) == "migrated"
-    journal = json.loads((data / "updates/reinstall.json").read_text())
+    journal = json.loads((data / "updates/reinstall.json").read_text(encoding="utf-8"))
     assert journal["phase"] == "committed"
     assert (Path(journal["backup_dir"]) / "uninstalled.json").exists()
     assert finish_committed_reinstall(install, data) is True
@@ -181,7 +184,7 @@ def test_cleanup_for_an_old_reinstall_never_consumes_a_new_uninstall(existing):
     transaction.commit()
     atomic_json(data / "uninstalled.json", {"uninstall_id": "e" * 32})
     assert finish_committed_reinstall(install, data) is False
-    assert json.loads((data / "uninstalled.json").read_text())["uninstall_id"] == "e" * 32
+    assert json.loads((data / "uninstalled.json").read_text(encoding="utf-8"))["uninstall_id"] == "e" * 32
 
 
 def test_interrupted_config_restore_can_resume_when_live_config_is_missing(existing, monkeypatch):
@@ -243,7 +246,7 @@ def test_invalid_backup_keeps_failed_reinstall_stopped_and_preserves_uninstall_r
     assert value(database) == "migration-state"
     assert not platform.running
     assert (data / "uninstalled.json").exists()
-    assert json.loads((data / "updates/reinstall.json").read_text())["phase"] == "rollback_failed"
+    assert json.loads((data / "updates/reinstall.json").read_text(encoding="utf-8"))["phase"] == "rollback_failed"
 
 
 def test_custom_database_symlink_does_not_satisfy_preserved_reinstall_proof(existing, tmp_path):
@@ -253,7 +256,9 @@ def test_custom_database_symlink_does_not_satisfy_preserved_reinstall_proof(exis
         link.symlink_to(database)
     except OSError:
         pytest.skip("Windows runner has no symlink privilege")
-    (data / "config/service.env").write_text(f'SMD_DB_PATH="{link}"\n')
+    (data / "config/service.env").write_text(
+        f"SMD_DB_PATH={json.dumps(str(link), ensure_ascii=False)}\n", encoding="utf-8"
+    )
     with pytest.raises(RuntimeError, match="重解析"):
         helper(existing)
     assert platform.running
@@ -270,14 +275,14 @@ def test_same_version_reinstall_uses_saved_manifest_identity(existing):
 def test_reinstall_preserves_actual_storage_minimum_even_if_caller_uses_a_lower_default(existing):
     _, data, _, _ = existing
     env = data / "config/service.env"
-    env.write_text(env.read_text() + "SMD_STORAGE_MIN_FREE_BYTES=2147483648\n")
+    env.write_text(env.read_text(encoding="utf-8") + "SMD_STORAGE_MIN_FREE_BYTES=2147483648\n", encoding="utf-8")
     assert helper(existing, min_db_free_bytes=1024).minimum == 2147483648
 
 
 def test_recovery_reads_storage_minimum_from_verified_backup_when_config_is_missing(existing, monkeypatch):
     _, data, _, _ = existing
     env = data / "config/service.env"
-    env.write_text(env.read_text() + "SMD_STORAGE_MIN_FREE_BYTES=2147483648\n")
+    env.write_text(env.read_text(encoding="utf-8") + "SMD_STORAGE_MIN_FREE_BYTES=2147483648\n", encoding="utf-8")
     transaction = helper(existing)
     transaction.before_migrate()
     original_replace = Path.replace
@@ -299,7 +304,7 @@ def test_reinstall_gate_is_blocking_only_and_survives_failed_health(existing):
     _, data, _, _ = existing
     transaction = helper(existing)
     transaction.before_migrate()
-    gate = json.loads((data / "maintenance.json").read_text())
+    gate = json.loads((data / "maintenance.json").read_text(encoding="utf-8"))
     assert gate["state"] == "prepared"
     assert gate["issuer"] == "windows_installer"
     assert gate["operation"] == "install"
@@ -308,7 +313,7 @@ def test_reinstall_gate_is_blocking_only_and_survives_failed_health(existing):
     assert gate["package_sha256"] == transaction.package_sha256
     assert "token" not in gate
     transaction.failed(RuntimeError("health failed"))
-    assert json.loads((data / "maintenance.json").read_text()) == gate
+    assert json.loads((data / "maintenance.json").read_text(encoding="utf-8")) == gate
 
 
 def test_reinstall_cannot_take_over_a_different_existing_gate(existing):
@@ -317,7 +322,7 @@ def test_reinstall_cannot_take_over_a_different_existing_gate(existing):
     atomic_json(data / "maintenance.json", gate)
     with pytest.raises(ReinstallError, match="维护"):
         helper(existing)
-    assert json.loads((data / "maintenance.json").read_text()) == gate
+    assert json.loads((data / "maintenance.json").read_text(encoding="utf-8")) == gate
     assert platform.running and value(database) == "original"
 
 
@@ -332,4 +337,4 @@ def test_committed_reinstall_never_clears_a_subsequent_different_maintenance_gat
     later = {"state": "prepared", "upgrade_id": "e" * 32, "operation": "upgrade"}
     atomic_json(data / "maintenance.json", later)
     finish_committed_reinstall(install, data)
-    assert json.loads((data / "maintenance.json").read_text()) == later
+    assert json.loads((data / "maintenance.json").read_text(encoding="utf-8")) == later

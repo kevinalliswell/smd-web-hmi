@@ -50,18 +50,19 @@ def suites(stable_assets):
         "suite": "overwrite-installer",
         "assertions": [item for item in claims if item["name"] not in {"busy_rejected", "offline_confirmation"}],
     }
-    (overwrite / "windows-overwrite-partial.json").write_text(json.dumps(partial))
-    original_bench = json.loads((directory / "bench-acceptance.json").read_text())
+    (overwrite / "windows-overwrite-partial.json").write_text(json.dumps(partial), encoding="utf-8")
+    original_bench = json.loads((directory / "bench-acceptance.json").read_text(encoding="utf-8"))
     original_bench["ci_run_id"] = "12345"
     original_bench["assertions"].extend(
         item for item in claims if item["name"] in {"busy_rejected", "offline_confirmation"}
     )
     write("bench-acceptance.json", original_bench)
     (bench / "acceptance.json").write_bytes((directory / "bench-acceptance.json").read_bytes())
-    (directory / "manifest.json").write_text(json.dumps(fixtures.manifest("0.3.0")))
+    (directory / "manifest.json").write_text(json.dumps(fixtures.manifest("0.3.0")), encoding="utf-8")
     (directory / "windows-acceptance.json").unlink()
     (directory / "SHA256SUMS.txt").write_text(
-        accepted["artifacts"]["installer"]["sha256"] + "  " + accepted["artifacts"]["installer"]["path"] + "\n"
+        accepted["artifacts"]["installer"]["sha256"] + "  " + accepted["artifacts"]["installer"]["path"] + "\n",
+        encoding="utf-8",
     )
     return directory, overwrite, bench
 
@@ -73,7 +74,7 @@ def collect(suites):
 def test_aggregation_validates_exact_bytes_and_does_not_duplicate_checksums(suites):
     collect(suites)
     directory = suites[0]
-    actual = json.loads((directory / "windows-acceptance.json").read_text())
+    actual = json.loads((directory / "windows-acceptance.json").read_text(encoding="utf-8"))
     assert actual["status"] == "passed" and actual["cleanup_complete"] is True
     assert len(actual["assertions"]) == 9
     before = (directory / "SHA256SUMS.txt").read_bytes()
@@ -87,23 +88,23 @@ def test_aggregation_validates_exact_bytes_and_does_not_duplicate_checksums(suit
 )
 def test_missing_or_failed_execution_is_not_filled_from_required_names(suites, field, value):
     path = suites[1] / "windows-overwrite-partial.json"
-    partial = json.loads(path.read_text())
+    partial = json.loads(path.read_text(encoding="utf-8"))
     partial[field] = value
-    path.write_text(json.dumps(partial))
+    path.write_text(json.dumps(partial), encoding="utf-8")
     with pytest.raises(ValueError):
         collect(suites)
     assert not (suites[0] / "software-acceptance.json").exists()
 
 
 def test_packaged_bench_acceptance_cannot_differ_from_executed_copy(suites):
-    (suites[2] / "acceptance.json").write_text('{"status":"passed"}')
+    (suites[2] / "acceptance.json").write_text('{"status":"passed"}', encoding="utf-8")
     with pytest.raises(ValueError, match="Bench acceptance"):
         collect(suites)
 
 
 def test_changed_or_foreign_scenario_log_blocks_aggregation(suites):
     first = next(suites[1].glob("*.log"))
-    first.write_text('{"private-key":"must-never-be-published"}')
+    first.write_text('{"private-key":"must-never-be-published"}', encoding="utf-8")
     with pytest.raises(ValueError):
         collect(suites)
     assert not (suites[0] / first.name).exists()
@@ -111,14 +112,14 @@ def test_changed_or_foreign_scenario_log_blocks_aggregation(suites):
 
 def test_source_log_identity_is_checked_even_when_its_hash_matches(suites):
     partial_path = suites[1] / "windows-overwrite-partial.json"
-    partial = json.loads(partial_path.read_text())
+    partial = json.loads(partial_path.read_text(encoding="utf-8"))
     claim = partial["assertions"][0]
     log = suites[1] / claim["evidence"]["path"]
-    body = json.loads(log.read_text())
+    body = json.loads(log.read_text(encoding="utf-8"))
     body["commit"] = "c" * 40
-    log.write_text(json.dumps(body))
+    log.write_text(json.dumps(body), encoding="utf-8")
     claim["evidence"]["sha256"] = assembler.digest(log)
-    partial_path.write_text(json.dumps(partial))
+    partial_path.write_text(json.dumps(partial), encoding="utf-8")
     with pytest.raises(ValueError, match="log identity"):
         collect(suites)
     assert not (suites[0] / log.name).exists()

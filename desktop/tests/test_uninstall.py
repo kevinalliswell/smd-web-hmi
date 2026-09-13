@@ -22,7 +22,7 @@ class Platform:
 
     def request(self, path, *, token):
         assert path == "/api/system/maintenance/claim"
-        gate = json.loads((self.data / "maintenance.json").read_text())
+        gate = json.loads((self.data / "maintenance.json").read_text(encoding="utf-8"))
         assert gate["state"] == "prepared" and gate["token"] == token
         self.claims += 1
         gate["state"] = "claimed"
@@ -81,7 +81,7 @@ def test_uninstall_resumes_without_reclaiming_or_restarting_removed_service(inst
     assert not (data / "installation.json").exists()
     assert not (data / "maintenance.json").exists()
     assert (data / "database.db").read_bytes() == b"historical experiment data"
-    assert json.loads(transaction.journal_path.read_text())["phase"] == "committed"
+    assert json.loads(transaction.journal_path.read_text(encoding="utf-8"))["phase"] == "committed"
     removals = platform.removals
     transaction.apply()
     assert platform.removals == removals  # NSIS may still need to retry filesystem cleanup.
@@ -106,13 +106,13 @@ def test_archive_failure_after_service_deletion_keeps_gate_and_can_retry(install
     assert (data / "maintenance.json").exists()
     transaction.apply()
     assert not (data / "installation.json").exists()
-    assert json.loads(transaction.journal_path.read_text())["phase"] == "committed"
+    assert json.loads(transaction.journal_path.read_text(encoding="utf-8"))["phase"] == "committed"
 
 
 def test_wrong_version_or_missing_claim_never_deletes_service(installed):
     install, data = installed
     platform = Platform(data)
-    gate = json.loads((data / "maintenance.json").read_text())
+    gate = json.loads((data / "maintenance.json").read_text(encoding="utf-8"))
     gate["target_version"] = "0.4.0"
     atomic_json(data / "maintenance.json", gate)
     with pytest.raises(RuntimeError):
@@ -145,7 +145,7 @@ def test_service_removal_error_keeps_installation_and_claim_for_retry(installed)
     assert (data / "maintenance.json").exists()
     assert (data / "installation.json").exists()
     assert not (data / "uninstalled.json").exists()
-    assert "SCM access denied" in json.loads(transaction.journal_path.read_text())["last_error"]
+    assert "SCM access denied" in json.loads(transaction.journal_path.read_text(encoding="utf-8"))["last_error"]
 
 
 @pytest.mark.parametrize("argument", ["--uninstall", "--recover"])
@@ -220,7 +220,7 @@ def test_every_durable_uninstall_phase_resumes_after_power_cut(installed, monkey
         transaction.apply()
     restarted = UninstallTransaction(install, data, platform)
     restarted.apply()
-    assert json.loads(restarted.journal_path.read_text())["phase"] == "committed"
+    assert json.loads(restarted.journal_path.read_text(encoding="utf-8"))["phase"] == "committed"
     assert platform.claims == 1
     assert not platform.service_exists and not platform.task_exists
     assert (data / "database.db").read_bytes() == b"historical experiment data"
@@ -232,10 +232,10 @@ def test_recovery_does_not_clear_another_maintenance_ticket(installed):
     transaction = UninstallTransaction(install, data, platform)
     with pytest.raises(SystemExit):
         transaction.apply()
-    gate = json.loads((data / "maintenance.json").read_text())
+    gate = json.loads((data / "maintenance.json").read_text(encoding="utf-8"))
     gate["upgrade_id"] = "c" * 32
     atomic_json(data / "maintenance.json", gate)
     with pytest.raises(RuntimeError, match="维护票据"):
         transaction.apply()
-    assert json.loads((data / "maintenance.json").read_text()) == gate
+    assert json.loads((data / "maintenance.json").read_text(encoding="utf-8")) == gate
     assert (data / "installation.json").exists()

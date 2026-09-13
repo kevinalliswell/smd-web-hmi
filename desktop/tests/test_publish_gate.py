@@ -345,7 +345,7 @@ def test_valid_zip_hash_does_not_allow_other_bench_bytes(stable_assets):
 
 def test_a_passed_bench_status_without_required_checks_is_rejected(stable_assets):
     directory, acceptance, _, write = stable_assets
-    bench = json.loads((directory / "bench-acceptance.json").read_text())
+    bench = json.loads((directory / "bench-acceptance.json").read_text(encoding="utf-8"))
     bench["assertions"] = []
     acceptance["artifacts"]["bench_acceptance"] = write("bench-acceptance.json", bench)
     with pytest.raises(ValueError, match="Bench evidence"):
@@ -373,7 +373,7 @@ def test_final_gate_rejects_rehashed_but_foreign_scenario_log(stable_assets, fie
     directory, acceptance, windows, write = stable_assets
     claim = windows["assertions"][0]
     path = directory / claim["evidence"]["path"]
-    log = json.loads(path.read_text())
+    log = json.loads(path.read_text(encoding="utf-8"))
     log[field] = value
     claim["evidence"] = write(path.name, log)
     acceptance["artifacts"]["windows_acceptance"] = write("windows-acceptance.json", windows)

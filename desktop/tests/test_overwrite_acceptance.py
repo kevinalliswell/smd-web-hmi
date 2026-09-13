@@ -21,8 +21,8 @@ def test_recovery_fixture_snapshots_existing_database_and_config_without_busines
     data = tmp_path / "data"
     config = data / "config"
     config.mkdir(parents=True)
-    (config / "service.env").write_text('SMD_JWT_SECRET="private-value"\n')
-    (data / "installation.json").write_text(json.dumps({"version": "0.3.0-rc.5"}))
+    (config / "service.env").write_text('SMD_JWT_SECRET="private-value"\n', encoding="utf-8")
+    (data / "installation.json").write_text(json.dumps({"version": "0.3.0-rc.5"}), encoding="utf-8")
     database = tmp_path / "中文 数据" / "smd.db"
     database.parent.mkdir()
     with sqlite3.connect(database) as db:
@@ -40,10 +40,10 @@ def test_recovery_fixture_snapshots_existing_database_and_config_without_busines
 
 def test_recovery_fixture_refuses_existing_failure_evidence(tmp_path):
     (tmp_path / "updates").mkdir()
-    (tmp_path / "updates/active.json").write_text('{"phase":"rollback_failed"}')
+    (tmp_path / "updates/active.json").write_text('{"phase":"rollback_failed"}', encoding="utf-8")
     with pytest.raises(FileExistsError):
         runner.write_legacy_recovery_fixture(tmp_path, tmp_path / "smd.db", "0.3.0")
-    assert (tmp_path / "updates/active.json").read_text() == '{"phase":"rollback_failed"}'
+    assert (tmp_path / "updates/active.json").read_text(encoding="utf-8") == '{"phase":"rollback_failed"}'
 
 
 def test_failed_execution_cannot_become_a_passed_scenario_or_leak_exception(tmp_path):
@@ -52,10 +52,10 @@ def test_failed_execution_cannot_become_a_passed_scenario_or_leak_exception(tmp_
         with results.scenario("upgrade_rc4") as observations:
             observations["old_installation_ready"] = True
             raise RuntimeError("PSK=private-secret and bearer token")
-    log = json.loads((tmp_path / "upgrade_rc4.log").read_text())
+    log = json.loads((tmp_path / "upgrade_rc4.log").read_text(encoding="utf-8"))
     assert log["status"] == "failed"
     assert log["failure_type"] == "RuntimeError"
-    assert "private-secret" not in (tmp_path / "upgrade_rc4.log").read_text()
+    assert "private-secret" not in (tmp_path / "upgrade_rc4.log").read_text(encoding="utf-8")
     assert results.assertions == []
 
 
@@ -80,11 +80,11 @@ def test_harness_refuses_non_ci_before_inventory_or_mutation(monkeypatch):
 
 def test_configuration_change_preserves_existing_unrelated_values(tmp_path):
     path = tmp_path / "service.env"
-    path.write_text('# original comment\nSMD_JWT_SECRET="original-secret"\nSMD_DB_PATH="old.db"\n')
+    path.write_text('# original comment\nSMD_JWT_SECRET="original-secret"\nSMD_DB_PATH="old.db"\n', encoding="utf-8")
     runner.update_config(path, {"SMD_DB_PATH": '"C:/中文 数据/new.db"'})
-    assert 'SMD_JWT_SECRET="original-secret"' in path.read_text()
-    assert 'SMD_DB_PATH="C:/中文 数据/new.db"' in path.read_text()
-    assert path.read_text().count("SMD_DB_PATH=") == 1
+    assert 'SMD_JWT_SECRET="original-secret"' in path.read_text(encoding="utf-8")
+    assert 'SMD_DB_PATH="C:/中文 数据/new.db"' in path.read_text(encoding="utf-8")
+    assert path.read_text(encoding="utf-8").count("SMD_DB_PATH=") == 1
 
 
 @pytest.mark.parametrize(
@@ -111,8 +111,8 @@ def test_historical_refusal_cannot_explain_a_new_installer_failure():
 def test_recovery_snapshot_can_precede_a_distinguishable_current_state(tmp_path):
     data = tmp_path / "data"
     (data / "config").mkdir(parents=True)
-    (data / "config/service.env").write_text('SMD_JWT_SECRET="unchanged"\n')
-    (data / "installation.json").write_text(json.dumps({"version": "0.3.0-rc.5"}))
+    (data / "config/service.env").write_text('SMD_JWT_SECRET="unchanged"\n', encoding="utf-8")
+    (data / "installation.json").write_text(json.dumps({"version": "0.3.0-rc.5"}), encoding="utf-8")
     database = data / "smd.db"
     with sqlite3.connect(database) as db:
         db.execute("CREATE TABLE user_account(username TEXT)")

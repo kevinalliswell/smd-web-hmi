@@ -79,14 +79,14 @@ def installation(tmp_path):
     data.mkdir()
     package.mkdir(parents=True)
     (root / "versions/0.3.0").mkdir(parents=True)
-    (root / "versions/0.3.0/runtime.txt").write_text("old-runtime")
+    (root / "versions/0.3.0/runtime.txt").write_text("old-runtime", encoding="utf-8")
     (data / "config").mkdir()
-    (data / "config/service.env").write_text("old-config")
+    (data / "config/service.env").write_text("old-config", encoding="utf-8")
     db_path = tmp_path / "actual-custom-location.db"
     with closing(sqlite3.connect(db_path)) as db, db:
         db.execute("CREATE TABLE sample(value TEXT)")
         db.execute("INSERT INTO sample VALUES ('original')")
-    (data / "installation.json").write_text(json.dumps({"version": "0.3.0"}))
+    (data / "installation.json").write_text(json.dumps({"version": "0.3.0"}), encoding="utf-8")
     for name in (
         "SmdService/SmdService.exe",
         "SmdDesktop/SmdDesktop.exe",
@@ -116,7 +116,7 @@ def installation(tmp_path):
         "current_version": "0.3.0",
         "db_path": str(db_path),
     }
-    (data / "maintenance.json").write_text(json.dumps(permit))
+    (data / "maintenance.json").write_text(json.dumps(permit), encoding="utf-8")
     return root, data, package, db_path, permit
 
 
@@ -126,12 +126,12 @@ def test_health_failure_rolls_back_actual_database_config_and_runtime(installati
     with pytest.raises(UpgradeError, match="healthy"):
         UpgradeTransaction(root, data, platform).apply(package, permit)
     assert read_value(db_path) == "original"
-    assert (data / "config/service.env").read_text() == "old-config"
-    assert (root / "versions/0.3.0/runtime.txt").read_text() == "old-runtime"
-    assert json.loads((data / "installation.json").read_text())["version"] == "0.3.0"
+    assert (data / "config/service.env").read_text(encoding="utf-8") == "old-config"
+    assert (root / "versions/0.3.0/runtime.txt").read_text(encoding="utf-8") == "old-runtime"
+    assert json.loads((data / "installation.json").read_text(encoding="utf-8"))["version"] == "0.3.0"
     assert platform.version == "0.3.0" and platform.running
     assert not (data / "maintenance.json").exists()
-    journal = json.loads((data / "updates/active.json").read_text())
+    journal = json.loads((data / "updates/active.json").read_text(encoding="utf-8"))
     assert journal["phase"] == "rolled_back"
     assert "healthy" in journal["last_error"]
     assert "rollback_error" not in journal
@@ -145,13 +145,13 @@ def test_power_cut_during_migration_is_recovered_idempotently(installation):
         transaction.apply(package, permit)
     assert read_value(db_path) == "migrated"
     assert (data / "maintenance.json").exists()
-    assert json.loads(transaction.journal_path.read_text())["phase"] == "migrating"
+    assert json.loads(transaction.journal_path.read_text(encoding="utf-8"))["phase"] == "migrating"
     restarted = UpgradeTransaction(root, data, platform)
     restarted.recover()
     restarted.recover()
     assert read_value(db_path) == "original"
     assert platform.version == "0.3.0"
-    assert json.loads((data / "updates/active.json").read_text())["phase"] == "rolled_back"
+    assert json.loads((data / "updates/active.json").read_text(encoding="utf-8"))["phase"] == "rolled_back"
 
 
 def test_commit_preserves_old_runtime_and_clears_gate(installation):
@@ -178,7 +178,7 @@ def test_recover_old_committed_journal_does_not_clear_new_maintenance(installati
     transaction = UpgradeTransaction(root, data, Platform(db_path))
     transaction.apply(package, permit)
     new_permit = {**permit, "upgrade_id": "c" * 32, "state": "prepared"}
-    (data / "maintenance.json").write_text(json.dumps(new_permit))
+    (data / "maintenance.json").write_text(json.dumps(new_permit), encoding="utf-8")
     transaction.recover()
     assert (data / "maintenance.json").exists()
 
@@ -189,13 +189,13 @@ def test_corrupt_backup_keeps_gate_and_service_stopped(installation):
     transaction = UpgradeTransaction(root, data, platform)
     with pytest.raises(SystemExit):
         transaction.apply(package, permit)
-    journal = json.loads(transaction.journal_path.read_text())
+    journal = json.loads(transaction.journal_path.read_text(encoding="utf-8"))
     (Path(journal["backup_dir"]) / "database.sqlite").write_bytes(b"corrupt")
     with pytest.raises(UpgradeError, match="摘要"):
         transaction.recover()
     assert (data / "maintenance.json").exists()
     assert not platform.running
-    assert json.loads(transaction.journal_path.read_text())["phase"] == "rollback_failed"
+    assert json.loads(transaction.journal_path.read_text(encoding="utf-8"))["phase"] == "rollback_failed"
 
 
 def test_copy_failure_is_inside_journal_and_rolls_back(installation, monkeypatch):
@@ -210,7 +210,7 @@ def test_copy_failure_is_inside_journal_and_rolls_back(installation, monkeypatch
     monkeypatch.setattr(upgrade.shutil, "copytree", fail_copy)
     with pytest.raises(UpgradeError, match="回退"):
         transaction.apply(package, permit)
-    assert json.loads(transaction.journal_path.read_text())["phase"] == "rolled_back"
+    assert json.loads(transaction.journal_path.read_text(encoding="utf-8"))["phase"] == "rolled_back"
     assert not transaction.gate_path.exists()
     assert read_value(source) == "original"
 
@@ -221,7 +221,7 @@ def test_claimed_before_journal_can_recover_without_bypassing_transaction(instal
     transaction = UpgradeTransaction(root, data, platform)
     assert not transaction.journal_path.exists()
     transaction.recover()
-    journal = json.loads(transaction.journal_path.read_text())
+    journal = json.loads(transaction.journal_path.read_text(encoding="utf-8"))
     assert journal["upgrade_id"] == permit["upgrade_id"]
     assert journal["phase"] == "rolled_back"
     assert journal["recovered_unstarted_claim"] is True
@@ -231,7 +231,7 @@ def test_claimed_before_journal_can_recover_without_bypassing_transaction(instal
     assert not transaction.gate_path.exists()
     assert read_value(source) == "original"
     transaction.recover()
-    assert json.loads(transaction.journal_path.read_text()) == journal
+    assert json.loads(transaction.journal_path.read_text(encoding="utf-8")) == journal
 
 
 def test_orphan_claim_recovery_keeps_gate_if_old_service_cannot_be_verified(installation):
@@ -246,7 +246,7 @@ def test_orphan_claim_recovery_keeps_gate_if_old_service_cannot_be_verified(inst
     with pytest.raises(UpgradeError):
         transaction.recover()
     assert transaction.gate_path.exists()
-    assert json.loads(transaction.journal_path.read_text())["phase"] == "rollback_failed"
+    assert json.loads(transaction.journal_path.read_text(encoding="utf-8"))["phase"] == "rollback_failed"
 
 
 def test_power_cut_during_staging_is_recoverable(installation, monkeypatch):
@@ -264,7 +264,7 @@ def test_power_cut_during_staging_is_recoverable(installation, monkeypatch):
         with pytest.raises(SystemExit):
             transaction.apply(package, permit)
     transaction.recover()
-    assert json.loads(transaction.journal_path.read_text())["phase"] == "rolled_back"
+    assert json.loads(transaction.journal_path.read_text(encoding="utf-8"))["phase"] == "rolled_back"
     assert not transaction.gate_path.exists()
 
 
@@ -282,7 +282,7 @@ def test_failed_initial_journal_write_is_recoverable_after_storage_recovers(inst
     assert transaction.gate_path.exists()
     assert not transaction.journal_path.exists()
     transaction.recover()
-    assert json.loads(transaction.journal_path.read_text())["phase"] == "rolled_back"
+    assert json.loads(transaction.journal_path.read_text(encoding="utf-8"))["phase"] == "rolled_back"
     assert not transaction.gate_path.exists()
 
 

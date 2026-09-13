@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 import pytest
@@ -19,7 +20,10 @@ def test_config_is_absolute_and_loaded_without_interpolation(tmp_path, monkeypat
     config = tmp_path / "config/service.env"
     config.parent.mkdir()
     config.write_text(
-        'SMD_JWT_SECRET="literal${DO_NOT_EXPAND}"\nSMD_DB_PATH="' + str(tmp_path / "custom/db.sqlite") + '"\n'
+        'SMD_JWT_SECRET="literal${DO_NOT_EXPAND}"\nSMD_DB_PATH='
+        + json.dumps(str(tmp_path / "custom/db.sqlite"), ensure_ascii=False)
+        + "\n",
+        encoding="utf-8",
     )
     monkeypatch.setenv("SMD_JWT_SECRET", "stale")
     for key in ("SMD_DB_PATH", "SMD_FRONTEND_DIST", "SMD_MAINTENANCE_FILE"):
@@ -28,6 +32,7 @@ def test_config_is_absolute_and_loaded_without_interpolation(tmp_path, monkeypat
     import os
 
     assert os.environ["SMD_JWT_SECRET"] == "literal${DO_NOT_EXPAND}"
+    assert Path(os.environ["SMD_DB_PATH"]) == tmp_path / "custom/db.sqlite"
     assert Path(os.environ["SMD_MAINTENANCE_FILE"]) == tmp_path / "maintenance.json"
 
 

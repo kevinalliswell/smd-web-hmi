@@ -29,7 +29,9 @@ def installation(tmp_path, monkeypatch):
     with sqlite3.connect(db) as connection:
         connection.execute("CREATE TABLE test_session (end_time TEXT)")
         connection.execute("CREATE TABLE v2_operation (status TEXT, reconciled BOOLEAN)")
-    (data / "config/service.env").write_text(f'SMD_DB_PATH="{db}"\nHOSTCOMM_DEVICE_ID="board"\n')
+    (data / "config/service.env").write_text(
+        f'SMD_DB_PATH={json.dumps(str(db), ensure_ascii=False)}\nHOSTCOMM_DEVICE_ID="board"\n', encoding="utf-8"
+    )
     monkeypatch.setattr(auth, "admin_sid", lambda: "S-1-5-21-1-2-3-1001")
     monkeypatch.setattr(auth, "protected_json", atomic_json)
     monkeypatch.setattr(auth, "single_instance", lambda *args: nullcontext())
@@ -69,7 +71,9 @@ def test_legacy_confirmation_keeps_unknown_experiment_and_binds_actual_database(
 
 def test_unpaired_legacy_with_unknown_run_still_requires_confirmation(installation):
     data, db, platform = installation
-    (data / "config/service.env").write_text(f'SMD_DB_PATH="{db}"\nHOSTCOMM_DEVICE_ID=""\n')
+    (data / "config/service.env").write_text(
+        f'SMD_DB_PATH={json.dumps(str(db), ensure_ascii=False)}\nHOSTCOMM_DEVICE_ID=""\n', encoding="utf-8"
+    )
     with sqlite3.connect(db) as connection:
         connection.execute("INSERT INTO test_session VALUES (NULL)")
     with pytest.raises(auth.ConfirmationRequired):
@@ -129,7 +133,8 @@ def test_stopped_unpaired_clean_service_does_not_require_a_fictitious_board(inst
     data, database, platform = installation
     platform.stopped = True
     (data / "config/service.env").write_text(
-        f'SMD_DB_PATH="{database}"\nPROTOCOL_VERSION="2.0"\nHOSTCOMM_DEVICE_ID=""\n'
+        f'SMD_DB_PATH={json.dumps(str(database), ensure_ascii=False)}\nPROTOCOL_VERSION="2.0"\nHOSTCOMM_DEVICE_ID=""\n',
+        encoding="utf-8",
     )
     gate = auth.authorize(
         data,
@@ -165,7 +170,8 @@ def test_stopped_local_authorization_rechecks_new_unknown_records_after_mutex(in
     data, database, platform = installation
     platform.stopped = True
     (data / "config/service.env").write_text(
-        f'SMD_DB_PATH="{database}"\nPROTOCOL_VERSION="2.0"\nHOSTCOMM_DEVICE_ID=""\n'
+        f'SMD_DB_PATH={json.dumps(str(database), ensure_ascii=False)}\nPROTOCOL_VERSION="2.0"\nHOSTCOMM_DEVICE_ID=""\n',
+        encoding="utf-8",
     )
 
     def stop_and_find_command():
@@ -183,4 +189,4 @@ def test_stopped_local_authorization_rechecks_new_unknown_records_after_mutex(in
             operation="repair",
             timeout=0.01,
         )
-    assert json.loads((data / "maintenance.json").read_text())["state"] == "prepared"
+    assert json.loads((data / "maintenance.json").read_text(encoding="utf-8"))["state"] == "prepared"

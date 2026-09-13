@@ -18,7 +18,7 @@ def test_install_smoke_script_is_part_of_release_tools():
 @pytest.mark.parametrize("actions,runner", [("false", "github-hosted"), ("true", "self-hosted")])
 def test_install_smoke_refuses_unowned_hosts_before_resolving_package(tmp_path, actions, runner):
     sentinel = tmp_path / "untouched.txt"
-    sentinel.write_text("unchanged")
+    sentinel.write_text("unchanged", encoding="utf-8")
     result = subprocess.run(
         [
             "pwsh",
@@ -39,5 +39,5 @@ def test_install_smoke_refuses_unowned_hosts_before_resolving_package(tmp_path, 
     )
     assert result.returncode != 0
     assert "disposable GitHub-hosted Windows runner" in result.stderr
-    assert sentinel.read_text() == "unchanged"
+    assert sentinel.read_text(encoding="utf-8") == "unchanged"
     assert not (tmp_path / "evidence.json").exists()

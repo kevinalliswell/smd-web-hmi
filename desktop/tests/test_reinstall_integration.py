@@ -140,7 +140,7 @@ def test_initialize_reinstalls_owned_data_without_bootstrap_or_configuration_cha
     assert_preserved(case)
     assert value(case.database) == "migrated"
     assert case.platform.running
-    assert json.loads((case.data / "installation.json").read_text())["version"] == "0.3.0"
+    assert json.loads((case.data / "installation.json").read_text(encoding="utf-8"))["version"] == "0.3.0"
     assert not (case.data / "uninstalled.json").exists()
     assert not (case.data / "updates/uninstall.json").exists()
 
@@ -250,9 +250,12 @@ def test_new_service_cannot_auto_start_before_reinstall_gate_and_migration_are_d
         mode = args[2]
         changes.append(mode)
         if mode == case.service.SERVICE_AUTO_START:
-            assert json.loads((case.data / "updates/install.json").read_text())["phase"] == "migrated"
-            assert json.loads((case.data / "updates/reinstall.json").read_text())["phase"] == "awaiting_health"
-            assert json.loads((case.data / "maintenance.json").read_text())["state"] == "prepared"
+            assert json.loads((case.data / "updates/install.json").read_text(encoding="utf-8"))["phase"] == "migrated"
+            assert (
+                json.loads((case.data / "updates/reinstall.json").read_text(encoding="utf-8"))["phase"]
+                == "awaiting_health"
+            )
+            assert json.loads((case.data / "maintenance.json").read_text(encoding="utf-8"))["state"] == "prepared"
             assert "configure" in case.events
 
     case.service.CreateService = register
@@ -316,7 +319,7 @@ def test_failed_initialization_returns_service_to_demand_start(reinstall, failur
         updater.initialize(case.package, case.install, case.data, case.platform)
     assert modes[-1] == case.service.SERVICE_DEMAND_START
     assert not case.platform.running
-    assert json.loads((case.data / "maintenance.json").read_text())["state"] == "prepared"
+    assert json.loads((case.data / "maintenance.json").read_text(encoding="utf-8"))["state"] == "prepared"
 
 
 def test_existing_foreign_service_start_mode_is_never_changed(reinstall, monkeypatch):
