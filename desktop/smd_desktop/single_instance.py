@@ -16,7 +16,11 @@ def single_instance(name: str, lock_path: Path):
         from ctypes import wintypes
 
         kernel = ctypes.WinDLL("kernel32", use_last_error=True)
-        kernel.CreateMutexW.argtypes = [ctypes.c_void_p, wintypes.BOOL, wintypes.LPCWSTR]
+        kernel.CreateMutexW.argtypes = [
+            ctypes.c_void_p,
+            wintypes.BOOL,
+            wintypes.LPCWSTR,
+        ]
         kernel.CreateMutexW.restype = wintypes.HANDLE
         kernel.CloseHandle.argtypes = [wintypes.HANDLE]
         handle = kernel.CreateMutexW(None, False, "Global\\" + name)
@@ -61,7 +65,9 @@ def inherited_migration_guard(handle: int):
         service = ws.OpenService(manager, "SmdHmi", ws.SERVICE_QUERY_STATUS)
         try:
             state = ws.QueryServiceStatusEx(service)
-            if state["CurrentState"] != ws.SERVICE_STOPPED or state["ProcessId"]:
+            # SCM does not define ProcessId in STOPPED. The inherited Backend
+            # object below proves exclusion, not an undefined zero PID value.
+            if state["CurrentState"] != ws.SERVICE_STOPPED:
                 raise RuntimeError("迁移前服务必须已完全停止")
         finally:
             ws.CloseServiceHandle(service)
