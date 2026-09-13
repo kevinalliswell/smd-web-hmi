@@ -85,9 +85,10 @@ def prepare_stage(install: Path, data: Path, payload_bytes: int) -> Path:
                     for index in range(previous.GetAceCount()):
                         ace = previous.GetAce(index)
                         if ace[0][0] == security.ACCESS_DENIED_ACE_TYPE:
-                            retained.AddAce(security.ACL_REVISION_DS, retained.GetAceCount(), ace)
+                            retained.AddAccessDeniedAceEx(security.ACL_REVISION_DS, ace[0][1], ace[1], ace[2])
                 for index in range(acl.GetAceCount()):
-                    retained.AddAce(security.ACL_REVISION_DS, retained.GetAceCount(), acl.GetAce(index))
+                    ace = acl.GetAce(index)
+                    retained.AddAccessAllowedAceEx(security.ACL_REVISION_DS, ace[0][1], ace[1], ace[2])
                 for sid in ("S-1-15-2-1", "S-1-15-2-2"):
                     retained.AddAccessAllowedAceEx(
                         security.ACL_REVISION_DS, 0, 0x20, security.ConvertStringSidToSid(sid)
