@@ -209,7 +209,8 @@ $task=Get-ScheduledTask -TaskName 'SmdHmi-Recover' -ErrorAction SilentlyContinue
 $product='HKLM:\Software\SmdHmi';$uninstall='HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\SmdHmi'
 $menu=Join-Path $p.data_parent 'Microsoft/Windows/Start Menu/Programs/SMD HMI'
 if($service -and -not (Same $service.PathName $p.service)){throw 'foreign service'}
-if($task -and (@($task.Actions).Count -ne 1 -or -not (Same $task.Actions[0].Execute $p.updater) -or $task.Actions[0].Arguments -cne ('--recover --install "'+$p.install+'"') -or $task.Actions[0].WorkingDirectory)){throw 'foreign task'}
+$recoverArguments=@(('--recover --install "'+$p.install+'"'),('--recover --non-interactive --install "'+$p.install+'"'))
+if($task -and (@($task.Actions).Count -ne 1 -or -not (Same $task.Actions[0].Execute $p.updater) -or $task.Actions[0].Arguments -cnotin $recoverArguments -or $task.Actions[0].WorkingDirectory)){throw 'foreign task'}
 if((Test-Path $product) -and -not (Same (Get-ItemProperty $product).InstallDir $p.install)){throw 'foreign registration'}
 if((Test-Path $uninstall) -and -not (Same (Get-ItemProperty $uninstall).UninstallString (Join-Path $p.install 'Uninstall.exe'))){throw 'foreign uninstall registration'}
 if(Test-Path -LiteralPath $menu){

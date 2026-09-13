@@ -49,7 +49,7 @@ def checked_process(executable: Path, arguments: list[str], private: Path, *, ti
     job = windows.create_kill_on_close_job()
     command = subprocess.list2cmdline([str(executable), *arguments])
     if nsis:
-        command = subprocess.list2cmdline([str(executable)]) + " /S /D=" + arguments[-1]
+        command = subprocess.list2cmdline([str(executable), "/S", *arguments[:-1]]) + " /D=" + arguments[-1]
     process = thread = None
     assigned = False
     try:
@@ -135,6 +135,7 @@ class Installation:
         self.save("network_isolated")
 
     def install_package(self, installer: Path) -> None:
+        self.installer = installer.resolve(strict=True)
         self.save("installing")
         if checked_process(installer, [str(self.install)], self.private, nsis=True) != 0:
             raise RuntimeError("fresh installation failed")
@@ -143,6 +144,17 @@ class Installation:
             raise ValueError("installed version differs from the tested package")
         windows.check_service(self.service)
         self.save("installed")
+
+    def maintenance_attempt(self, *, physical_shutdown_confirmed: bool) -> int:
+        from .package import sha256
+
+        check_claim(self.private, self.run_id)
+        check_claim(self.install, self.run_id)
+        check_claim(self.data, self.run_id)
+        if sha256(self.installer) != self.state["installer_sha256"]:
+            raise ValueError("installer bytes changed since original acceptance validation")
+        arguments = (["/PHYSICALSHUTDOWN=1"] if physical_shutdown_confirmed else []) + [str(self.install)]
+        return checked_process(self.installer, arguments, self.private, nsis=True)
 
     def pair(self) -> Path:
         from uuid import uuid4

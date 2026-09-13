@@ -26,13 +26,20 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.13'
-      - name: Require candidate release eligibility
+      - name: Require artifact-bound release eligibility
         env:
           RELEASE_TAG: ${{ github.ref_name }}
-        run: python scripts/release/publish_gate.py --manifest artifacts/manifest.json --tag "$RELEASE_TAG"
-      - name: Publish checked candidate artifacts
+        shell: bash
+        run: |
+          evidence_options=()
+          if [[ "$RELEASE_TAG" != *-rc.* ]]; then evidence_options+=(--software-acceptance artifacts/software-acceptance.json); fi
+          python scripts/release/publish_gate.py --manifest artifacts/manifest.json --tag "$RELEASE_TAG" --artifacts-dir artifacts "${evidence_options[@]}"
+      - name: Publish checked software artifacts
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
-          gh release create "$GITHUB_REF_NAME" artifacts/*.exe artifacts/*.zip artifacts/manifest.json artifacts/bench-manifest.json artifacts/bench-acceptance.json artifacts/sbom.cdx.json artifacts/SHA256SUMS.txt artifacts/*.md --verify-tag --generate-notes --prerelease
+          shopt -s nullglob
+          release_options=()
+          if [[ "$GITHUB_REF_NAME" == *-rc.* ]]; then release_options+=(--prerelease); fi
+          gh release create "$GITHUB_REF_NAME" artifacts/*.exe artifacts/*.zip artifacts/manifest.json artifacts/bench-manifest.json artifacts/*-acceptance.json artifacts/installer-*.json artifacts/*.log artifacts/sbom.cdx.json artifacts/SHA256SUMS.txt artifacts/*.md --verify-tag --generate-notes "${release_options[@]}"
