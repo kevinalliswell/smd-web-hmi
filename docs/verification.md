@@ -4,7 +4,7 @@
 
 ## 当前软件与历史基线的关系
 
-2026-09-06当前候选版本为 `0.3.0-rc.3`；实现状态与验证入口见[HostComm 2.0运行验证](verification/2026-09-06-hostcomm-v2-runtime.md)和[任务清单](../tasks/todo.md)。[rc.2软件记录](verification/2026-09-06-software.md)及其中Windows CI结果保留为对应版本的历史证据，不代替新候选提交与产物检查。下表保留dev@855c84d的原始审查语义，其中状态/参数入口、生命周期、源时间、队列与算法等已有后续修复，不能继续当成当前未修清单。候选包须通过[发布门禁](../scripts/release/publish_gate.py)并绑定最终SHA；干净断网现场、签名和M5仍未验收。
+当前实施 `0.3.0` 保留数据的覆盖安装及软件正式版；阶段和待验收项见[任务清单](../tasks/todo.md)，实际执行结果见[本轮覆盖安装记录](verification/2026-09-13-overwrite-install.md)。已发布 rc.5 的[安装版模拟实验记录](verification/2026-09-08-installed-hostcomm-loop.md)及 rc.3/rc.2 记录只适用于各自提交和产物。下表保留 `dev@855c84d` 的原始审查语义，其中多项已有后续修复，不能当成当前未修清单。新的发布须通过[机器证据门禁](release-acceptance.md)并绑定本轮实际资产；Win10/11人工、签名、固件和 M5 仍独立留证。
 
 ## 1. 历史代码基线：已有能力与当时缺口
 
@@ -31,7 +31,7 @@ implementation_commit: <完整SHA>
 validation_commit: <测试/脚本SHA，若不同>
 application_version: <版本>
 environment: <OS版本/架构、Python、Node、依赖锁hash>
-level: software | simulator | windows | hardware
+level: software | simulator | windows_ci | windows_desktop | hardware
 firmware: <版本和hash；不适用写not_applicable>
 hardware: <板卡/仪表/MFC型号和校准记录；不适用写not_applicable>
 setup: <前置配置、数据集hash、采样频率>
@@ -61,6 +61,8 @@ reviewer: <负责角色/签字人>
 
 ## 4. 发布证据门
 
-RC必须标明未验收组合；正式发布须同时具备：必要软件检查、匹配版本模拟器、离线Windows安装恢复、冻结接口及完整真机实验。每个目标组合绑定应用/数据库/协议/固件/硬件版本。Q清单中仍依赖外部资料的能力保持blocked，任务仍可完成内部代码和故障测试后标“实现完成、待外部验收”；Q6为内部认证软件回归，不需要供应商冻结。
+按 [ADR-011](decisions/ADR-011-overwrite-install-and-software-release.md)，软件正式版与指定设备组合资格分别验收。RC 继续标明候选范围；软件正式版必须具备同提交的必要软件检查、实际 Windows 安装/旧版升级和 SmdBench 场景，按[发布证据契约](release-acceptance.md)验证实际文件摘要、CI 编号及唯一完整场景。清单说明文字不替代这些证据。
+
+Windows Server CI 不冒充 Win10/11 干净断网桌面；固件、物理联锁、国标符合性和桌面人工环境在软件包中明确列为未验收。M5 资格另外绑定实际应用/数据库/协议/固件/硬件组合及完整实验、24h和安全签字。Q清单中仍依赖外部资料的能力保持blocked，任务可完成内部代码和故障测试后标“实现完成、待外部验收”；Q6为内部认证软件回归，不需要供应商冻结。
 
 旧D4记录只保存历史，见[D4入口](D4-readiness.md)。新的验收不能沿用没有提交/环境的旧“全部通过”计数。

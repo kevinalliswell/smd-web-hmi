@@ -1,6 +1,8 @@
 # 文档入口
 
-维护角色：项目维护者。本轮候选 `0.3.0-rc.5` 已完成 HOST-2006—2009 的软件实现及 Windows CI 安装版联调，完整构建身份、实际产物摘要和清理结果见[安装版闭环验证](verification/2026-09-08-installed-hostcomm-loop.md)。候选交付状态、最终提交与字节以对应标签流水线及 Release 附件为准。固件文档修订为 `2.0-doc.3`，协议仍为 `2.0 / 2.0-design.1`；交接要求与未验边界见[固件交接](hostcomm/v2/firmware-handoff.md)和[兼容核对](hostcomm/v2/compatibility.md)。Win10/11 WebView2 人工验收、真实 STM32、安全联锁与持续运行验收仍未完成。
+维护角色：项目维护者。当前推进保留数据的覆盖安装与 `0.3.0` 软件正式版，实施及未验收边界见 [ADR-011](decisions/ADR-011-overwrite-install-and-software-release.md)、[路线图](../tasks/plan.md)和[软件发布证据契约](release-acceptance.md)。本机检查与后续 Windows CI、实际资产分层登记在[覆盖安装验证记录](verification/2026-09-13-overwrite-install.md)；未取得本轮证据前，不宣称已发布。
+
+上一候选 `0.3.0-rc.5` 已完成 HOST-2006—2009 的软件实现及 Windows CI 安装版联调，完整构建身份、实际产物摘要和清理结果见[安装版闭环验证](verification/2026-09-08-installed-hostcomm-loop.md)。候选交付状态、最终提交与字节以对应标签流水线及 Release 附件为准。固件文档修订为 `2.0-doc.3`，协议仍为 `2.0 / 2.0-design.1`；交接要求与未验边界见[固件交接](hostcomm/v2/firmware-handoff.md)和[兼容核对](hostcomm/v2/compatibility.md)。Win10/11 WebView2 人工验收、真实 STM32、安全联锁与持续运行验收仍未完成。
 
 2026-09-07 用户确认清理 rc.2 残留服务后 rc.4 安装成功，见[安装排查记录](verification/2026-09-06-windows-installer-errors.md)。该现场结果不证明当时已完成覆盖升级、空库核验或 HostComm 联调，本轮 CI 结果也不代替该现场验收。
 
@@ -20,7 +22,7 @@
 | [现有 HostComm 1.0 行为](GB_T34211_HostComm上位机通信协议开发需求说明.md) / [实验扩展](hostcomm-experiment-extensions.md) | 0.3.0-rc.2 客户端和 Mock 实际支持什么？ | 后端负责人 |
 | [相关仓库历史发现记录](verification/2026-09-06-firmware-candidates.md) | 哪些资料可供参考，为什么不能视为本项目已开发的固件？ | 固件、项目负责人 |
 | [设计与工程证据清单](待确认事项与接口对齐清单.md) | 哪些语义由项目设计，哪些设备资料和实测仍需提供？ | 项目负责人 |
-| [发布与维护指南](发布与维护指南.md) | 如何分支、打包、升级、回滚和现场维护？ | 发布负责人 |
+| [发布与维护指南](发布与维护指南.md) / [发布证据契约](release-acceptance.md) | 如何覆盖安装保留数据、恢复并验证软件正式版？ | 发布负责人 |
 | [无设备测试机备份与重装](../deploy/windows/TEST-REINSTALL.md) | 旧1.0离线维护被拒绝时，如何完整保留旧资料并用rc.4建立空库？ | Windows/维护负责人 |
 | [验收证据基线](verification.md) | 已实现到哪里，怎样证明一项能力完成？ | 测试负责人 |
 | [路线图](../tasks/plan.md) / [任务清单](../tasks/todo.md) | 下一步做什么，依赖和退出条件是什么？ | 项目负责人 |
