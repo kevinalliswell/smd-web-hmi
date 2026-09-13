@@ -1,6 +1,6 @@
 # 2026-09-13 覆盖安装与软件正式版验证
 
-维护角色：集成、Windows 测试与发布负责人。关联任务：OVER-01—07；范围依据[ADR-011](../decisions/ADR-011-overwrite-install-and-software-release.md)。目标应用版本为 `0.3.0`，协议保持 `2.0 / 2.0-design.1`、文档修订 `2.0-doc.3`。本记录先保存本机执行结果，**尚无本轮 Windows CI 通过或正式版已发布的结论**。
+维护角色：集成、Windows 测试与发布负责人。关联任务：OVER-01—07；范围依据[ADR-011](../decisions/ADR-011-overwrite-install-and-software-release.md)。目标应用版本为 `0.3.0`，协议保持 `2.0 / 2.0-design.1`、文档修订 `2.0-doc.3`。本机及 Windows 单元检查已有结果，**实际 Windows 安装验收与正式发布尚未完成，当前受 GitHub Actions 预算阻塞**。
 
 本机执行基线为 `0701a136d73560221e7d32dc4cf2747b3397ab86` 加测试当时尚未提交的实现和测试；这些结果不能归到未包含改动的基线提交。随后实现分别整理在维护协调 `ec363a8bb1b81865071ab87fb564f0b5d09253cd`、覆盖安装与恢复 `5cd9c9a401a9fa714b0a01bf531a6c45ff00bf23`、实际安装验收及门禁 `5ee5b27019b3a3ce2c9056bb7142778db44b5ea4`。最终集成、合并及标签构建后应追加实际构建完整 SHA、CI 编号、产物摘要与日志链接，不覆盖早期执行记录。rc.5 的[历史安装版联调](2026-09-08-installed-hostcomm-loop.md)不为本轮不同字节背书。
 
@@ -26,7 +26,7 @@
 
 独立交叉审查修正了迁移子进程重复申请后台锁、STOPPED 状态的无效 PID 判断、重装开始验活期间的控制门禁及自动启动断电窗口。维护中的业务写入统一暂停，已受理请求、报告任务与单批恢复回放先排空；已知忙碌提前拒绝维护，授权前仍在两个命令锁内重新核验。健康检查和只读访问保持可用。
 
-## 本轮 Windows CI 待执行
+## 本轮 Windows CI 与预算阻塞
 
 PR [#79](https://github.com/kevinalliswell/smd-web-hmi/pull/79) 的首轮 [CI 34762470227](https://github.com/kevinalliswell/smd-web-hmi/actions/runs/34762470227) 对应 `be14acebf6e371ce383a4e7ad71660821452018d`：规范、前端、Linux Python 3.11/3.13 后端检查通过；审计和 Windows 桌面单元检查失败，实际安装打包尚未执行，不能算 Windows 验收完成。
 
@@ -39,7 +39,17 @@ PR [#79](https://github.com/kevinalliswell/smd-web-hmi/pull/79) 的首轮 [CI 34
 
 实际安装流程的交叉检查另发现两个旧脚本契约需要同步：新版已停用的准备接口应返回 HTTP 410 且不生成票据；旧测试机重置工具应精确接受新恢复任务增加的 `--non-interactive` 参数。已保留新旧两种精确任务格式和全部归属、备份、空库重装断言；新增原生 PowerShell 行为例须在 Windows 执行。本机实际 ASGI 调用验证了 410 与无票据行为。安装冒烟失败证据另补充白名单脚本名与行号，仍不公开异常正文、配置或口令。
 
-新的流水线需依次运行真实安装冒烟、rc.4/rc.5 旧安装器升级套件、冻结 SmdBench 的 `all` 场景，再执行[正式版证据聚合与门禁](../release-acceptance.md)。当前状态为 **等待 CI**，以下项目未写为 passed：
+第四轮 [CI 34763952033](https://github.com/kevinalliswell/smd-web-hmi/actions/runs/34763952033) 对应分支提交 `bf99bd5a79a33c20b489599a03d0e65afec7aded`，六项基础检查全部通过。Windows 后端 **835 通过、4 项 POSIX 限定跳过**，覆盖率日志显示 **88%**；Windows 桌面 **371 通过**、联调工具 **98 通过**。随后推送安装冒烟脚本修正触发并发规则取消旧运行，`windows-package` 在冻结程序期间被取消，**尚未执行实际安装**。单元检查通过不能替代实际安装、覆盖升级和安装版联调。
+
+第五轮 [CI 34764506342](https://github.com/kevinalliswell/smd-web-hmi/actions/runs/34764506342) 对应分支提交 `672ba3f27c77cc113aef9544aeb0862b6dea3425`，六项基础检查均未启动。GitHub annotation 原文为：
+
+> The job was not started because an Actions budget is preventing further use.
+
+代码及 Windows 验收场景已提交并推送。集成者对当前 `672ba3f27c77cc113aef9544aeb0862b6dea3425` 再次执行全范围 Black/isort 通过；测试机重置工具的本机可运行检查通过，原生 Windows PowerShell 5.1 用例仍因环境跳过，不能当作本轮 Windows 执行证据。
+
+这是 GitHub Actions 可用预算的外部阻塞，不是本轮测试执行失败，也不是通过。需要仓库或账户负责人恢复 Actions 可用额度后重新运行必要检查及安装流程；不能通过跳过检查、降低门槛或复用旧构建证据发布。PR #79 当前保持 draft、尚未合并，未创建 `v0.3.0` 标签或正式 Release。
+
+恢复 CI 后需依次运行真实安装冒烟、rc.4/rc.5 旧安装器升级套件、冻结 SmdBench 的 `all` 场景，再执行[正式版证据聚合与门禁](../release-acceptance.md)。当前状态为 **外部预算阻塞**，以下项目未写为 passed：
 
 | 套件 | 必须观察的实际结果 |
 |---|---|
@@ -53,6 +63,6 @@ PR [#79](https://github.com/kevinalliswell/smd-web-hmi/pull/79) 的首轮 [CI 34
 
 ## 正式资产与其他验收
 
-`v0.3.0` 标签、正式 Release、安装器与工具 ZIP 摘要、软件/Windows 验收摘要均待本轮检查通过后记录。发布标签必须对应重新运行必要检查和实际安装版验收的提交，不移动旧标签。
+`v0.3.0` 标签、正式 Release、安装器与工具 ZIP 摘要、软件/Windows 验收摘要均待 Actions 预算恢复及本轮检查通过后记录。PR #79 尚未合并，不使用本机检查或第四轮单元结果替代未执行的安装验收。发布标签必须对应重新运行必要检查和实际安装版验收的提交，不移动旧标签。
 
 Win10/11 干净断网 WebView2、普通操作员、中文路径和显示缩放的人工验收，以及可信签名、真实 STM32H750 固件、实物安全联锁、国标符合性和持续运行仍分别未验收。软件正式版资格不关闭这些项目，也不证明用户发生 rc.5 升级失败的那台测试机已经完成恢复。

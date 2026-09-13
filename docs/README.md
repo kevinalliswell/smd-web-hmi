@@ -2,6 +2,8 @@
 
 维护角色：项目维护者。当前推进保留数据的覆盖安装与 `0.3.0` 软件正式版，实施及未验收边界见 [ADR-011](decisions/ADR-011-overwrite-install-and-software-release.md)、[路线图](../tasks/plan.md)和[软件发布证据契约](release-acceptance.md)。本机检查与后续 Windows CI、实际资产分层登记在[覆盖安装验证记录](verification/2026-09-13-overwrite-install.md)；未取得本轮证据前，不宣称已发布。
 
+当前 GitHub Actions 预算阻止最新检查启动；实际 Windows 安装验收与正式发布尚未完成。PR #79 保持 draft、未合并，未创建 `v0.3.0` 标签，详见[预算阻塞及已执行检查](verification/2026-09-13-overwrite-install.md#本轮-windows-ci-与预算阻塞)。
+
 上一候选 `0.3.0-rc.5` 已完成 HOST-2006—2009 的软件实现及 Windows CI 安装版联调，完整构建身份、实际产物摘要和清理结果见[安装版闭环验证](verification/2026-09-08-installed-hostcomm-loop.md)。候选交付状态、最终提交与字节以对应标签流水线及 Release 附件为准。固件文档修订为 `2.0-doc.3`，协议仍为 `2.0 / 2.0-design.1`；交接要求与未验边界见[固件交接](hostcomm/v2/firmware-handoff.md)和[兼容核对](hostcomm/v2/compatibility.md)。Win10/11 WebView2 人工验收、真实 STM32、安全联锁与持续运行验收仍未完成。
 
 2026-09-07 用户确认清理 rc.2 残留服务后 rc.4 安装成功，见[安装排查记录](verification/2026-09-06-windows-installer-errors.md)。该现场结果不证明当时已完成覆盖升级、空库核验或 HostComm 联调，本轮 CI 结果也不代替该现场验收。
