@@ -225,6 +225,9 @@ try {
     # Do not serialize exception bodies, environment/configuration or authentication material.
     $Result.failure_stage = $Stage
     $Result.failure_type = $_.Exception.GetType().Name
+    $Result.failure_line = $_.InvocationInfo.ScriptLineNumber
+    $FailureScript = [IO.Path]::GetFileName($_.InvocationInfo.ScriptName)
+    if ($FailureScript -in @('smoke-windows.ps1', 'test-reset-smoke.ps1')) { $Result.failure_script = $FailureScript }
 } finally {
     if ($PairingProcess) {
         Invoke-SmokeCleanup 'pairing_process' {

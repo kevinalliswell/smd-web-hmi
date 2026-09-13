@@ -77,6 +77,13 @@ function Assert-DefaultDatabase([string]$EnvironmentFile, [string]$ExpectedDatab
         -not (Test-SameResetPath $DatabaseValues[0] $ExpectedDatabase)) { Stop-ResetError 'Only the default SmdHmi/db/smd.db database is supported' }
 }
 function Get-ResetService { return Get-CimInstance Win32_Service -Filter "Name='SmdHmi'" -OperationTimeoutSec 5 }
+function Test-ResetRecoveryArguments([string]$Arguments, [string]$InstallDir) {
+    # Both released task formats are valid; no extra flag or alternative path is accepted.
+    return $Arguments -cin @(
+        ('--recover --install "' + $InstallDir + '"'),
+        ('--recover --non-interactive --install "' + $InstallDir + '"')
+    )
+}
 function Get-ResetPlan {
     $Principal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
     if (-not [Environment]::Is64BitProcess -or -not $Principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
@@ -134,7 +141,7 @@ function Get-ResetPlan {
     $Task = Get-ScheduledTask -TaskName 'SmdHmi-Recover' -TaskPath '\'
     $Actions = @($Task.Actions)
     if ($Actions.Count -ne 1 -or $Actions[0].Execute -ine $UpdaterExe -or
-        $Actions[0].Arguments -cne ('--recover --install "' + $Install + '"') -or $Actions[0].WorkingDirectory) { Stop-ResetError 'The recovery task does not belong exclusively to this installation' }
+        -not (Test-ResetRecoveryArguments $Actions[0].Arguments $Install) -or $Actions[0].WorkingDirectory) { Stop-ResetError 'The recovery task does not belong exclusively to this installation' }
     if ($Task.State -eq 'Running') { Stop-ResetError 'The recovery task is currently running' }
     $TaskSid = if ($Task.Principal.UserId -match '^S-1-') { $Task.Principal.UserId } else {
         (New-Object Security.Principal.NTAccount($Task.Principal.UserId)).Translate([Security.Principal.SecurityIdentifier]).Value

@@ -1,4 +1,11 @@
 # Invoked only by the isolated GitHub-hosted installation smoke, never a field tool.
+function Assert-RetiredMaintenancePrepare {
+    param($Response, [string]$DataDir)
+    if ($Response.StatusCode -ne 410 -or ($Response.Content | ConvertFrom-Json).error_code -ne 'http_error' -or
+        (Test-Path -LiteralPath (Join-Path $DataDir 'maintenance.json'))) {
+        throw 'Retired maintenance entry must return HTTP 410 without creating a maintenance ticket'
+    }
+}
 function Invoke-TestResetSmoke {
     param([string]$Installer, [string]$InstallDir, [string]$DataDir, [string]$Version,
         [string]$Identity, [string]$OwnerFile, [int]$TimeoutSeconds)
@@ -24,7 +31,7 @@ function Invoke-TestResetSmoke {
         -Headers @{ Authorization = "Bearer $($Auth.token)" } `
         -Body (@{ username = $FixtureUser; password = ('Ci!' + [guid]::NewGuid().ToString('N')); role = 'observer' } | ConvertTo-Json) | Out-Null
 
-    # Reproduce the legacy protocol gate only in this owned, firewall-isolated fixture.
+    # Exercise the protocol 1.0 reset fixture only inside this owned, isolated installation.
     Stop-Service SmdHmi
     $Controller = Get-Service SmdHmi
     try { $Controller.WaitForStatus('Stopped', [TimeSpan]::FromSeconds(30)) } finally { $Controller.Dispose() }
@@ -42,8 +49,7 @@ function Invoke-TestResetSmoke {
     $Rejected = Invoke-WebRequest -Uri "$BaseUrl/api/system/maintenance/prepare" -Method Post -ContentType 'application/json' `
         -NoProxy -TimeoutSec 5 -SkipHttpErrorCheck -Headers @{ Authorization = "Bearer $($Auth.token)" } `
         -Body (@{ target_version = $Version } | ConvertTo-Json)
-    if ($Rejected.StatusCode -ne 503 -or ($Rejected.Content | ConvertFrom-Json).error_code -ne 'maintenance_active' -or
-        (Test-Path -LiteralPath (Join-Path $DataDir 'maintenance.json'))) { throw 'Legacy offline preparation was not rejected as expected' }
+    Assert-RetiredMaintenancePrepare -Response $Rejected -DataDir $DataDir
     $OldConfigHash = (Get-FileHash -LiteralPath $ConfigFile -Algorithm SHA256).Hash
     $BeforeService = Get-SmokeService
     $BackupRoot = Join-Path $env:PROGRAMDATA 'SmdHmi-TestBackups'
@@ -104,7 +110,8 @@ function Invoke-TestResetSmoke {
         if ($LASTEXITCODE -ne 0) { throw 'Old database was not preserved independently of the fresh database' }
         $Health = (Invoke-RestMethod -Uri "$BaseUrl/api/system/health" -NoProxy -TimeoutSec 3).data
         if ($Health.status -ne 'ready' -or $Health.version -ne $Version -or $Health.checks.hostcomm -ne 'offline') { throw 'Fresh application is not ready offline' }
-        return @{ legacy_offline_prepare = 'rejected'; powershell = 'Windows 5.1'; preview_unchanged = $true;
+        return @{ legacy_offline_prepare = 'retired'; legacy_offline_prepare_http_status = 410;
+            powershell = 'Windows 5.1'; preview_unchanged = $true;
             reset = 'completed'; backup_verified = $true; old_database_preserved = $true; fresh_database = $true;
             fresh_credentials = $true; reinstall_exit_code = 0; hostcomm = 'offline';
             tool_sha256 = (Get-FileHash -LiteralPath $ResetScript -Algorithm SHA256).Hash.ToLower();
