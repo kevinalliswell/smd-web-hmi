@@ -20,9 +20,7 @@ from .single_instance import single_instance
 def _health_version(value: object) -> str:
     # This is a log allowlist, not a new version/installation gate.
     pattern = r"[0-9]{1,6}\.[0-9]{1,6}\.[0-9]{1,6}(?:-(?:alpha|beta|rc)\.[0-9]{1,6})?"
-    return (
-        value if isinstance(value, str) and re.fullmatch(pattern, value) else "unknown"
-    )
+    return value if isinstance(value, str) and re.fullmatch(pattern, value) else "unknown"
 
 
 def _health_choice(value: object, allowed: set[str]) -> str:
@@ -84,9 +82,7 @@ class WindowsPlatform:
         if not pid:
             return None
         try:
-            return win32api.OpenProcess(
-                0x00100000, False, pid
-            )  # SYNCHRONIZE only; never terminate.
+            return win32api.OpenProcess(0x00100000, False, pid)  # SYNCHRONIZE only; never terminate.
         except Exception as error:
             if getattr(error, "winerror", None) == 87:  # Exited before OpenProcess.
                 return None
@@ -152,8 +148,7 @@ class WindowsPlatform:
             except pywintypes.error as exc:
                 pending = (
                     exc.winerror == 1061
-                    and self._service(ws.QueryServiceStatus, ws.SERVICE_QUERY_STATUS)[1]
-                    == ws.SERVICE_STOP_PENDING
+                    and self._service(ws.QueryServiceStatus, ws.SERVICE_QUERY_STATUS)[1] == ws.SERVICE_STOP_PENDING
                 )
                 if exc.winerror != 1062 and not pending:
                     raise
@@ -161,13 +156,8 @@ class WindowsPlatform:
             if process is not None:
                 import win32event
 
-                if (
-                    win32event.WaitForSingleObject(process, int(self.timeout * 1000))
-                    != win32event.WAIT_OBJECT_0
-                ):
-                    raise RuntimeError(
-                        "服务仍有进程未退出；保留数据并停止安装，不强制结束进程"
-                    )
+                if win32event.WaitForSingleObject(process, int(self.timeout * 1000)) != win32event.WAIT_OBJECT_0:
+                    raise RuntimeError("服务仍有进程未退出；保留数据并停止安装，不强制结束进程")
             self._hold_backend()
         finally:
             if process is not None:
@@ -218,9 +208,7 @@ class WindowsPlatform:
             codes = [exc.hresult]
             if exc.excepinfo and exc.excepinfo[5] is not None:
                 codes.append(exc.excepinfo[5])
-            if not any(
-                code & 0xFFFFFFFF == 0x80070002 for code in codes
-            ):  # ERROR_FILE_NOT_FOUND
+            if not any(code & 0xFFFFFFFF == 0x80070002 for code in codes):  # ERROR_FILE_NOT_FOUND
                 raise
 
     def configure(self, version_dir: Path):
@@ -284,9 +272,7 @@ class WindowsPlatform:
 
         install = version_dir.parent.parent
         access = winreg.KEY_WRITE | winreg.KEY_WOW64_64KEY
-        with winreg.CreateKeyEx(
-            winreg.HKEY_LOCAL_MACHINE, r"Software\SmdHmi", 0, access
-        ) as key:
+        with winreg.CreateKeyEx(winreg.HKEY_LOCAL_MACHINE, r"Software\SmdHmi", 0, access) as key:
             for name, value in {
                 "InstallDir": str(install),
                 "DataDir": str(self.data),
@@ -305,15 +291,10 @@ class WindowsPlatform:
                 "UninstallString": f'"{install / "Uninstall.exe"}"',
             }.items():
                 winreg.SetValueEx(key, name, 0, winreg.REG_SZ, value)
-        menu = (
-            Path(os.environ["PROGRAMDATA"])
-            / "Microsoft/Windows/Start Menu/Programs/SMD HMI"
-        )
+        menu = Path(os.environ["PROGRAMDATA"]) / "Microsoft/Windows/Start Menu/Programs/SMD HMI"
         menu.mkdir(parents=True, exist_ok=True)
         # WSH的CreateShortcut/TargetPath/Save契约见Microsoft Learn的WSH快捷方式说明。
-        shortcut = win32com.client.Dispatch("WScript.Shell").CreateShortcut(
-            str(menu / "SMD HMI.lnk")
-        )
+        shortcut = win32com.client.Dispatch("WScript.Shell").CreateShortcut(str(menu / "SMD HMI.lnk"))
         shortcut.TargetPath = str(version_dir / "SmdDesktop/SmdDesktop.exe")
         shortcut.WorkingDirectory = str(version_dir / "SmdDesktop")
         shortcut.Description = "SMD 软熔滴落实验"
@@ -348,9 +329,7 @@ class WindowsPlatform:
 
         self.release_backend_guard()
         try:
-            self._service(
-                lambda service: ws.StartService(service, None), ws.SERVICE_START
-            )
+            self._service(lambda service: ws.StartService(service, None), ws.SERVICE_START)
         except pywintypes.error as exc:
             if exc.winerror != 1056:  # already running
                 raise
@@ -381,21 +360,15 @@ class WindowsPlatform:
                 "expected_version": _health_version(version),
             }
             try:
-                client = json.loads(
-                    (self.data / "client.json").read_text(encoding="utf-8")
-                )
-                request = urllib.request.Request(
-                    client["url"].rstrip("/") + "/api/system/health"
-                )
+                client = json.loads((self.data / "client.json").read_text(encoding="utf-8"))
+                request = urllib.request.Request(client["url"].rstrip("/") + "/api/system/health")
                 diagnostic.update(phase="backend", reason="invalid_response")
                 with self.opener.open(request, timeout=3) as response:
                     diagnostic["http_status"] = response.status
                     state = json.load(response)["data"]
                 diagnostic.update(
                     observed_version=_health_version(state["version"]),
-                    observed_status=_health_choice(
-                        state["status"], {"ready", "not_ready"}
-                    ),
+                    observed_status=_health_choice(state["status"], {"ready", "not_ready"}),
                 )
                 checks = state.get("checks", {})
                 checks = checks if isinstance(checks, dict) else {}
@@ -411,9 +384,7 @@ class WindowsPlatform:
                 }
                 free_bytes = checks.get("storage_free_bytes")
                 diagnostic["checks"]["storage_free_bytes"] = (
-                    free_bytes
-                    if type(free_bytes) is int and 0 <= free_bytes <= 2**64 - 1
-                    else "unknown"
+                    free_bytes if type(free_bytes) is int and 0 <= free_bytes <= 2**64 - 1 else "unknown"
                 )
                 if state["version"] != version:
                     diagnostic["reason"] = "version_mismatch"
@@ -422,35 +393,25 @@ class WindowsPlatform:
                 else:
                     diagnostic.update(phase="client", reason="invalid_client_config")
                     diagnostic.pop("http_status", None)
-                    client = json.loads(
-                        (self.data / "client.json").read_text(encoding="utf-8")
-                    )
+                    client = json.loads((self.data / "client.json").read_text(encoding="utf-8"))
                     diagnostic.update(phase="frontend", reason="invalid_response")
                     with self.opener.open(client["url"], timeout=3) as page:
                         diagnostic["http_status"] = page.status
                         html = "text/html" in page.headers.get("Content-Type", "")
                         if page.status == 200 and html:
                             return
-                        diagnostic["reason"] = (
-                            "frontend_http_status"
-                            if page.status != 200
-                            else "frontend_not_html"
-                        )
+                        diagnostic["reason"] = "frontend_http_status" if page.status != 200 else "frontend_not_html"
             except urllib.error.HTTPError as exc:
                 diagnostic.update(reason="http_status", http_status=exc.code)
                 exc.close()
             except (OSError, HTTPException) as exc:
                 if diagnostic["phase"] != "client":
-                    diagnostic.update(
-                        reason="network_error", network_type=_health_network_error(exc)
-                    )
+                    diagnostic.update(reason="network_error", network_type=_health_network_error(exc))
             except (ValueError, KeyError, TypeError, AttributeError):
                 # Never log response bodies, URLs, configuration or exception text.
                 pass
             if diagnostic != last:
-                logging.getLogger(__name__).warning(
-                    "upgrade_health_probe %s", json.dumps(diagnostic, sort_keys=True)
-                )
+                logging.getLogger(__name__).warning("upgrade_health_probe %s", json.dumps(diagnostic, sort_keys=True))
                 last = diagnostic
             time.sleep(0.5)
         detail = json.dumps(diagnostic, sort_keys=True)

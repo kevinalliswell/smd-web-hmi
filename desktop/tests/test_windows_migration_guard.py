@@ -28,26 +28,18 @@ def scm(monkeypatch):
 
 
 @pytest.mark.parametrize("state", [1, 2, 3])
-def test_only_documented_valid_states_allow_opening_service_pid(
-    tmp_path, monkeypatch, scm, state
-):
+def test_only_documented_valid_states_allow_opening_service_pid(tmp_path, monkeypatch, scm, state):
     def must_not_open(*args):
         pytest.fail("Opening a stale SCM PID can select an unrelated process")
 
-    monkeypatch.setitem(
-        sys.modules, "win32api", SimpleNamespace(OpenProcess=must_not_open)
-    )
+    monkeypatch.setitem(sys.modules, "win32api", SimpleNamespace(OpenProcess=must_not_open))
     platform = WindowsPlatform(tmp_path)
-    monkeypatch.setattr(
-        platform, "_service", lambda *args: {"CurrentState": state, "ProcessId": 12345}
-    )
+    monkeypatch.setattr(platform, "_service", lambda *args: {"CurrentState": state, "ProcessId": 12345})
     assert platform._open_service_process() is None
 
 
 @pytest.mark.parametrize("state", [4, 5, 6, 7])
-def test_valid_service_state_captures_synchronize_handle(
-    tmp_path, monkeypatch, scm, state
-):
+def test_valid_service_state_captures_synchronize_handle(tmp_path, monkeypatch, scm, state):
     opened = []
     handle = object()
 
@@ -55,13 +47,9 @@ def test_valid_service_state_captures_synchronize_handle(
         opened.append((access, inherit, pid))
         return handle
 
-    monkeypatch.setitem(
-        sys.modules, "win32api", SimpleNamespace(OpenProcess=open_process)
-    )
+    monkeypatch.setitem(sys.modules, "win32api", SimpleNamespace(OpenProcess=open_process))
     platform = WindowsPlatform(tmp_path)
-    monkeypatch.setattr(
-        platform, "_service", lambda *args: {"CurrentState": state, "ProcessId": 12345}
-    )
+    monkeypatch.setattr(platform, "_service", lambda *args: {"CurrentState": state, "ProcessId": 12345})
     assert platform._open_service_process() is handle
     assert opened == [(0x00100000, False, 12345)]
 
@@ -85,9 +73,7 @@ def inherited(monkeypatch, scm):
     kernel = SimpleNamespace(
         OpenMutexW=NativeFunction(lambda *args: 98),
         CloseHandle=NativeFunction(lambda handle: closed.append(handle)),
-        CompareObjectHandles=NativeFunction(
-            lambda inherited, expected: inherited == 42 and expected == 98
-        ),
+        CompareObjectHandles=NativeFunction(lambda inherited, expected: inherited == 42 and expected == 98),
     )
     monkeypatch.setattr(locks, "os", SimpleNamespace(name="nt"))
     monkeypatch.setattr(
