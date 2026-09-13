@@ -78,6 +78,12 @@ class MaintenanceManager:
                 raise MaintenanceBlockedError("设备处于离线升级维护状态，禁止新命令")
             yield
 
+    @asynccontextmanager
+    async def installer_guard(self) -> AsyncIterator[None]:
+        """Drain ordinary and priority commands before validating a local intent."""
+        async with self._operation_lock, self._priority_lock:
+            yield
+
     async def prepare_upgrade(
         self,
         *,

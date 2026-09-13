@@ -1,16 +1,12 @@
-"""升级准备由 Admin 授权，领取票据仅允许本机受限安装器。"""
+"""Maintenance status and source recovery; installation is owned by the Windows installer."""
 
-import ipaddress
-from typing import Annotated
-
-from fastapi import APIRouter, Depends, Header, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 
 from app import __version__
-from app.api.deps import DbDep, UserDep, get_hostcomm_client, require_role
+from app.api.deps import get_hostcomm_client, require_role
 from app.api.schemas import ok
-from app.core.config import get_settings
 from app.db.models import TestSession
 from app.db.v2_models import V2Operation
 from app.services.background_jobs import BackgroundJobCapacityError, background_jobs
@@ -19,10 +15,6 @@ from app.services.maintenance_service import MaintenanceBlockedError, maintenanc
 from app.services.state_policy import classify_state
 
 router = APIRouter(prefix="/api/system/maintenance", tags=["maintenance"])
-
-
-class PrepareRequest(BaseModel):
-    target_version: str = Field(pattern=r"^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$")
 
 
 class RecoverSourceLogsRequest(BaseModel):
@@ -92,37 +84,27 @@ async def validate_upgrade_ready(request: Request, db, *, cache=None) -> None:
 @router.get("", dependencies=[Depends(require_role("admin"))])
 async def status():
     state = maintenance_manager.upgrade_state()
-    return ok({key: value for key, value in state.items() if key not in {"token", "db_path"}})
+    # Explicit allowlist: request hashes, administrator identity and local paths
+    # belong to the installer's local audit, not the browser API.
+    public = {key: state[key] for key in ("state", "target_version", "upgrade_id", "operation") if key in state}
+    return ok({**public, "current_version": __version__})
 
 
-@router.post("/prepare", dependencies=[Depends(require_role("admin"))])
-async def prepare(body: PrepareRequest, request: Request, user: UserDep, db: DbDep):
-    settings = get_settings()
-    state = await maintenance_manager.prepare_upgrade(
-        target_version=body.target_version,
-        current_version=__version__,
-        db_path=settings.db_path_resolved,
-        operator_id=user.username,
-        validate=lambda: validate_upgrade_ready(request, db),
-    )
-    return ok({key: value for key, value in state.items() if key not in {"token", "db_path"}})
+_INSTALLER_GUIDANCE = (
+    "此维护入口已停用。请直接运行新版 Windows 安装器；安装器自动识别版本并保留配置和数据库，无需填写版本号。"
+)
 
 
-@router.delete("", dependencies=[Depends(require_role("admin"))])
+@router.post("/prepare", dependencies=[Depends(require_role("admin"))], deprecated=True)
+async def prepare():
+    raise HTTPException(410, _INSTALLER_GUIDANCE)
+
+
+@router.delete("", dependencies=[Depends(require_role("admin"))], deprecated=True)
 async def cancel():
-    await maintenance_manager.cancel_upgrade()
-    return ok({"state": "idle"})
+    raise HTTPException(410, _INSTALLER_GUIDANCE)
 
 
-@router.post("/claim")
-async def claim(request: Request, db: DbDep, x_smd_upgrade_token: Annotated[str, Header(min_length=64, max_length=64)]):
-    try:
-        local = request.client is not None and ipaddress.ip_address(request.client.host).is_loopback
-    except ValueError:
-        local = False
-    if not local:
-        raise HTTPException(403, "维护票据仅允许本机安装器领取")
-    state = await maintenance_manager.claim_upgrade(
-        x_smd_upgrade_token, validate=lambda: validate_upgrade_ready(request, db)
-    )
-    return ok({key: value for key, value in state.items() if key != "token"})
+@router.post("/claim", deprecated=True)
+async def claim():
+    raise HTTPException(410, _INSTALLER_GUIDANCE)

@@ -1140,7 +1140,10 @@ export interface paths {
         get: operations["status_api_system_maintenance_get"];
         put?: never;
         post?: never;
-        /** Cancel */
+        /**
+         * Cancel
+         * @deprecated
+         */
         delete: operations["cancel_api_system_maintenance_delete"];
         options?: never;
         head?: never;
@@ -1156,7 +1159,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Prepare */
+        /**
+         * Prepare
+         * @deprecated
+         */
         post: operations["prepare_api_system_maintenance_prepare_post"];
         delete?: never;
         options?: never;
@@ -1173,7 +1179,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Claim */
+        /**
+         * Claim
+         * @deprecated
+         */
         post: operations["claim_api_system_maintenance_claim_post"];
         delete?: never;
         options?: never;
@@ -1329,11 +1338,6 @@ export interface components {
             confirm_token?: string | null;
             /** Operation Id */
             operation_id?: string | null;
-        };
-        /** PrepareRequest */
-        PrepareRequest: {
-            /** Target Version */
-            target_version: string;
         };
         /** RecipeDefinition */
         RecipeDefinition: {
@@ -3835,11 +3839,7 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["PrepareRequest"];
-            };
-        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
             200: {
@@ -3864,9 +3864,7 @@ export interface operations {
     claim_api_system_maintenance_claim_post: {
         parameters: {
             query?: never;
-            header: {
-                "x-smd-upgrade-token": string;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -3879,15 +3877,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

@@ -70,7 +70,7 @@ export interface DeviceSnapshot {
 export interface MaintenanceState {
   state: 'idle' | 'prepared' | 'claimed'
   target_version?: string
-  current_version?: string
+  current_version: string
   upgrade_id?: string
 }
 
