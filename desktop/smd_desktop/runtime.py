@@ -8,6 +8,12 @@ from dotenv import dotenv_values
 
 
 def data_root() -> Path:
+    if not os.environ.get("SMD_DATA_ROOT") and os.name == "nt":
+        from .installation_paths import registered_paths
+
+        registered = registered_paths().get("DataDir")
+        if registered:
+            return Path(registered).resolve()
     return Path(
         os.environ.get("SMD_DATA_ROOT", str(Path(os.environ.get("PROGRAMDATA", "C:/ProgramData")) / "SmdHmi"))
     ).resolve()

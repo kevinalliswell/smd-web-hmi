@@ -6,7 +6,7 @@ from contextlib import closing
 from pathlib import Path
 
 import pytest
-from smd_desktop.bundle import build_manifest
+from smd_desktop.bundle import build_manifest, sha256
 from smd_desktop.upgrade import UpgradeError, UpgradeTransaction
 
 
@@ -73,10 +73,11 @@ class Platform:
 
 @pytest.fixture
 def installation(tmp_path):
-    root, data, package = tmp_path / "program", tmp_path / "data", tmp_path / "package"
+    root, data = tmp_path / "program", tmp_path / "data"
+    package = root / ".staging" / ("d" * 32) / "payload"
     root.mkdir()
     data.mkdir()
-    package.mkdir()
+    package.mkdir(parents=True)
     (root / "versions/0.3.0").mkdir(parents=True)
     (root / "versions/0.3.0/runtime.txt").write_text("old-runtime")
     (data / "config").mkdir()
@@ -102,7 +103,14 @@ def installation(tmp_path):
         path.write_bytes(b"fixture")
     build_manifest(package, version="0.4.0-rc.1", commit="a" * 40, webview2_version="135.0.1.2")
     permit = {
+        "schema_version": 2,
+        "issuer": "windows_installer",
+        "operation": "upgrade",
         "state": "claimed",
+        "package_sha256": sha256(package / "manifest.json"),
+        "request_sha256": "e" * 64,
+        "admin_sid": "S-1-5-21-100-200-300-500",
+        "physical_shutdown_confirmed": False,
         "upgrade_id": "b" * 32,
         "target_version": "0.4.0-rc.1",
         "current_version": "0.3.0",

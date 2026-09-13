@@ -9,6 +9,9 @@ from smd_desktop.uninstall import UninstallTransaction
 
 
 class Platform:
+    def release_backend_guard(self):
+        pass
+
     def __init__(self, data, fail=None):
         self.data = data
         self.fail = fail
@@ -146,7 +149,7 @@ def test_service_removal_error_keeps_installation_and_claim_for_retry(installed)
 
 
 @pytest.mark.parametrize("argument", ["--uninstall", "--recover"])
-def test_updater_resumes_uninstall_before_upgrade_recovery(installed, monkeypatch, argument):
+def test_only_explicit_uninstall_resumes_pending_uninstall(installed, monkeypatch, argument):
     from types import SimpleNamespace
 
     from smd_desktop import updater
@@ -167,8 +170,15 @@ def test_updater_resumes_uninstall_before_upgrade_recovery(installed, monkeypatc
         raise AssertionError("uninstall must not restart an upgrade/service")
 
     monkeypatch.setattr(updater.UpgradeTransaction, "recover", unexpected_recovery)
-    updater.run()
-    assert not (data / "installation.json").exists()
+    if argument == "--uninstall":
+        updater.run()
+        assert not (data / "installation.json").exists()
+    else:
+        before = (data / "updates/uninstall.json").read_bytes()
+        with pytest.raises(RuntimeError, match="不会自动继续卸载"):
+            updater.run()
+        assert (data / "installation.json").exists()
+        assert (data / "updates/uninstall.json").read_bytes() == before
 
 
 def test_malformed_authorization_never_removes_service(installed):

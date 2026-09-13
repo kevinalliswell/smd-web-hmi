@@ -25,6 +25,7 @@ def test_initialized_environment_round_trips_custom_paths_and_opens_real_files(t
     build_manifest(package, version="0.3.0-rc.2", commit="a" * 40, webview2_version="135.0.1.2")
     # Only operating-system service/ACL effects are replaced. Configuration,
     # dotenv parsing, password file access and SQLite opening remain real.
+    modes = []
     ws = SimpleNamespace(
         **{
             name: index
@@ -34,12 +35,18 @@ def test_initialized_environment_round_trips_custom_paths_and_opens_real_files(t
                     "SERVICE_ALL_ACCESS",
                     "SERVICE_WIN32_OWN_PROCESS",
                     "SERVICE_AUTO_START",
+                    "SERVICE_DEMAND_START",
+                    "SERVICE_NO_CHANGE",
+                    "SERVICE_CHANGE_CONFIG",
+                    "SC_MANAGER_CONNECT",
                     "SERVICE_ERROR_NORMAL",
                 )
             )
         },
         OpenSCManager=lambda *args: "manager",
         CreateService=lambda *args: "service",
+        OpenService=lambda *args: "service",
+        ChangeServiceConfig=lambda *args: modes.append(args[2]),
         CloseServiceHandle=lambda handle: None,
     )
     monkeypatch.setitem(sys.modules, "win32service", ws)
@@ -99,3 +106,4 @@ def test_initialized_environment_round_trips_custom_paths_and_opens_real_files(t
     )
     updater.initialize(package, install, data_root(), platform)
     assert (data / "installation.json").is_file()
+    assert modes[-1] == ws.SERVICE_AUTO_START

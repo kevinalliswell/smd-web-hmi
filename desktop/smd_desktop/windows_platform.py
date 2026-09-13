@@ -14,6 +14,7 @@ from http.client import HTTPException
 from pathlib import Path
 
 from . import windows_powershell
+from .single_instance import single_instance
 
 
 def _health_version(value: object) -> str:
@@ -48,6 +49,71 @@ class WindowsPlatform:
         self.data = data
         self.timeout = timeout
         self.opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+        self._backend_guard = None
+        self._backend_handle = None
+
+    def release_backend_guard(self):
+        if self._backend_guard is not None:
+            guard, self._backend_guard = self._backend_guard, None
+            self._backend_handle = None
+            guard.__exit__(None, None, None)
+
+    def _hold_backend(self):
+        if self._backend_guard is None:
+            guard = single_instance("SmdHmi.Backend", self.data / "backend.lock")
+            self._backend_handle = guard.__enter__()
+            self._backend_guard = guard
+
+    def _open_service_process(self):
+        import win32api
+        import win32service as ws
+
+        state = self._service(ws.QueryServiceStatusEx, ws.SERVICE_QUERY_STATUS)
+        pid = state["ProcessId"]
+        if not pid:
+            return None
+        try:
+            return win32api.OpenProcess(0x00100000, False, pid)  # SYNCHRONIZE only; never terminate.
+        except Exception as error:
+            if getattr(error, "winerror", None) == 87:  # Exited before OpenProcess.
+                return None
+            raise
+
+    def service_stopped(self) -> bool:
+        """Read-only eligibility for repairing a service that cannot run its bridge.
+
+        The caller must still call stop() to establish the exclusive Backend guard.
+        Missing/inaccessible services do not prove ownership or safe shutdown.
+        """
+        import win32api
+        import win32event
+        import win32service as ws
+
+        state = self._service(ws.QueryServiceStatusEx, ws.SERVICE_QUERY_STATUS)
+        if state["CurrentState"] != ws.SERVICE_STOPPED:
+            return False
+        pid = state["ProcessId"]
+        if not pid:
+            return True
+        try:
+            process = win32api.OpenProcess(0x00100000, False, pid)
+        except Exception as error:
+            if getattr(error, "winerror", None) == 87:
+                return True
+            raise
+        try:
+            return win32event.WaitForSingleObject(process, 0) == win32event.WAIT_OBJECT_0
+        finally:
+            process.Close()
+
+    def validate_stopped(self, permit):
+        from .installer_authorization import activity_unknown, environment
+
+        _, database = environment(self.data)
+        if database != Path(permit["db_path"]).resolve():
+            raise RuntimeError("停止后实际数据库与维护许可不一致")
+        if activity_unknown(database) and not permit.get("physical_shutdown_confirmed"):
+            raise RuntimeError("停止后存在未闭合实验或命令，需要在安装器确认现场停机")
 
     def _service(self, operation, access):
         import win32service as ws
@@ -77,16 +143,27 @@ class WindowsPlatform:
         import pywintypes
         import win32service as ws
 
+        process = self._open_service_process()
         try:
-            self._service(lambda service: ws.ControlService(service, ws.SERVICE_CONTROL_STOP), ws.SERVICE_STOP)
-        except pywintypes.error as exc:
-            pending = (
-                exc.winerror == 1061
-                and self._service(ws.QueryServiceStatus, ws.SERVICE_QUERY_STATUS)[1] == ws.SERVICE_STOP_PENDING
-            )
-            if exc.winerror != 1062 and not pending:  # ERROR_SERVICE_NOT_ACTIVE
-                raise
-        self._wait(ws.SERVICE_STOPPED)
+            try:
+                self._service(lambda service: ws.ControlService(service, ws.SERVICE_CONTROL_STOP), ws.SERVICE_STOP)
+            except pywintypes.error as exc:
+                pending = (
+                    exc.winerror == 1061
+                    and self._service(ws.QueryServiceStatus, ws.SERVICE_QUERY_STATUS)[1] == ws.SERVICE_STOP_PENDING
+                )
+                if exc.winerror != 1062 and not pending:
+                    raise
+            self._wait(ws.SERVICE_STOPPED)
+            if process is not None:
+                import win32event
+
+                if win32event.WaitForSingleObject(process, int(self.timeout * 1000)) != win32event.WAIT_OBJECT_0:
+                    raise RuntimeError("服务仍有进程未退出；保留数据并停止安装，不强制结束进程")
+            self._hold_backend()
+        finally:
+            if process is not None:
+                process.Close()
 
     def remove_service(self):
         """DeleteService只标记删除；确认记录消失后才能完成卸载。"""
@@ -198,7 +275,11 @@ class WindowsPlatform:
         install = version_dir.parent.parent
         access = winreg.KEY_WRITE | winreg.KEY_WOW64_64KEY
         with winreg.CreateKeyEx(winreg.HKEY_LOCAL_MACHINE, r"Software\SmdHmi", 0, access) as key:
-            for name, value in {"InstallDir": str(install), "Version": version_dir.name}.items():
+            for name, value in {
+                "InstallDir": str(install),
+                "DataDir": str(self.data),
+                "Version": version_dir.name,
+            }.items():
                 winreg.SetValueEx(key, name, 0, winreg.REG_SZ, value)
         with winreg.CreateKeyEx(
             winreg.HKEY_LOCAL_MACHINE, r"Software\Microsoft\Windows\CurrentVersion\Uninstall\SmdHmi", 0, access
@@ -219,12 +300,28 @@ class WindowsPlatform:
         shortcut.Save()
 
     def migrate(self, version_dir: Path):
-        subprocess.run([str(version_dir / "SmdService/SmdService.exe"), "--migrate"], check=True, timeout=300)
+        if self._backend_handle is None:
+            raise RuntimeError("迁移前必须持有已停止后台的互斥锁")
+        handle = self._backend_handle
+        startup = subprocess.STARTUPINFO()
+        startup.lpAttributeList = {"handle_list": [handle]}
+        os.set_handle_inheritable(handle, True)
+        try:
+            subprocess.run(
+                [str(version_dir / "SmdService/SmdService.exe"), "--migrate", "--migration-lock-handle", str(handle)],
+                startupinfo=startup,
+                close_fds=True,
+                check=True,
+                timeout=300,
+            )
+        finally:
+            os.set_handle_inheritable(handle, False)
 
     def start(self):
         import pywintypes
         import win32service as ws
 
+        self.release_backend_guard()
         try:
             self._service(lambda service: ws.StartService(service, None), ws.SERVICE_START)
         except pywintypes.error as exc:

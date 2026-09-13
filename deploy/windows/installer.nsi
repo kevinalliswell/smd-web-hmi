@@ -4,6 +4,8 @@ Unicode true
 !include "x64.nsh"
 !include "WinVer.nsh"
 !include "LogicLib.nsh"
+!include "FileFunc.nsh"
+!include "TextFunc.nsh"
 !ifndef VERSION
   !error "VERSION must match source versions"
 !endif
@@ -15,7 +17,12 @@ OutFile "${OUTPUT}"
 InstallDir "$PROGRAMFILES64\SmdHmi"
 RequestExecutionLevel admin
 SetCompressor /SOLID lzma
+Var StagePath
+Var UpdaterOptions
+Var InstallerMutex
+Var RegisteredInstall
 !insertmacro MUI_PAGE_WELCOME
+!define MUI_PAGE_CUSTOMFUNCTION_PRE DirectoryPre
 !insertmacro MUI_PAGE_DIRECTORY
 !insertmacro MUI_PAGE_INSTFILES
 !insertmacro MUI_PAGE_FINISH
@@ -24,6 +31,19 @@ SetCompressor /SOLID lzma
 !insertmacro MUI_LANGUAGE "SimpChinese"
 
 Function .onInit
+  System::Call 'kernel32::CreateMutexW(p0,i0,w "Global\SmdHmi.Installer") p.r0 ?e'
+  Pop $1
+  StrCpy $InstallerMutex $0
+  ${If} $InstallerMutex == 0
+    MessageBox MB_ICONSTOP "无法取得安装互斥锁，安装尚未开始。" /SD IDOK
+    SetErrorLevel 1
+    Abort
+  ${EndIf}
+  ${If} $1 == 183
+    MessageBox MB_ICONSTOP "另一个 SMD HMI 安装器正在运行，请等待它结束。" /SD IDOK
+    SetErrorLevel 1
+    Abort
+  ${EndIf}
   ${IfNot} ${RunningX64}
     MessageBox MB_ICONSTOP "仅支持 Windows 10/11 x64。" /SD IDOK
     Abort
@@ -39,18 +59,81 @@ Function .onInit
     Abort
   ${EndIf}
   ReadRegStr $1 HKLM "Software\SmdHmi" "InstallDir"
+  StrCpy $RegisteredInstall $1
   ${If} $1 != ""
     StrCpy $INSTDIR $1
+  ${EndIf}
+FunctionEnd
+
+Function un.onInit
+  System::Call 'kernel32::CreateMutexW(p0,i0,w "Global\SmdHmi.Installer") p.r0 ?e'
+  Pop $1
+  StrCpy $InstallerMutex $0
+  ${If} $1 == 183
+  ${OrIf} $InstallerMutex == 0
+    MessageBox MB_ICONSTOP "另一个安装或卸载正在运行，请稍后重试。" /SD IDOK
+    SetErrorLevel 1
+    Abort
+  ${EndIf}
+FunctionEnd
+
+Function DirectoryPre
+  ${If} $RegisteredInstall != ""
+    StrCpy $INSTDIR $RegisteredInstall
+    Abort
+  ${EndIf}
+FunctionEnd
+
+Function BuildOptions
+  StrCpy $UpdaterOptions ""
+  IfSilent 0 +2
+    StrCpy $UpdaterOptions "--non-interactive"
+  ${GetParameters} $R0
+  StrCpy $R1 ""
+  ${GetOptions} $R0 "/PHYSICALSHUTDOWN=" $R1
+  ${If} $R1 == "1"
+    StrCpy $UpdaterOptions "$UpdaterOptions --confirm-physical-shutdown"
+  ${EndIf}
+  StrCpy $R1 ""
+  ${GetOptions} $R0 "/CONFIRMRECOVERY=" $R1
+  ${If} $R1 == "1"
+    StrCpy $UpdaterOptions "$UpdaterOptions --confirm-recovery"
   ${EndIf}
 FunctionEnd
 
 Section "SMD HMI" SEC_MAIN
   SetShellVarContext all
   InitPluginsDir
-  SetOutPath "$PLUGINSDIR\payload"
+  Call BuildOptions
+  ${If} $RegisteredInstall != ""
+    StrCpy $INSTDIR $RegisteredInstall
+  ${EndIf}
+  # Run a separate updater bootstrap. The complete payload is extracted once,
+  # onto the program volume, and then promoted by rename.
+  SetOutPath "$PLUGINSDIR\bootstrap"
+  File /r "${PAYLOAD}\SmdUpdate\*"
+  DetailPrint "检查已有安装和磁盘空间；数据库、配置和密码将保留。"
+  ExecWait '"$PLUGINSDIR\bootstrap\SmdUpdate.exe" --preflight --payload-bytes ${PAYLOAD_BYTES} --stage-output "$PLUGINSDIR\stage.txt" --install "$INSTDIR" $UpdaterOptions' $0
+  ${If} $0 != 0
+    MessageBox MB_ICONSTOP "安装预检未通过（退出码：$0），原版尚未停止。请查看 ProgramData\SmdHmi\logs\updater.log 的空间或路径原因，再运行安装器。" /SD IDOK
+    SetErrorLevel $0
+    Abort
+  ${EndIf}
+  FileOpen $1 "$PLUGINSDIR\stage.txt" r
+  FileReadUTF16LE $1 $StagePath
+  FileClose $1
+  ${TrimNewLines} $StagePath $StagePath
+  ${If} $StagePath == ""
+    SetErrorLevel 1
+    Abort
+  ${EndIf}
+  SetOutPath "$StagePath"
   File /r "${PAYLOAD}\*"
+  # Current directory must not hold the payload directory open during promotion.
+  SetOutPath "$PLUGINSDIR"
   ClearErrors
-  ExecWait '"$PLUGINSDIR\payload\SmdUpdate\SmdUpdate.exe" --package "$PLUGINSDIR\payload" --install "$INSTDIR"' $0
+  DetailPrint "自动准备维护、备份数据并更新程序。修复同版前请关闭 SMD 桌面窗口。"
+  ExecWait '"$PLUGINSDIR\bootstrap\SmdUpdate.exe" --package "$StagePath" --install "$INSTDIR" $UpdaterOptions' $0
   ${If} ${Errors}
     MessageBox MB_ICONSTOP "无法启动安装更新器 SmdUpdate.exe。请核对安装包完整性及 Windows 的应用拦截记录。此时可能尚未生成 updater.log。" /SD IDOK
     SetErrorLevel 1
@@ -58,7 +141,7 @@ Section "SMD HMI" SEC_MAIN
   ${EndIf}
   ${If} $0 != 0
     ${If} $0 == 20
-      MessageBox MB_ICONSTOP "尚未准备升级到 ${VERSION}，或准备的目标版本不匹配。$\r$\n请在旧版软件中以应用管理员登录，打开“系统设置 → 离线升级”，将目标版本填写为 ${VERSION}，点击“准备升级”并确认，再于十分钟内运行本安装器。$\r$\n如果旧版拒绝准备，请保留拒绝原因及 logs\updater.log，不要删除数据或维护记录。" /SD IDOK
+      MessageBox MB_ICONSTOP "设备状态未知，需要在现场确认安全停机后交互运行本安装器。无需登录旧版或填写版本号。$\r$\n现有数据和程序已保留。" /SD IDOK
     ${Else}
       MessageBox MB_ICONSTOP "安装或升级未完成（更新器退出码：$0）。$\r$\n请以管理员打开 %ProgramData%\SmdHmi\logs\updater.log 查看具体原因；若设置了 SMD_DATA_ROOT，请查看该数据目录下的 logs\updater.log。$\r$\n请保留数据、配置及 updates 中的恢复记录，按日志判断后再重试或恢复。" /SD IDOK
     ${EndIf}
@@ -80,18 +163,27 @@ SectionEnd
 Section "Uninstall"
   SetRegView 64
   SetShellVarContext all
+  StrCpy $UpdaterOptions ""
+  IfSilent 0 +2
+    StrCpy $UpdaterOptions "--non-interactive"
+  ${GetParameters} $R0
+  StrCpy $R1 ""
+  ${GetOptions} $R0 "/PHYSICALSHUTDOWN=" $R1
+  ${If} $R1 == "1"
+    StrCpy $UpdaterOptions "$UpdaterOptions --confirm-physical-shutdown"
+  ${EndIf}
   ReadRegDWORD $2 HKLM "Software\SmdHmi" "UninstallBackendComplete"
   ${If} $2 != 1
     ReadRegStr $1 HKLM "Software\SmdHmi" "Version"
     ClearErrors
-    ExecWait '"$INSTDIR\versions\$1\SmdUpdate\SmdUpdate.exe" --uninstall --install "$INSTDIR"' $0
+    ExecWait '"$INSTDIR\versions\$1\SmdUpdate\SmdUpdate.exe" --uninstall --install "$INSTDIR" $UpdaterOptions' $0
     ${If} ${Errors}
       MessageBox MB_ICONSTOP "无法启动卸载更新器 SmdUpdate.exe，卸载未完成。请核对程序文件及 Windows 的应用拦截记录。" /SD IDOK
       SetErrorLevel 1
       Abort
     ${EndIf}
     ${If} $0 != 0
-      MessageBox MB_ICONSTOP "卸载未完成（更新器退出码：$0）。请以管理员查看 %ProgramData%\SmdHmi\logs\updater.log；若设置了 SMD_DATA_ROOT，请查看该数据目录下的日志。按具体原因准备维护或继续恢复。" /SD IDOK
+      MessageBox MB_ICONSTOP "卸载未完成（更新器退出码：$0）。请确认实验已结束，再运行卸载程序；无需登录软件或填写版本号。详细原因见 ProgramData\SmdHmi\logs\updater.log。" /SD IDOK
       SetErrorLevel $0
       Abort
     ${EndIf}
