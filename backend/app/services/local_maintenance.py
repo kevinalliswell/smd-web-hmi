@@ -27,7 +27,7 @@ from app.db.v2_models import V2Operation
 from app.hostcomm.client import HostCommError
 from app.hostcomm.v2_transport import V2TransportError
 from app.services.cache import status_cache
-from app.services.maintenance_service import MaintenanceBlockedError, MaintenanceManager
+from app.services.maintenance_service import BusinessDrainTimeoutError, MaintenanceBlockedError, MaintenanceManager
 from app.services.state_policy import classify_state
 
 logger = get_logger("service.local_maintenance")
@@ -233,6 +233,42 @@ class LocalMaintenanceBridge:
         except (ValueError, OSError, ValidationError):
             # Do not echo malformed untrusted data or create a maintenance gate.
             return None
+        try:
+            previous = _read_json(self.reply_path)
+        except (FileNotFoundError, ValueError, OSError):
+            previous = None
+        if (
+            previous
+            and previous.get("transaction_id") == request["transaction_id"]
+            and previous.get("request_sha256") == digest
+            and previous.get("state") in {"blocked", "rejected", "confirmation_required"}
+        ):
+            # A rejected request is consumed. Polling it must not repeatedly close
+            # business admission; an authorized reply still requires the gate lock.
+            return previous
+        try:
+            gate_idle = self.manager.upgrade_state()["state"] == "idle"
+        except MaintenanceBlockedError:
+            gate_idle = False
+        if (
+            gate_idle
+            and (not previous or previous.get("transaction_id") != request["transaction_id"])
+            and request["current_version"] == self.version
+            and -30 <= time.time() - request["created_at"] <= 600
+        ):
+            # A long report must not make a known-running device temporarily lose
+            # its stop channel while the installer drains business work. This is
+            # only an early busy veto; idle/unknown NEVER authorize here. The final
+            # assessment below is repeated under both command locks after draining.
+            assessment, message = await self.assess()
+            if assessment == "busy":
+                return self._reply(request, digest, "blocked", "device_busy", message)
+        try:
+            return await self._process_request(request, digest)
+        except BusinessDrainTimeoutError as exc:
+            return self._reply(request, digest, "blocked", "business_busy", str(exc))
+
+    async def _process_request(self, request: dict, digest: str) -> dict:
         async with self.manager.installer_guard():
             try:
                 previous = _read_json(self.reply_path)

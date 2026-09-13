@@ -18,6 +18,7 @@ from sqlalchemy import select
 
 from app import __version__
 from app.api import websocket
+from app.api.maintenance_boundary import MaintenanceWriteBoundary
 from app.api.operation_api import operation_http_error
 from app.api.routes import (
     alarms,
@@ -389,6 +390,7 @@ def create_app() -> FastAPI:
         redoc_url="/redoc" if docs_enabled else None,
         openapi_url="/openapi.json" if docs_enabled else None,
     )
+    app.add_middleware(MaintenanceWriteBoundary, manager=maintenance_manager)
 
     request_id_pattern = re.compile(r"^[A-Za-z0-9._:-]{1,64}$")
 

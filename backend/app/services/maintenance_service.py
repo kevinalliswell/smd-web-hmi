@@ -11,8 +11,8 @@ import secrets
 import sqlite3
 import time
 import uuid
-from collections.abc import AsyncIterator, Awaitable, Callable
-from contextlib import asynccontextmanager, closing
+from collections.abc import AsyncIterator, Awaitable, Callable, Iterator
+from contextlib import AsyncExitStack, asynccontextmanager, closing, contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -23,7 +23,11 @@ logger = get_logger("service.maintenance")
 
 
 class MaintenanceBlockedError(RuntimeError):
-    """维护期间或设备状态不确定时拒绝新的设备变更。"""
+    """维护期间或设备状态不确定时拒绝新的业务变更。"""
+
+
+class BusinessDrainTimeoutError(MaintenanceBlockedError):
+    """已受理的业务尚未完成；不取消业务，也不迟延授权安装器。"""
 
 
 class MaintenanceManager:
@@ -32,6 +36,12 @@ class MaintenanceManager:
     def __init__(self) -> None:
         self._operation_lock = asyncio.Lock()
         self._priority_lock = asyncio.Lock()
+        self._installer_lock = asyncio.Lock()
+        self._installer_pending = False
+        self._business_count = 0
+        self._business_idle = asyncio.Event()
+        self._business_idle.set()
+        self._business_drain_timeout = 10.0
         self._upgrade_path: Path | None = None
         self._task: asyncio.Task[None] | None = None
         self._backup_lock = asyncio.Lock()
@@ -80,9 +90,58 @@ class MaintenanceManager:
 
     @asynccontextmanager
     async def installer_guard(self) -> AsyncIterator[None]:
-        """Drain ordinary and priority commands before validating a local intent."""
-        async with self._operation_lock, self._priority_lock:
+        """Close admission, drain accepted work, then lock both command channels.
+
+        Draining before acquiring command locks lets admitted HTTP requests finish
+        their nested command guards. Reads and internal startup remain available.
+        """
+        async with self._installer_lock:
+            self._installer_pending = True
+            try:
+                async with AsyncExitStack() as commands:
+                    try:
+                        async with asyncio.timeout(self._business_drain_timeout):
+                            await self._business_idle.wait()
+                            await commands.enter_async_context(self._operation_lock)
+                            await commands.enter_async_context(self._priority_lock)
+                    except TimeoutError as exc:
+                        raise BusinessDrainTimeoutError(
+                            "仍有业务操作或后台任务执行中，请等待完成后重新运行安装器"
+                        ) from exc
+                    yield
+            finally:
+                self._installer_pending = False
+
+    def reserve_business_mutation(self) -> Callable[[], None]:
+        """Reserve work on the service event loop; return its idempotent release.
+
+        No await separates gate validation and registration. Background jobs reserve
+        before create_task, so queued or not-yet-started jobs cannot evade draining.
+        Callers must not use this event-loop-owned registry from worker threads.
+        """
+        if self._installer_pending or self.upgrade_state()["state"] != "idle":
+            raise MaintenanceBlockedError("安装器正在维护应用，暂不能修改数据或提交任务；请等待安装完成")
+        self._business_count += 1
+        self._business_idle.clear()
+        released = False
+
+        def release() -> None:
+            nonlocal released
+            if not released:
+                released = True
+                self._business_count -= 1
+                if self._business_count == 0:
+                    self._business_idle.set()
+
+        return release
+
+    @contextmanager
+    def business_guard(self) -> Iterator[None]:
+        release = self.reserve_business_mutation()
+        try:
             yield
+        finally:
+            release()
 
     async def prepare_upgrade(
         self,
@@ -96,7 +155,7 @@ class MaintenanceManager:
         """管理员准备升级；validate 必须检查新鲜板端待机及未闭合会话。"""
         if not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?", target_version):
             raise ValueError("非法目标版本")
-        async with self._operation_lock, self._priority_lock:
+        async with self.installer_guard():
             if self.upgrade_state()["state"] != "idle":
                 raise MaintenanceBlockedError("已有维护操作，请先取消或恢复")
             await validate()

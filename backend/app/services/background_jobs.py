@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from app.core.logging import get_logger
+from app.services.maintenance_service import MaintenanceManager, maintenance_manager
 
 logger = get_logger("service.background_jobs")
 JobRunner = Callable[[], Awaitable[dict[str, Any]]]
@@ -43,6 +44,7 @@ class BackgroundJobManager:
         max_concurrency: int = 2,
         max_records: int = 200,
         job_timeout_seconds: float = 900.0,
+        maintenance: MaintenanceManager = maintenance_manager,
     ) -> None:
         if max_concurrency < 1 or max_records < 1 or job_timeout_seconds <= 0:
             raise ValueError("background job limits must be positive")
@@ -51,6 +53,7 @@ class BackgroundJobManager:
         self._job_timeout_seconds = job_timeout_seconds
         self._records: dict[str, _JobRecord] = {}
         self._tasks: dict[str, asyncio.Task[None]] = {}
+        self._maintenance = maintenance
 
     def submit(self, kind: str, runner: JobRunner, *, task_id: str | None = None) -> str:
         task_id = task_id or uuid.uuid4().hex
@@ -59,9 +62,17 @@ class BackgroundJobManager:
         self._prune()
         if len(self._records) >= self._max_records:
             raise BackgroundJobCapacityError("background job queue is full")
+        release = self._maintenance.reserve_business_mutation()
         record = _JobRecord(task_id=task_id, kind=kind, created_at=time.monotonic())
+        try:
+            task = asyncio.create_task(self._run(record, runner), name=f"background-{kind}-{task_id}")
+        except BaseException:
+            release()
+            raise
         self._records[task_id] = record
-        self._tasks[task_id] = asyncio.create_task(self._run(record, runner), name=f"background-{kind}-{task_id}")
+        self._tasks[task_id] = task
+        # A coroutine cancelled before its first step never executes its finally.
+        task.add_done_callback(lambda _task: release())
         return task_id
 
     async def _run(self, record: _JobRecord, runner: JobRunner) -> None:

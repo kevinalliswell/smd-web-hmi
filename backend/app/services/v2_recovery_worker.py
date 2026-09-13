@@ -8,6 +8,7 @@ from sqlalchemy import select, update
 from app.core.logging import get_logger
 from app.db.cancellation import finish_db_work
 from app.db.v2_models import V2RunBinding, V2RunRecovery, V2SourceRecord
+from app.services.maintenance_service import MaintenanceBlockedError, maintenance_manager
 from app.services.v2_recovery_evidence import discover_run, json_text
 
 logger = get_logger("v2_recovery")
@@ -102,13 +103,15 @@ class V2RecoveryWorker:
         while True:
             try:
                 if not self.bootstrapped:
-                    self.bootstrap_cursor, self.bootstrapped = await self._bootstrap_batch()
+                    with maintenance_manager.business_guard():
+                        self.bootstrap_cursor, self.bootstrapped = await self._bootstrap_batch()
                     if not self.bootstrapped:
                         await asyncio.sleep(0)
                         continue
                 recovery_id = await self._pending()
                 if recovery_id:
-                    await self.service.replay_batch(recovery_id)
+                    with maintenance_manager.business_guard():
+                        await self.service.replay_batch(recovery_id)
                     backoff = 1
                     await asyncio.sleep(0)
                     continue
@@ -119,6 +122,10 @@ class V2RecoveryWorker:
                 except TimeoutError:
                     pass
                 backoff = 1
+            except MaintenanceBlockedError:
+                # Durable progress resumes after commit removes the maintenance
+                # gate. Do not project user-requested replay into a rollback window.
+                await asyncio.sleep(1)
             except Exception as exc:
                 logger.warning("replay.worker_retry", error_type=type(exc).__name__, retry_delay_s=backoff)
                 # Includes lookup/failed-state persistence errors. Never spin on a full/locked DB.

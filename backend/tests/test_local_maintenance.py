@@ -99,8 +99,24 @@ async def test_waits_for_both_inflight_channels_before_authorizing(bridge):
         task = asyncio.create_task(bridge.process_once())
         await asyncio.sleep(0)
         assert not task.done()
-        bridge.assess.assert_not_awaited()
+        assert bridge.assess.await_count == 1  # Only the early busy veto, not authorization.
     assert (await task)["state"] == "authorized"
+
+
+async def test_busy_business_returns_bounded_rejection_without_cancelling_work(bridge):
+    bridge.manager._business_drain_timeout = 0.01
+    write_request(bridge, intent())
+    with bridge.manager.business_guard():
+        reply = await bridge.process_once()
+        assert reply["state"] == "blocked" and reply["reason_code"] == "business_busy"
+        assert bridge.manager.upgrade_state()["state"] == "idle"
+        assert bridge.assess.await_count == 1
+        # New work can resume; repeated polling of the consumed request must not
+        # close admission or wait behind this still-active original operation.
+        with bridge.manager.business_guard():
+            assert await asyncio.wait_for(bridge.process_once(), 0.005) == reply
+    assert (await bridge.process_once())["reason_code"] == "business_busy"
+    assert bridge.manager.upgrade_state()["state"] == "idle"
 
 
 async def test_completed_request_never_recreates_a_removed_gate(bridge):
@@ -110,7 +126,48 @@ async def test_completed_request_never_recreates_a_removed_gate(bridge):
     bridge.manager._upgrade_path.unlink()
     assert (await bridge.process_once())["state"] == "rejected"
     assert bridge.manager.upgrade_state()["state"] == "idle"
-    assert bridge.assess.await_count == 1
+    assert bridge.assess.await_count == 2
+
+
+async def test_known_busy_with_long_report_does_not_close_stop_admission(bridge):
+    from app.services.background_jobs import BackgroundJobManager
+
+    checking, stop_sent, finish_report = asyncio.Event(), asyncio.Event(), asyncio.Event()
+    jobs = BackgroundJobManager(maintenance=bridge.manager)
+
+    async def report():
+        await finish_report.wait()
+        return {}
+
+    async def live_busy():
+        checking.set()
+        await stop_sent.wait()
+        return "busy", "设备仍在运行或冷却"
+
+    bridge.assess = live_busy
+    write_request(bridge, intent(physical_shutdown_confirmed=True))
+    job = jobs.submit("report", report)
+    installing = asyncio.create_task(bridge.process_once())
+    await asyncio.wait_for(checking.wait(), 1)
+    try:
+        with bridge.manager.business_guard():
+            async with bridge.manager.command_guard(priority=True):
+                stop_sent.set()
+        reply = await asyncio.wait_for(installing, 1)
+        assert reply["reason_code"] == "device_busy"
+        assert jobs.snapshot(job)["status"] in {"running", "pending"}
+        assert bridge.manager.upgrade_state()["state"] == "idle"
+    finally:
+        finish_report.set()
+        await jobs.shutdown()
+
+
+async def test_idle_precheck_does_not_authorize_device_that_became_busy(bridge):
+    bridge.assess.side_effect = [("idle", "初查待机"), ("busy", "设备已进入运行")]
+    write_request(bridge, intent())
+    reply = await bridge.process_once()
+    assert reply["reason_code"] == "device_busy"
+    assert bridge.manager.upgrade_state()["state"] == "idle"
 
 
 async def test_same_id_different_request_and_new_request_with_existing_gate_are_rejected(bridge):
@@ -187,7 +244,7 @@ async def test_gate_survives_reply_write_crash_without_reassessing_or_unlocking(
     assert bridge.manager.upgrade_state()["state"] == "claimed"
     monkeypatch.setattr(local, "write_protected_json", writer)
     assert (await bridge.process_once())["state"] == "authorized"
-    assert bridge.assess.await_count == 1
+    assert bridge.assess.await_count == 2
 
 
 async def test_transport_timeout_is_unknown_and_does_not_touch_archive(db_session):
