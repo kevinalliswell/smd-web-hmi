@@ -334,8 +334,13 @@ def test_windows_request_acl_reads_native_owner_and_rejects_user_write(tmp_path)
     path.write_text("{}", encoding="utf-8")
 
     def protect(target, extra=""):
+        # Match configure-acl.ps1: replacing the parent DACL must preserve
+        # inherited Admin/SYSTEM full control on its existing children. Otherwise
+        # this fixture strips WRITE_OWNER before protect(path) can set its owner.
+        inheritance = "OICI" if target.is_dir() else ""
         descriptor = security.ConvertStringSecurityDescriptorToSecurityDescriptor(
-            "O:BAG:BAD:P(A;;FA;;;SY)(A;;FA;;;BA)" + extra, security.SDDL_REVISION_1
+            f"O:BAG:BAD:P(A;{inheritance};FA;;;SY)(A;{inheritance};FA;;;BA)" + extra,
+            security.SDDL_REVISION_1,
         )
         security.SetNamedSecurityInfo(
             str(target),

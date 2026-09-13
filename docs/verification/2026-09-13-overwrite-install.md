@@ -33,6 +33,8 @@ PR [#79](https://github.com/kevinalliswell/smd-web-hmi/pull/79) 的首轮 [CI 34
 - 审计发现 `js-yaml` 的 [GHSA-2883-xcg3-v3hh](https://github.com/nodeca/js-yaml/security/advisories/GHSA-2883-xcg3-v3hh)。在 `69f0818` 只更新两个传递依赖：`@redocly/openapi-core 1.34.20`、`js-yaml 4.3.2`。Node 24 本机审计变为 0 漏洞，125 项前端测试及类型、lint、构建通过，Vite 不变。
 - Windows 原生测试发现暂存 ACL 使用了 pywin32 未提供的 `AddAce`；`f9e0d64` 改用其支持的允许/拒绝 ACE 方法，保留原权限意图。其余失败涉及测试夹具没有明确 UTF-8、把 Windows 反斜杠路径直接放进双引号 dotenv 值；夹具已修正，未放宽实际数据库路径校验。修正后的本机桌面回归仍为 344 通过、27 环境限定跳过；另在含字面反斜杠路径的临时目录执行重点 115 项通过，实际 Windows 结果待下一轮 CI。
 
+第二轮 [CI 34762955145](https://github.com/kevinalliswell/smd-web-hmi/actions/runs/34762955145) 对应 `7deff07749490fedb46a6f4390a2d7be67ba6159`：审计、规范、前端和两个 Linux 后端通过；Windows 桌面 **371 通过**、联调工具 **98 通过**，确认上述修正。Windows 后端在原生请求权限夹具失败，实际安装包步骤仍未开始。夹具目录的管理员/SYSTEM ACE 缺少生产目录采用的 OI/CI 继承标志，设置子文件权限时被拒绝；修正应保持普通用户写入与父目录替换请求的拒绝断言，不修改生产许可规则。该轮覆盖率因 `--maxfail=1` 提前退出而未满足门槛，不记为后端全量通过。
+
 新的流水线需依次运行真实安装冒烟、rc.4/rc.5 旧安装器升级套件、冻结 SmdBench 的 `all` 场景，再执行[正式版证据聚合与门禁](../release-acceptance.md)。当前状态为 **等待 CI**，以下项目未写为 passed：
 
 | 套件 | 必须观察的实际结果 |
