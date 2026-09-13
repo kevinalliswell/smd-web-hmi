@@ -361,6 +361,17 @@ def test_windows_request_acl_reads_native_owner_and_rejects_user_write(tmp_path)
     with pytest.raises(ValueError, match="non-administrator"):
         verify_request_acl(path)
     protect(path)
-    protect(directory, "(A;;DC;;;BU)")
+    # SDDL DC is ADS_RIGHT_DS_DELETE_CHILD (0x2), not FILE_DELETE_CHILD.
+    # https://learn.microsoft.com/en-us/windows/win32/fileio/file-access-rights-constants
+    protect(directory, "(A;;0x40;;;BU)")
+    parent_dacl = security.GetFileSecurity(
+        str(directory), security.DACL_SECURITY_INFORMATION
+    ).GetSecurityDescriptorDacl()
+    users_masks = [
+        mask
+        for _, mask, sid in (parent_dacl.GetAce(index) for index in range(parent_dacl.GetAceCount()))
+        if security.ConvertSidToStringSid(sid) == "S-1-5-32-545"
+    ]
+    assert users_masks == [0x40], "native fixture must grant Users exactly FILE_DELETE_CHILD"
     with pytest.raises(ValueError, match="non-administrator"):
         verify_request_acl(path)

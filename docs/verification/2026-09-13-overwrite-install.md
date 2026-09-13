@@ -35,6 +35,8 @@ PR [#79](https://github.com/kevinalliswell/smd-web-hmi/pull/79) 的首轮 [CI 34
 
 第二轮 [CI 34762955145](https://github.com/kevinalliswell/smd-web-hmi/actions/runs/34762955145) 对应 `7deff07749490fedb46a6f4390a2d7be67ba6159`：审计、规范、前端和两个 Linux 后端通过；Windows 桌面 **371 通过**、联调工具 **98 通过**，确认上述修正。Windows 后端在原生请求权限夹具失败，实际安装包步骤仍未开始。夹具目录的管理员/SYSTEM ACE 缺少生产目录采用的 OI/CI 继承标志，设置子文件权限时被拒绝；修正应保持普通用户写入与父目录替换请求的拒绝断言，不修改生产许可规则。该轮覆盖率因 `--maxfail=1` 提前退出而未满足门槛，不记为后端全量通过。
 
+第三轮 [CI 34763396781](https://github.com/kevinalliswell/smd-web-hmi/actions/runs/34763396781) 对应 `6de2960bd7d452cd0312e8c70c8db9d4c1641825`：上述目录继承修正通过，原生测试已成功验证只读许可和普通用户写文件拒绝；后续父目录删除子文件断言失败。夹具中的 SDDL `DC` 实际表示目录服务对象的 `0x2` 权限，不是文件目录的 `FILE_DELETE_CHILD (0x40)`。需使用明确的文件系统权限值复验；生产校验已检查 `0x40`，不能通过移除该断言放行。该轮 Windows 后端仍为提前失败，实际安装器未执行。
+
 新的流水线需依次运行真实安装冒烟、rc.4/rc.5 旧安装器升级套件、冻结 SmdBench 的 `all` 场景，再执行[正式版证据聚合与门禁](../release-acceptance.md)。当前状态为 **等待 CI**，以下项目未写为 passed：
 
 | 套件 | 必须观察的实际结果 |
