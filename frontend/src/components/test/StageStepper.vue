@@ -31,11 +31,13 @@ function statusOf(i) {
         :class="[statusOf(i), { co: stage.co }]"
         :title="stage.desc"
       >
-        <span class="node">{{ i + 1 }}</span>
-        <span class="label">
-          {{ stage.label }}
-          <span v-if="stage.co" class="co-tag">CO</span>
+        <!-- CO 标记钉在步骤号上而不是标签里：标签文字长短不一会换行，
+             跟在文字后面的徽章会掉到下一行、各步位置参差不齐 -->
+        <span class="node-wrap">
+          <span class="node">{{ i + 1 }}</span>
+          <span v-if="stage.co" class="co-tag" title="CO 工艺阶段">CO</span>
         </span>
+        <span class="label">{{ stage.label }}</span>
       </li>
     </ol>
     <p v-if="activeIndex >= 0" class="stage-desc muted">
@@ -61,17 +63,25 @@ function statusOf(i) {
   content: ''; position: absolute; top: 22px; right: -2px; width: calc(100% - 32px);
   height: 2px; background: var(--border); transform: translateX(50%);
 }
+.node-wrap { position: relative; z-index: 1; }
 .node {
   width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center;
   border: 2px solid var(--border); background: var(--bg-card2); color: var(--text-sec);
-  font-weight: 700; z-index: 1;
+  font-weight: 700;
 }
-.label { font-size: 11px; color: var(--text-sec); line-height: 1.3; }
+/* 各步标签统一占两行高度，步骤号与文字基线对齐 */
+.label {
+  font-size: 11px; color: var(--text-sec); line-height: 1.3;
+  min-height: 2.6em; display: flex; align-items: flex-start; justify-content: center;
+}
 .co-tag {
-  display: inline-block; margin-left: 3px; font-size: 9px; font-weight: 700;
+  position: absolute; top: -5px; right: -12px;
+  font-size: 9px; font-weight: 700; line-height: 1.5;
   background: var(--orange); color: var(--on-orange); border-radius: 3px; padding: 0 3px;
 }
 .step.done .node { border-color: var(--green); color: var(--green); }
+/* 已完成步骤的连接线一并变绿：进度走到哪一眼可见 */
+.step.done:not(:last-child)::after { background: var(--green); }
 .step.active .node { border-color: var(--accent); background: var(--accent-dim); color: var(--accent); box-shadow: 0 0 8px var(--accent); }
 .step.active .label { color: var(--text-pri); font-weight: 600; }
 .step.active.co .node { border-color: var(--orange); color: var(--orange); box-shadow: 0 0 8px var(--orange); }
