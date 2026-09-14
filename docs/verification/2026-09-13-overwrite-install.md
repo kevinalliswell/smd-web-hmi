@@ -1,6 +1,6 @@
 # 2026-09-13 覆盖安装与软件正式版验证
 
-维护角色：集成、Windows 测试与发布负责人。关联任务：OVER-01—07；范围依据[ADR-011](../decisions/ADR-011-overwrite-install-and-software-release.md)。目标应用版本为 `0.3.0`，协议保持 `2.0 / 2.0-design.1`、文档修订 `2.0-doc.3`。2026-09-14 预算恢复后的本轮 CI 已通过基础检查、实际安装冒烟及 rc.4/rc.5 升级套件；**安装版联调在离线安装确认场景超时，整轮失败待修复，证据聚合与正式发布未完成**。
+维护角色：集成、Windows 测试与发布负责人。关联任务：OVER-01—07；范围依据[ADR-011](../decisions/ADR-011-overwrite-install-and-software-release.md)。目标应用版本为 `0.3.0`，协议保持 `2.0 / 2.0-design.1`、文档修订 `2.0-doc.3`。2026-09-14，PR #79 的完整安装版联调与九项机器证据聚合已通过并合入主线；**随后主线 Windows 后端报警确认回归失败，尚未进入主线安装打包，本地准入修正已实现、完整 Windows CI 待验证，正式标签与 Release 未创建**。历史失败、PR 成功和主线失败按各自构建身份分别记录。
 
 本机执行基线为 `0701a136d73560221e7d32dc4cf2747b3397ab86` 加测试当时尚未提交的实现和测试；这些结果不能归到未包含改动的基线提交。随后实现分别整理在维护协调 `ec363a8bb1b81865071ab87fb564f0b5d09253cd`、覆盖安装与恢复 `5cd9c9a401a9fa714b0a01bf531a6c45ff00bf23`、实际安装验收及门禁 `5ee5b27019b3a3ce2c9056bb7142778db44b5ea4`。最终集成、合并及标签构建后应追加实际构建完整 SHA、CI 编号、产物摘要与日志链接，不覆盖早期执行记录。rc.5 的[历史安装版联调](2026-09-08-installed-hostcomm-loop.md)不为本轮不同字节背书。
 
@@ -61,9 +61,9 @@ PR [#79](https://github.com/kevinalliswell/smd-web-hmi/pull/79) 的首轮 [CI 34
 
 随后完整 SmdBench 在 `installer_offline_confirmation` 阶段以 `TimeoutError` 失败。`acceptance.json` 记录 `status=failed`、`cleanup_complete=true`，包含此前 18 项通过断言：实际 TLS、标准/非标配方、实验及报告、权限、故障、服务重启、未知运行恢复和测定/冷却忙碌拒绝。`busy_rejected` 原始日志摘要已核对；没有 `offline_confirmation` 通过断言。失败调用栈止于 `browser.py::eventually` 的有界等待，不能据此认定离线确认或修复成功。
 
-随后定位为联调工具等待了错误字段：`/api/status` 的 `_v2.online` 属于保留的板端快照，断线会使状态缓存失效，但不会改写这份快照，因此等待该字段变成 false 会持续到超时。生产状态顶层此时已给出 `comm_quality=offline`、`data_fresh=false`、`control_ready=false`。修正仅让 SmdBench 使用这些当前状态字段判断离线，并增加实际路由与状态缓存的回归，生产状态语义不变。本记录尚未登记该修正的测试通过结果；完整 Windows 场景和最终封装仍需下一轮 CI 重新验收。
+随后定位为联调工具等待了错误字段：`/api/status` 的 `_v2.online` 属于保留的板端快照，断线会使状态缓存失效，但不会改写这份快照，因此等待该字段变成 false 会持续到超时。生产状态顶层此时已给出 `comm_quality=offline`、`data_fresh=false`、`control_ready=false`。修正仅让 SmdBench 使用这些当前状态字段判断离线，并增加实际路由与状态缓存的回归，生产状态语义不变。该次失败记录保留；修正后的完整 Windows 场景与封装结果见下节。
 
-| 套件 | 本轮已经观察到的结果 | 当前状态 |
+| 套件 | CI 34815548895 已观察到的结果 | 该轮状态 |
 |---|---|---|
 | 新安装与旧版覆盖 | 实际 LocalService 启动；rc.4/rc.5 覆盖后已改密码、账户、配方、配置和密钥保留 | 对应安装步骤通过 |
 | 修复与恢复 | 同版受损程序修复、旧版特定拒绝、带真实备份的旧失败事务恢复；较新记录保留在额外快照，原资料恢复并继续升级 | 对应安装步骤通过 |
@@ -71,12 +71,38 @@ PR [#79](https://github.com/kevinalliswell/smd-web-hmi/pull/79) 的首轮 [CI 34
 | 安装版联调与维护 | TLS/页面/实验/报告、故障和忙碌拒绝的 18 项断言通过；离线安装确认场景超时 | 套件失败，待修复复验 |
 | 证据与资源 | 两个套件均已完成归属清理；本轮未进入最终工具封装和[正式版证据聚合门禁](../release-acceptance.md)，没有九项完整通过证据 | 未完成，未判通过 |
 
-本轮 CI 结论为失败。安装套件七项及 SmdBench 先前断言的通过不能代替未完成的离线确认场景，也不能代替最终资产核验。失败诊断与已通过步骤保留在该轮 `windows-package-diagnostics` artifact，后续修复须重新执行完整检查。PR #79 仍为 draft、尚未合并，未创建 `v0.3.0` 标签或正式 Release。
+CI 34815548895 的结论为失败。安装套件七项及 SmdBench 先前断言的通过不能代替当时未完成的离线确认场景，也不能代替最终资产核验。失败诊断与已通过步骤保留在该轮 `windows-package-diagnostics` artifact；当时 PR #79 仍为 draft、未合并，也未创建正式标签或 Release。后续成功记录不覆盖该次失败。
 
 七项安装日志与两项 SmdBench 维护日志只有在对应真实断言成功时才进入汇总。CI 失败需保留该轮脱敏证据、失败阶段与恢复说明，不重用上一轮 passed，不上传密码、PSK、会话、完整数据库或原始服务配置。
 
+## 修正后的完整 PR 验收与主线合并
+
+[PR CI 34820643004](https://github.com/kevinalliswell/smd-web-hmi/actions/runs/34820643004) 的七项必要检查全部通过。实际 PR 合并构建与产物清单提交为 `ca48cd408686f45fdfb1885a8bc39d4c08febfe6`；这是 PR 构建身份，不是随后 squash 合入主线的提交，也不是最终标签发行身份。
+
+该轮重新完成真实安装冒烟、rc.4/rc.5 七项覆盖安装与恢复场景、完整安装版 TLS 实验/报告和故障回归，以及测定/冷却忙碌拒绝与离线确认。同版离线修复先在未确认时返回 20，确认后返回 0；修复前后保留 **8 个实验、285 条采样、10 份报告**，账户、配置与配对密钥不变，模拟器重新连接并确认空闲。
+
+下载的 `windows-acceptance.json` 九项场景全部 passed、`cleanup_complete=true`，`bench-acceptance.json` 的 19 项断言全部 passed、`cleanup_complete=true`。九份独立日志的实际 SHA256 与引用一致，版本、构建提交、CI 编号和安装器身份一致；元数据文件已按 `SHA256SUMS.txt` 核对。流水线严格工具封装、正式版证据聚合和实际文件门禁均通过。这关闭了上一轮因读取旧 `_v2.online` 快照而失败的工具等待条件，但不将模拟验收扩展成实体设备资格。
+
+元数据保存在该轮 `windows-release-metadata` artifact，脱敏截图与合成报告在 `windows-package-diagnostics` artifact；本地对应归档为仓库外 `overwrite-metadata-34820643004`、`overwrite-diagnostics-34820643004`。这些 PR 证据绑定 `ca48cd408686f45fdfb1885a8bc39d4c08febfe6`，不能复用为重新冻结的主线或标签包背书。
+
+2026-09-14 **09:06:09 UTC**，[PR #79](https://github.com/kevinalliswell/smd-web-hmi/pull/79) squash 合入 `main@b6cd21f4e9b89f6a0c050f415d05d0ce6795e79d`。随后启动主线复验，结果与本次 PR 构建分别记录如下；发布前必须对修复后的主线和不可移动标签重新验收。
+
+## 主线复验失败与修复边界
+
+[主线 CI 34826122511](https://github.com/kevinalliswell/smd-web-hmi/actions/runs/34826122511) 对应 `b6cd21f4e9b89f6a0c050f415d05d0ce6795e79d`。其他五项基础检查通过；Windows 桌面 **384 通过**、联调工具单元 **106 通过**。Windows 后端在 `test_cleared_unacknowledged_alarm_can_be_confirmed_before_run_ack[False]` 中失败：报警确认预期 HTTP 200，实际为 HTTP 504、`device_comm_timeout`，此前出现 `v2.source_recovery_incomplete` / `HostCommTimeoutError`。`--maxfail=1` 结束时为 **632 通过、1 失败、4 跳过**，不能记为后端全量通过。原始日志归档在仓库外 `overwrite-main-windows-tests-34826122511.log`。
+
+该轮未进入主线安装打包，故没有本次主线的实际安装版闭环或可发布资产。PR CI 34820643004 的成功仍然有效，但仅对应其自身构建；不能替代此次失败，也不能据此打标签放行。
+
+在原场景临时注入 **6–10 ms 受控异步数据库延迟**后，复现了相关时序问题：`log_request` 已发出，而此前实时回调尚未完成持久化；日志进度等待达到 3 秒后超时，迟到的持久化确认触发 `callback_failed` 并断开连接，之后报警确认返回 HTTP 409。**这不是主线 HTTP 504 的精确复现**；归档日志无法还原主线当时具体碰到哪个等待点。诊断证明的是本地持久化与源日志请求之间存在竞争，不能把两次不同响应写成同一条已重现故障轨迹。
+
+在 `fix/hostcomm-alarm-ack-timeout` 修复分支已实现[有界本地回调准入](../hostcomm/v2/wire.md#8-原始日志与补传)：发送 `log_request` 前最多等待 3 秒，最多 4 个等待者，只等待进入准入时已有的回调（含正在落盘的回调）；后到消息不延长等待，连接、session 或 boot 变化使准入失效。线上 3 秒期限、8 秒租约和协议字段保持不变。修复另保留后台因本地容量限制暂缓的恢复任务：结束阶段回补被本地积压暂缓，随后 `ack_run` 已确认结束并回到 idle，后台仍自动补齐源日志。只有后台 `V2CapacityError` 设置待补传标志，取消、会话变化及其他失败不清除此标志，成功完成只读扫描或启动同步后才清除；不据此宣称新日志身份下的旧缺口也已恢复。
+
+新增 **13 个行为用例**。空闲恢复用例先在旧代码进入 idle 后等待 8 秒仍未自动补齐，以失败结束（13.58 秒），新逻辑通过（6.51 秒）。受控 6 ms 异步数据库延迟的同一原场景修复前后记录分别归档在仓库外 `hostcomm-slow-sqlite-before-20260914.log`、`hostcomm-slow-sqlite-after-20260914.log`；准入和空闲恢复的先失败证据分别为 `hostcomm-callback-admission-red-20260914.log`、`hostcomm-source-idle-red-20260914.log`。
+
+修复工作区在 macOS / Python 3.13 下执行后端全量 **848 通过、3 项 Windows 专项跳过，覆盖率 86.94%，耗时 94.05 秒**。命令为在 `backend/` 执行 `../../implementation-venv/bin/python -m pytest --maxfail=1 --cov=app --cov-report=term --cov-fail-under=80`，完整日志归档在仓库外 `hostcomm-callback-admission-backend-20260914.log`。这些结果对应当时修复分支工作区，不能归到未含修正的主线提交；完整 Windows CI 仍待验证。OVER-01—04 保持 implemented，OVER-05—07 保持 doing，主线及发布必要检查继续执行。
+
 ## 正式资产与其他验收
 
-`v0.3.0` 标签、正式 Release、安装器与工具 ZIP 摘要、软件/Windows 验收摘要均待本轮完整联调与机器门禁通过后记录。实际安装与旧版升级套件已通过，PR #79 尚未合并，不将部分步骤结果当作完整验收或发布完成。发布标签必须对应重新运行必要检查和实际安装版验收的提交，不移动旧标签。
+`v0.3.0` 标签与正式 Release 尚未创建。PR #79 已完整验收并合入主线，但主线复验失败后的本地准入修正仍待完整 Windows CI 验证；最终安装器与工具 ZIP 摘要、软件/Windows 验收摘要、标签构建编号及公开发布时间，必须在修复后的主线和标签重新通过全部必要检查与实际安装版验收后登记。实际发布状态与下载字节以最终 Release 所附机器验收和 `SHA256SUMS.txt` 为真源；不复用 PR 摘要，不移动旧标签。
 
 Win10/11 干净断网 WebView2、普通操作员、中文路径和显示缩放的人工验收，以及可信签名、真实 STM32H750 固件、实物安全联锁、国标符合性和持续运行仍分别未验收。软件正式版资格不关闭这些项目，也不证明用户发生 rc.5 升级失败的那台测试机已经完成恢复。

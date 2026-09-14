@@ -534,6 +534,194 @@ async def test_optional_status_refresh_cannot_hold_up_durable_log_ack(system, mo
         release.set()
 
 
+async def test_known_live_backlog_defers_log_transfer_without_blocking_alarm_ack(system, monkeypatch):
+    from app.db.v2_models import V2LogTransfer
+    from app.hostcomm.v2_transport import V2CapacityError
+
+    http, client, sim, factory = system
+    await deploy(http)
+    wire_id = await sim.raise_alarm("clock_unsynced", severity="warning")
+    alarm = await wait_alarm(http, wire_id)
+    entered, release = asyncio.Event(), asyncio.Event()
+    heartbeat_completed = asyncio.Event()
+    original_ingest = client.logs.ingest_live
+    original_request = client.transport.request
+    log_requests = []
+    async with factory() as db:
+        transfer_count = await db.scalar(select(func.count()).select_from(V2LogTransfer))
+
+    async def blocked_live(frame):
+        if frame["type"] == "telemetry":
+            entered.set()
+            await release.wait()
+        return await original_ingest(frame)
+
+    async def record_request(kind, payload, **kwargs):
+        if kind == "log_request":
+            log_requests.append(payload["transfer_id"])
+        response = await original_request(kind, payload, **kwargs)
+        if kind == "heartbeat":
+            heartbeat_completed.set()
+        return response
+
+    monkeypatch.setattr(client.logs, "ingest_live", blocked_live)
+    monkeypatch.setattr(client.transport, "request", record_request)
+    await sim.tick()
+    await asyncio.wait_for(entered.wait(), 5)
+    heartbeat_completed.clear()
+    recovery = asyncio.create_task(client.recover_logs(first_record_seq="1"))
+    try:
+        # The source callback remains blocked beyond the real 3s wire deadline.
+        # Read/command replies and lease renewal must still use the independent lane.
+        acknowledged = await http.post(f"/api/alarms/{alarm['id']}/ack")
+        assert acknowledged.status_code == 200, acknowledged.text
+        assert acknowledged.json()["data"]["device_confirmed"] is True
+        await asyncio.wait_for(heartbeat_completed.wait(), 5)
+        with pytest.raises(V2CapacityError, match="admission"):
+            await asyncio.wait_for(recovery, 5)
+        assert not log_requests
+        assert client.is_online and client._ready
+        assert client.transport.stats["dropped_callbacks"] == 0
+        assert not client.transport._callback_waiters
+        assert not any(item.kind == "log_request" for item in client.transport._pending.values())
+        async with factory() as db:
+            assert await db.scalar(select(func.count()).select_from(V2LogTransfer)) == transfer_count
+        release.set()
+        await asyncio.wait_for(client.recover_logs(first_record_seq="1"), 10)
+        assert log_requests
+        assert client.is_online and client._ready
+        assert client.transport.stats["dropped_callbacks"] == 0
+    finally:
+        release.set()
+        if not recovery.done():
+            recovery.cancel()
+        await asyncio.gather(recovery, return_exceptions=True)
+
+
+async def test_log_admission_cannot_cross_reboot_during_database_begin(system, monkeypatch):
+    from app.hostcomm.v2_transport import V2OfflineError
+
+    http, client, sim, factory = system
+    original_begin = client.logs.begin
+    original_request = client.transport.request
+    log_requests = []
+
+    async def reboot_after_begin(*args, **kwargs):
+        result = await original_begin(*args, **kwargs)
+        await sim.reboot()
+        async with asyncio.timeout(3):
+            while client.transport.is_online:
+                await asyncio.sleep(0.005)
+        return result
+
+    async def record_request(kind, payload, **kwargs):
+        if kind == "log_request":
+            log_requests.append(payload["transfer_id"])
+        return await original_request(kind, payload, **kwargs)
+
+    monkeypatch.setattr(client.logs, "begin", reboot_after_begin)
+    monkeypatch.setattr(client.transport, "request", record_request)
+    with pytest.raises(V2OfflineError, match="previous connection"):
+        await asyncio.wait_for(client.recover_logs(first_record_seq="1"), 5)
+    assert not log_requests
+    assert not client.transport._callback_waiters
+
+
+async def test_deferred_source_recovery_resumes_after_run_ack_returns_device_to_idle(system, monkeypatch):
+    from app.hostcomm.v2_transport import V2CapacityError
+
+    http, client, sim, factory = system
+    recipe = await deploy(http)
+    started = await command(
+        http,
+        "start_test",
+        {"test_id": "DEFERRED-SOURCE", "original_height_mm": 40, "recipe_id": recipe["recipe_id"], "recipe_version": 1},
+        "deferred-source-start",
+    )
+    assert started.status_code == 200, started.text
+    sim.set_measurements(furnace_mc=700000, burden_mc=600000, displacement_um=0)
+    await sim.tick()
+    stopped = await command(http, "stop_test", {}, "deferred-source-stop")
+    assert stopped.status_code == 200, stopped.text
+    await client.transport.wait_for_callbacks()
+    entered, release, refused, completed = (asyncio.Event() for _ in range(4))
+    original_ingest = client.logs.ingest_live
+    original_admission = client.transport.wait_for_callbacks
+    original_finish = client.logs.finish
+
+    async def blocked_live(frame):
+        if frame["type"] == "telemetry":
+            entered.set()
+            await release.wait()
+        return await original_ingest(frame)
+
+    async def observed_admission(**kwargs):
+        try:
+            return await original_admission(**kwargs)
+        except V2CapacityError:
+            refused.set()
+            raise
+
+    async def observed_finish(frame):
+        result = await original_finish(frame)
+        completed.set()
+        return result
+
+    monkeypatch.setattr(client.logs, "ingest_live", blocked_live)
+    monkeypatch.setattr(client.transport, "wait_for_callbacks", observed_admission)
+    monkeypatch.setattr(client.logs, "finish", observed_finish)
+    try:
+        await sim.complete_purge()
+        await sim.complete_cooling()
+        await asyncio.wait_for(entered.wait(), 5)
+        await asyncio.wait_for(refused.wait(), 8)
+        await asyncio.wait_for(asyncio.shield(client._source_recovery_task), 1)
+        assert client.is_online and client._ready
+        finished = await command(http, "ack_run", {}, "deferred-source-finish")
+        assert finished.status_code == 200, finished.text
+        assert sim.state.run["state"] == "idle"
+        assert not completed.is_set()
+        release.set()
+        # No manual scan/reconnect: the ordinary background poll must retain the
+        # deferred read even though this run is no longer the live terminal run.
+        await asyncio.wait_for(completed.wait(), 8)
+        await asyncio.wait_for(asyncio.shield(client._source_recovery_task), 1)
+        assert not client._source_recovery_pending
+        assert client.is_online and client._ready
+        assert client.transport.stats["dropped_callbacks"] == 0
+    finally:
+        release.set()
+
+
+@pytest.mark.parametrize("later_error", [asyncio.CancelledError, ConnectionError])
+async def test_deferred_source_scan_survives_interruption_until_success(system, monkeypatch, later_error):
+    from app.hostcomm.v2_transport import V2CapacityError
+
+    http, client, sim, factory = system
+    original = client.recover_logs
+
+    async def refused():
+        raise V2CapacityError("Source callback admission deadline exceeded; no request sent")
+
+    async def interrupted():
+        raise later_error()
+
+    monkeypatch.setattr(client, "recover_logs", refused)
+    await client._recover_completed_sources()
+    assert client._source_recovery_pending
+    monkeypatch.setattr(client, "recover_logs", interrupted)
+    if later_error is asyncio.CancelledError:
+        with pytest.raises(asyncio.CancelledError):
+            await client._recover_completed_sources()
+    else:
+        await client._recover_completed_sources()
+    assert client._source_recovery_pending
+    monkeypatch.setattr(client, "recover_logs", original)
+    await client._recover_completed_sources()
+    assert not client._source_recovery_pending
+    assert client.is_online and client._ready
+
+
 @pytest.mark.parametrize("renew_before_confirm", [False, True])
 async def test_cleared_unacknowledged_alarm_can_be_confirmed_before_run_ack(system, monkeypatch, renew_before_confirm):
     http, client, sim, factory = system

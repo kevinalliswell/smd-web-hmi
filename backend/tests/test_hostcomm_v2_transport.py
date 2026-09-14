@@ -11,7 +11,7 @@ from types import SimpleNamespace
 import pytest
 
 from app.hostcomm.v2_contract.codec import command_digest, encode_message, strict_loads
-from app.hostcomm.v2_transport import V2CapacityError, V2RemoteError, V2Transport, V2TransportError
+from app.hostcomm.v2_transport import V2CapacityError, V2OfflineError, V2RemoteError, V2Transport, V2TransportError
 
 VECTORS = json.loads(
     (Path(__file__).resolve().parents[2] / "contracts/hostcomm/v2/vectors.json").read_text(encoding="utf-8")
@@ -269,6 +269,157 @@ async def test_slow_callback_cannot_block_request_ack_and_overflow_is_visible():
         await eventually(lambda: any(item["reason"] == "callback_overload" for item in notices))
     finally:
         gate.set()
+        await client.close()
+        await peer.close()
+
+
+async def test_callback_admission_includes_inflight_but_not_later_callbacks():
+    entered = [asyncio.Event(), asyncio.Event()]
+    release = [asyncio.Event(), asyncio.Event()]
+
+    async def callback(message):
+        index = message["index"]
+        entered[index].set()
+        await release[index].wait()
+
+    peer = await Peer().start()
+    client = transport(peer, on_message=callback, response_timeout=1)
+    barrier = None
+    try:
+        await client.start()
+        client._enqueue({"index": 0})
+        await asyncio.wait_for(entered[0].wait(), 1)
+        barrier = asyncio.create_task(client.wait_for_callbacks())
+        await eventually(lambda: len(client._callback_waiters) == 1)
+        client._enqueue({"index": 1})
+        assert not barrier.done()
+        assert (await client.request("get_status", {}))["type"] == "status_snapshot"
+        release[0].set()
+        await asyncio.wait_for(entered[1].wait(), 1)
+        context = await asyncio.wait_for(barrier, 1)
+        client.check_callback_context(context)
+        assert not release[1].is_set()
+        assert not client._callback_waiters
+        assert client.is_online and client.dropped_callbacks == 0
+    finally:
+        for event in release:
+            event.set()
+        if barrier:
+            barrier.cancel()
+            await asyncio.gather(barrier, return_exceptions=True)
+        await client.close()
+        await peer.close()
+
+
+@pytest.mark.parametrize("end", ["timeout", "cancel", "disconnect", "close"])
+async def test_callback_admission_waiters_are_removed_on_every_exit(end):
+    entered, release = asyncio.Event(), asyncio.Event()
+
+    async def callback(_message):
+        entered.set()
+        await release.wait()
+
+    peer = await Peer().start()
+    client = transport(peer, on_message=callback)
+    barrier = None
+    try:
+        await client.start()
+        client._enqueue({})
+        await asyncio.wait_for(entered.wait(), 1)
+        barrier = asyncio.create_task(client.wait_for_callbacks(timeout=0.1 if end == "timeout" else 3))
+        await eventually(lambda: len(client._callback_waiters) == 1)
+        if end == "cancel":
+            barrier.cancel()
+        elif end == "disconnect":
+            client._disconnect("test_session_change")
+        elif end == "close":
+            await client.close()
+        error = {"timeout": V2CapacityError, "cancel": asyncio.CancelledError}.get(end, V2OfflineError)
+        with pytest.raises(error):
+            await asyncio.wait_for(barrier, 1)
+        assert not client._callback_waiters
+        assert client._callbacks.qsize() == 0  # Admission never leaves queue markers behind.
+        assert client.dropped_callbacks == 0
+        if end in {"cancel", "timeout"}:
+            assert client.is_online
+            release.set()
+            await client.wait_for_callbacks()
+    finally:
+        release.set()
+        if barrier:
+            barrier.cancel()
+            await asyncio.gather(barrier, return_exceptions=True)
+        await client.close()
+        await peer.close()
+
+
+async def test_callback_admission_has_bounded_capacity_without_consuming_live_queue_slots():
+    entered, release = asyncio.Event(), asyncio.Event()
+
+    async def callback(_message):
+        entered.set()
+        await release.wait()
+
+    peer = await Peer().start()
+    client = transport(peer, on_message=callback, queue_capacity=1)
+    barriers = []
+    try:
+        await client.start()
+        client._enqueue({})
+        await asyncio.wait_for(entered.wait(), 1)
+        barriers = [asyncio.create_task(client.wait_for_callbacks()) for _ in range(4)]
+        await eventually(lambda: len(client._callback_waiters) == 4)
+        with pytest.raises(V2CapacityError, match="capacity"):
+            await client.wait_for_callbacks()
+        for barrier in barriers:
+            barrier.cancel()
+        await asyncio.gather(*barriers, return_exceptions=True)
+        client._enqueue({})
+        assert client._callbacks.full()
+        with pytest.raises(V2CapacityError, match="capacity"):
+            await client.wait_for_callbacks()
+        assert client.is_online and client.dropped_callbacks == 0
+        assert not client._callback_waiters
+        release.set()
+        await asyncio.wait_for(client._callbacks.join(), 1)
+        await client.wait_for_callbacks()
+    finally:
+        release.set()
+        for barrier in barriers:
+            barrier.cancel()
+        await asyncio.gather(*barriers, return_exceptions=True)
+        await client.close()
+        await peer.close()
+
+
+async def test_callback_admission_rejects_self_wait_and_context_reuse(monkeypatch):
+    checked = asyncio.Event()
+
+    async def callback(_message):
+        with pytest.raises(V2CapacityError, match="own consumer"):
+            await client.wait_for_callbacks()
+        checked.set()
+
+    peer = await Peer().start()
+    client = transport(peer, on_message=callback)
+    try:
+        with pytest.raises(V2OfflineError):
+            await client.wait_for_callbacks()
+        await client.start()
+        for timeout in (0, 3.001):
+            with pytest.raises(ValueError):
+                await client.wait_for_callbacks(timeout=timeout)
+        client._enqueue({})
+        await asyncio.wait_for(checked.wait(), 1)
+        context = await client.wait_for_callbacks()
+        for field in ("session_id", "boot_id", "_writer"):
+            with monkeypatch.context() as patch:
+                patch.setattr(client, field, object())
+                with pytest.raises(V2OfflineError):
+                    client.check_callback_context(context)
+        client.check_callback_context(context)
+        assert client.is_online and client.dropped_callbacks == 0
+    finally:
         await client.close()
         await peer.close()
 

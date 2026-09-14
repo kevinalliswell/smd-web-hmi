@@ -66,6 +66,7 @@ class V2Client:
         self._alarm_lock = asyncio.Lock()
         self._recovery_task = self._poll_task = None
         self._source_recovery_task = None
+        self._source_recovery_pending = False
         self._refresh_task = None
         self._refresh_pending = self._refresh_needs_status = False
         self._closed = False
@@ -215,6 +216,7 @@ class V2Client:
             await self.refresh_operations()
             await self.get_status()
             await self.recover_logs()
+            self._source_recovery_pending = False
             self._ready = True
             self._recovery_failures = 0
             self.last_error = None
@@ -244,7 +246,7 @@ class V2Client:
                     run = self._status_frame["payload"]["run"]
                     if (
                         self._ready
-                        and (run["measurement_complete"] or run["safe_complete"])
+                        and (run["measurement_complete"] or run["safe_complete"] or self._source_recovery_pending)
                         and (self._source_recovery_task is None or self._source_recovery_task.done())
                     ):
                         self._source_recovery_task = asyncio.create_task(self._recover_completed_sources())
@@ -257,8 +259,14 @@ class V2Client:
         except asyncio.CancelledError:
             raise
         except Exception as exc:
+            if isinstance(exc, V2CapacityError):
+                # Local backpressure does not disconnect. Retain the read-only
+                # scan even if ack_run returns the live device to idle meanwhile.
+                self._source_recovery_pending = True
             self.last_error = type(exc).__name__
             logger.warning("v2.source_recovery_incomplete", reason=self.last_error)
+        else:
+            self._source_recovery_pending = False
 
     async def _on_message(self, frame):
         kind = frame["type"]
@@ -801,6 +809,7 @@ class V2Client:
     async def recover_logs(self, *, first_record_seq=None):
         async with self._log_lock:
             await self.get_status()
+            session_id, boot_id = self._status_frame["session_id"], self._status_frame["boot_id"]
             catalog = self._status_frame["payload"]["log"]
             if catalog["newest_record_seq"] is None:
                 return
@@ -813,6 +822,9 @@ class V2Client:
                 first = max(1, int(TypeAdapter(U64).validate_python(first_record_seq)))
             last = int(catalog["newest_record_seq"])
             while first <= last:
+                admission = await self.transport.wait_for_callbacks()
+                if (admission.session_id, admission.boot_id) != (session_id, boot_id):
+                    raise V2OfflineError("Source log catalog belongs to a previous connection")
                 stop = min(last, first + 999)
                 request_id = uuid.uuid4().hex
                 query = {
@@ -828,9 +840,10 @@ class V2Client:
                 await self.logs.begin(
                     query,
                     request_msg_id=request_id,
-                    session_id=self.transport.session_id,
-                    boot_id=self.transport.boot_id,
+                    session_id=admission.session_id,
+                    boot_id=admission.boot_id,
                 )
+                self.transport.check_callback_context(admission)
                 result = await self._request("log_request", query, msg_id=request_id, timeout=30)
                 await self.logs.finish(result)
                 first = stop + 1
