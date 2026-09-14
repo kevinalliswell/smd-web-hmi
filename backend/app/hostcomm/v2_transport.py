@@ -76,6 +76,13 @@ class Pending:
     log_acked_offset: int = 0
 
 
+@dataclass(frozen=True)
+class CallbackContext:
+    session_id: str
+    boot_id: str
+    writer: asyncio.StreamWriter = field(repr=False)
+
+
 def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
 
@@ -131,6 +138,8 @@ class V2Transport:
         self._receipts = OrderedDict()
         self._write_lock = asyncio.Lock()
         self._callbacks = asyncio.Queue(maxsize=queue_capacity)
+        self._callbacks_enqueued = self._callbacks_completed = 0
+        self._callback_waiters: dict[asyncio.Future, int] = {}
         self._connections = asyncio.Queue(maxsize=8)
         self.frames_received = self.invalid_frames = self.dropped_callbacks = 0
         self.last_error: str | None = None
@@ -239,6 +248,47 @@ class V2Transport:
             *(task for task in tasks if task and task is not asyncio.current_task()), return_exceptions=True
         )
         await self._teardown()
+
+    def check_callback_context(self, context: CallbackContext) -> None:
+        if not self.is_online or (
+            self.session_id != context.session_id
+            or self.boot_id != context.boot_id
+            or self._writer is not context.writer
+        ):
+            raise V2OfflineError("Source callback admission belongs to a previous connection")
+
+    async def wait_for_callbacks(self, *, timeout: float = 3.0) -> CallbackContext:
+        """Drain only callbacks already accepted, before opening a wire progress deadline.
+
+        This bounded local admission includes the callback currently writing to disk.
+        It neither occupies a wire request slot nor adds entries to the live queue.
+        Later callbacks cannot extend this barrier; session changes invalidate it.
+        """
+        if not 0 < timeout <= 3.0:
+            raise ValueError("Source callback admission timeout must be within 0..3 seconds")
+        if asyncio.current_task() is self._callback_task:
+            raise V2CapacityError("Source callback admission cannot wait on its own consumer")
+        if not self.is_online or self._writer is None:
+            raise V2OfflineError("Source callback admission requires a negotiated connection")
+        if self._callbacks.full() or len(self._callback_waiters) >= 4:
+            raise V2CapacityError("Source callback admission capacity exhausted; no request sent")
+        context = CallbackContext(self.session_id, self.boot_id, self._writer)
+        target = self._callbacks_enqueued
+        if self._callbacks_completed < target:
+            future = asyncio.get_running_loop().create_future()
+            self._callback_waiters[future] = target
+            try:
+                await asyncio.wait_for(future, timeout)
+            except TimeoutError:
+                raise V2CapacityError("Source callback admission deadline exceeded; no request sent") from None
+            finally:
+                self._callback_waiters.pop(future, None)
+                if not future.done():
+                    future.cancel()
+                elif not future.cancelled():
+                    future.exception()
+        self.check_callback_context(context)
+        return context
 
     async def _run(self) -> None:
         delay = self.reconnect_base
@@ -361,6 +411,9 @@ class V2Transport:
         for pending in self._pending.values():
             if not pending.future.done():
                 pending.future.set_exception(V2OfflineError("HostComm connection lost; request outcome may be unknown"))
+        for future in self._callback_waiters:
+            if not future.done():
+                future.set_exception(V2OfflineError("Connection changed during source callback admission"))
         if self._writer:
             self._writer.close()
         if not already:
@@ -712,6 +765,7 @@ class V2Transport:
     def _enqueue(self, message: dict) -> None:
         try:
             self._callbacks.put_nowait(message)
+            self._callbacks_enqueued += 1
         except asyncio.QueueFull:
             self.dropped_callbacks += 1
             self._callback_fault = True
@@ -731,6 +785,10 @@ class V2Transport:
                 self._disconnect("callback_failed")
             finally:
                 self._callbacks.task_done()
+                self._callbacks_completed += 1
+                for future, target in self._callback_waiters.items():
+                    if not future.done() and self._callbacks_completed >= target:
+                        future.set_result(None)
                 if self._callbacks.empty():
                     self._callback_fault = False
 

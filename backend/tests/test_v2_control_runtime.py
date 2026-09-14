@@ -169,7 +169,7 @@ async def test_new_revision_ack_schedules_refresh_without_waiting_for_source_cal
 
     monkeypatch.setattr(client.transport, "on_message", slow_source)
     monkeypatch.setattr(client, "_schedule_refresh", schedule)
-    client.transport._callbacks.put_nowait({"test": "blocked source callback"})
+    client.transport._enqueue({"test": "blocked source callback"})
     try:
         await asyncio.wait_for(callback_started.wait(), 1)
         revision = int(client._status_frame["payload"]["run"]["state_revision"]) + 1

@@ -6,13 +6,49 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from app.hostcomm.client import HostCommProtocolError, HostCommTimeoutError
 from app.hostcomm.v2_client import V2Client
+from app.hostcomm.v2_transport import V2CapacityError, V2RemoteError
+from app.services.command_service import CommandError
 
 
 def client_stub():
     client = V2Client("localhost", 1, factory=None, device_id="1" * 32, client_version="test")
     client.transport = SimpleNamespace(is_online=True, close=AsyncMock())
     return client
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        CommandError(503, "another_error", "unrelated failure"),
+        CommandError(409, "device_read_capacity", "not the local transport translation"),
+        HostCommTimeoutError("unknown response outcome"),
+        HostCommProtocolError("invalid response"),
+        V2RemoteError({"code": "busy", "message": "device rejected request", "retryable": True}),
+    ],
+)
+async def test_unrelated_source_failures_do_not_become_local_capacity_retries(error):
+    client = client_stub()
+    client.recover_logs = AsyncMock(side_effect=error)
+    await client._recover_completed_sources()
+    assert not client._source_recovery_pending
+    client.get_status = AsyncMock(side_effect=error)
+    with pytest.raises(type(error)):
+        await client._optional_status()
+
+
+@pytest.mark.parametrize(
+    "error",
+    [V2CapacityError("local queue full"), CommandError(503, "device_read_capacity", "local read slots full")],
+)
+async def test_source_scan_and_optional_refresh_recognize_the_same_local_capacity(error):
+    client = client_stub()
+    client.recover_logs = AsyncMock(side_effect=error)
+    await client._recover_completed_sources()
+    assert client._source_recovery_pending
+    client.get_status = AsyncMock(side_effect=error)
+    await client._optional_status()
 
 
 async def test_refresh_burst_coalesces_and_preserves_required_status_read():
