@@ -4,7 +4,7 @@
 
 ## 当前优先：覆盖安装与软件正式版
 
-2026-09-13 批准 [ADR-011](../docs/decisions/ADR-011-overwrite-install-and-software-release.md)。以下任务实施中，目标 `0.3.0` 软件正式版；无对应执行证据时不得标 done。[本轮验证记录](../docs/verification/2026-09-13-overwrite-install.md)分别记录本机检查、Windows CI 和正式资产。当前 GitHub Actions 预算阻止最新检查启动，实际 Windows 安装验收与发布外部阻塞；PR #79 保持 draft，未合并、未建正式标签。升级保留当前数据和配置，历史“空库重装”选择不作为此次默认行为。
+2026-09-13 批准 [ADR-011](../docs/decisions/ADR-011-overwrite-install-and-software-release.md)。以下任务实施中，目标 `0.3.0` 软件正式版；无对应执行证据时不得标 done。[本轮验证记录](../docs/verification/2026-09-13-overwrite-install.md)分别记录本机检查、Windows CI 和正式资产。2026-09-14 用户确认 GitHub Actions 预算已恢复，必要检查已实际重新启动，Windows 安装验收与发布继续推进；PR #79 保持 draft，未合并、未建正式标签。升级保留当前数据和配置，历史“空库重装”选择不作为此次默认行为。
 
 | ID / 优先级 | 任务 | 责任角色 | 依赖 | 验收条件 / 证据 | 状态 |
 |---|---|---|---|---|---|
@@ -12,9 +12,9 @@
 | OVER-02 / P1 | 版本与维护状态界面及旧 API 退役 | 前后端负责人 | OVER-01 | 无目标文本框和prepare/cancel正常流程；旧入口明确退役；GET与源日志保留；类型/页面/API回归 | doing |
 | OVER-03 / P0 | 数据保留、单次暂存与空间预检 | Windows/后端负责人 | OVER-01 | 实际自定义DB/配置/密钥保留；按卷空间检查及低空间拒绝；只一次完整解压；程序保留与备份不自动删除 | doing |
 | OVER-04 / P0 | 同版修复、旧失败事务恢复与明确操作分派 | Windows/后端负责人 | OVER-01/03 | 拒绝版本复用/普通降级；旧事务额外保全、分阶段回退；只待验活不再次覆库；升级不继续卸载；故障测试 | doing |
-| OVER-05 / P0 | 实际 Windows 覆盖安装与安装版联调 | Windows/测试负责人 | OVER-01—04；恢复 GitHub Actions 可用预算 | 真实发布rc.4/rc.5升级、账户/配置保留及9项固定安装场景，SmdBench完整通过；实际安装尚未执行，见[预算阻塞记录](../docs/verification/2026-09-13-overwrite-install.md#本轮-windows-ci-与预算阻塞) | blocked |
+| OVER-05 / P0 | 实际 Windows 覆盖安装与安装版联调 | Windows/测试负责人 | OVER-01—04；全部必要检查 | 真实发布rc.4/rc.5升级、账户/配置保留及9项固定安装场景，SmdBench完整通过；当前检查执行中，见[预算恢复记录](../docs/verification/2026-09-13-overwrite-install.md#本轮-windows-ci-与预算阻塞) | doing |
 | OVER-06 / P1 | 软件正式版机器门禁与范围声明 | 发布负责人 | OVER-05；全部必要检查 | [证据契约](../docs/release-acceptance.md)校验实际文件、当前CI、完整场景；反例拒绝；不将M5标通过 | doing |
-| OVER-07 / P1 | 文档、资产与不可移动 v0.3.0 | 发布/维护负责人 | OVER-05/06；恢复 GitHub Actions 可用预算 | 同提交安装器/工具/摘要/升级说明/限制发布，prerelease=false；旧标签不动；当前PR未合并、正式标签及Release未创建 | blocked |
+| OVER-07 / P1 | 文档、资产与不可移动 v0.3.0 | 发布/维护负责人 | OVER-05/06 | 同提交安装器/工具/摘要/升级说明/限制发布，prerelease=false；旧标签不动；当前PR未合并、正式标签及Release未创建 | doing |
 
 M4-06c 的现场失败仍保留历史证据；新自动恢复回归不意味着这台测试机已恢复。OVER 任务完成也不关闭 Win10/11 人工、签名和 M5 未完成项目。
 
