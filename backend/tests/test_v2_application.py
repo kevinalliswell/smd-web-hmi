@@ -722,6 +722,89 @@ async def test_deferred_source_scan_survives_interruption_until_success(system, 
     assert client.is_online and client._ready
 
 
+@pytest.mark.parametrize("boundary", ["get_status", "log_request"])
+async def test_full_read_slots_preserve_source_scan_until_idle_poll_can_resume(system, monkeypatch, boundary):
+    from app.services.command_service import CommandError
+
+    http, client, sim, factory = system
+    # Isolate capacity construction from unrelated periodic reads. Restore the
+    # actual poll once the pre-send rejection has been observed below.
+    client._poll_task.cancel()
+    await asyncio.gather(client._poll_task, return_exceptions=True)
+    wire_id = await sim.raise_alarm("clock_unsynced", severity="warning")
+    await wait_alarm(http, wire_id)
+    await client.transport.wait_for_callbacks()
+    if client._refresh_task is not None:
+        await asyncio.wait_for(asyncio.shield(client._refresh_task), 5)
+    original_request = client._request
+    original_begin = client.logs.begin
+    original_finish = client.logs.finish
+    completed = asyncio.Event()
+    reads, rejected = [], []
+    filled = False
+
+    async def occupy_read_slots():
+        nonlocal filled
+        if filled:
+            return
+        filled = True
+        # Actual requests reach the peer; withholding their read-only replies
+        # leaves the production transport's four slots occupied.
+        sim.drop_reply("profile_snapshot", count=4)
+        reads.extend(asyncio.create_task(client.transport.request("get_profile", {})) for _ in range(4))
+        async with asyncio.timeout(3):
+            while sim._drop_replies["profile_snapshot"]:
+                assert all(not task.done() for task in reads)
+                await asyncio.sleep(0.005)
+        assert sum(item.kind == "get_profile" for item in client.transport._pending.values()) == 4
+
+    async def record_request(kind, payload, **kwargs):
+        try:
+            return await original_request(kind, payload, **kwargs)
+        except CommandError as exc:
+            rejected.append((kind, exc.status_code, exc.error_code))
+            raise
+
+    async def fill_after_begin(*args, **kwargs):
+        result = await original_begin(*args, **kwargs)
+        await occupy_read_slots()
+        return result
+
+    async def record_finish(frame):
+        result = await original_finish(frame)
+        completed.set()
+        return result
+
+    monkeypatch.setattr(client, "_request", record_request)
+    monkeypatch.setattr(client.logs, "finish", record_finish)
+    try:
+        if boundary == "get_status":
+            await occupy_read_slots()
+        else:
+            monkeypatch.setattr(client.logs, "begin", fill_after_begin)
+        await client._recover_completed_sources()
+        assert (boundary, 503, "device_read_capacity") in rejected
+        assert client._source_recovery_pending
+        assert all(not task.done() for task in reads)
+        assert client.is_online and client._ready
+        assert sim.state.run["state"] == "idle"
+        for task in reads:
+            task.cancel()
+        await asyncio.gather(*reads, return_exceptions=True)
+        client._poll_task = asyncio.create_task(client._poll())
+        # The real idle poll, rather than another manual source scan, must
+        # complete the history deferred by this local pre-send rejection.
+        await asyncio.wait_for(completed.wait(), 6)
+        await asyncio.wait_for(asyncio.shield(client._source_recovery_task), 1)
+        assert not client._source_recovery_pending
+        assert client.is_online and client._ready
+        assert not sim.state.data["operations"]  # A read retry never acquires control or sends a command.
+    finally:
+        for task in reads:
+            task.cancel()
+        await asyncio.gather(*reads, return_exceptions=True)
+
+
 @pytest.mark.parametrize("renew_before_confirm", [False, True])
 async def test_cleared_unacknowledged_alarm_can_be_confirmed_before_run_ack(system, monkeypatch, renew_before_confirm):
     http, client, sim, factory = system

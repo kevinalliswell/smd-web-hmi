@@ -35,6 +35,14 @@ def fail(code: str, text: str, status: int = 409):
     raise CommandError(status, code, text)
 
 
+def _is_local_read_capacity(error: Exception) -> bool:
+    from app.services.command_service import CommandError
+
+    return isinstance(error, V2CapacityError) or (
+        isinstance(error, CommandError) and error.status_code == 503 and error.error_code == "device_read_capacity"
+    )
+
+
 class V2Client:
     protocol_version = "2.0"
 
@@ -259,7 +267,7 @@ class V2Client:
         except asyncio.CancelledError:
             raise
         except Exception as exc:
-            if isinstance(exc, V2CapacityError):
+            if _is_local_read_capacity(exc):
                 # Local backpressure does not disconnect. Retain the read-only
                 # scan even if ack_run returns the live device to idle meanwhile.
                 self._source_recovery_pending = True
@@ -338,14 +346,10 @@ class V2Client:
                 await self.on_comm_status({"status": "degraded", "reason": "v2_status_refresh_incomplete"})
 
     async def _optional_status(self):
-        from app.services.command_service import CommandError
-
         try:
             await self.get_status()
-        except V2CapacityError:
-            return  # Alarm resynchronization shares the same bounded read window.
-        except CommandError as exc:
-            if exc.error_code != "device_read_capacity":
+        except Exception as exc:
+            if not _is_local_read_capacity(exc):
                 raise
             # The source is already durable. A full read window must not turn an
             # optional UI refresh into a disconnect that could hide a stop ACK.

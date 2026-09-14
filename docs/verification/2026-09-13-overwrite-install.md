@@ -1,6 +1,6 @@
 # 2026-09-13 覆盖安装与软件正式版验证
 
-维护角色：集成、Windows 测试与发布负责人。关联任务：OVER-01—07；范围依据[ADR-011](../decisions/ADR-011-overwrite-install-and-software-release.md)。目标应用版本为 `0.3.0`，协议保持 `2.0 / 2.0-design.1`、文档修订 `2.0-doc.3`。2026-09-14，PR #79 的完整安装版联调与九项机器证据聚合已通过并合入主线；**随后主线 Windows 后端报警确认回归失败，尚未进入主线安装打包，本地准入修正已实现、完整 Windows CI 待验证，正式标签与 Release 未创建**。历史失败、PR 成功和主线失败按各自构建身份分别记录。
+维护角色：集成、Windows 测试与发布负责人。关联任务：OVER-01—07；范围依据[ADR-011](../decisions/ADR-011-overwrite-install-and-software-release.md)。目标应用版本为 `0.3.0`，协议保持 `2.0 / 2.0-design.1`、文档修订 `2.0-doc.3`。2026-09-14，PR #79 的完整安装版联调与九项机器证据聚合已通过并合入主线；**随后主线 Windows 后端报警确认回归失败；修复 PR #81 首轮完整 Windows CI 已通过，但审查跟进的补充修正仍待新的完整 Windows CI，尚未合并，正式标签与 Release 未创建**。历史失败、PR 成功和主线失败按各自构建身份分别记录。
 
 本机执行基线为 `0701a136d73560221e7d32dc4cf2747b3397ab86` 加测试当时尚未提交的实现和测试；这些结果不能归到未包含改动的基线提交。随后实现分别整理在维护协调 `ec363a8bb1b81865071ab87fb564f0b5d09253cd`、覆盖安装与恢复 `5cd9c9a401a9fa714b0a01bf531a6c45ff00bf23`、实际安装验收及门禁 `5ee5b27019b3a3ce2c9056bb7142778db44b5ea4`。最终集成、合并及标签构建后应追加实际构建完整 SHA、CI 编号、产物摘要与日志链接，不覆盖早期执行记录。rc.5 的[历史安装版联调](2026-09-08-installed-hostcomm-loop.md)不为本轮不同字节背书。
 
@@ -99,10 +99,32 @@ CI 34815548895 的结论为失败。安装套件七项及 SmdBench 先前断言�
 
 新增 **13 个行为用例**。空闲恢复用例先在旧代码进入 idle 后等待 8 秒仍未自动补齐，以失败结束（13.58 秒），新逻辑通过（6.51 秒）。受控 6 ms 异步数据库延迟的同一原场景修复前后记录分别归档在仓库外 `hostcomm-slow-sqlite-before-20260914.log`、`hostcomm-slow-sqlite-after-20260914.log`；准入和空闲恢复的先失败证据分别为 `hostcomm-callback-admission-red-20260914.log`、`hostcomm-source-idle-red-20260914.log`。
 
-修复工作区在 macOS / Python 3.13 下执行后端全量 **848 通过、3 项 Windows 专项跳过，覆盖率 86.94%，耗时 94.05 秒**。命令为在 `backend/` 执行 `../../implementation-venv/bin/python -m pytest --maxfail=1 --cov=app --cov-report=term --cov-fail-under=80`，完整日志归档在仓库外 `hostcomm-callback-admission-backend-20260914.log`。这些结果对应当时修复分支工作区，不能归到未含修正的主线提交；完整 Windows CI 仍待验证。OVER-01—04 保持 implemented，OVER-05—07 保持 doing，主线及发布必要检查继续执行。
+修复工作区在 macOS / Python 3.13 下执行后端全量 **848 通过、3 项 Windows 专项跳过，覆盖率 86.94%，耗时 94.05 秒**。命令为在 `backend/` 执行 `../../implementation-venv/bin/python -m pytest --maxfail=1 --cov=app --cov-report=term --cov-fail-under=80`，完整日志归档在仓库外 `hostcomm-callback-admission-backend-20260914.log`。这些结果对应当时修复分支工作区，不能归到未含修正的主线提交；其后首轮完整 Windows CI 结果及审查跟进见下节。OVER-01—04 保持 implemented，OVER-05—07 保持 doing，主线及发布必要检查继续执行。
+
+## 修复 PR 首轮验收与审查跟进
+
+修复提交 `0f4397c92da7d21d669c13554cc9ec08069cd788` 的 [PR #81](https://github.com/kevinalliswell/smd-web-hmi/pull/81) 首轮 [CI 34829233667](https://github.com/kevinalliswell/smd-web-hmi/actions/runs/34829233667) 七项检查全部通过。实际 PR 合并构建及产物清单提交为 `9a0a0a29891adb99d87c7e66a0eb7ea444be898e`，不是修复分支提交或后续主线提交。Windows 桌面 **384 通过**、联调工具单元 **106 通过**、后端 **847 通过、4 项 POSIX 限定跳过，覆盖率 87.88%**。
+
+该轮实际安装冒烟、rc.4/rc.5 七项升级与恢复、完整 SmdBench **19 项断言**、Windows 汇总 **9 项场景**均通过，归属清理完成。离线同版修复前后保留 **8 个实验、237 条采样、10 份报告**，账户、配置与配对密钥保留。九份独立日志与元数据摘要已在下载后逐一核对；安装器 EXE 与工具 ZIP 的完整字节由该轮 CI 门禁核验，本机未下载这两个大文件，不能声称又完成一次本机全包核验。
+
+| PR 产物 | CI 34829233667 记录的 SHA256 |
+|---|---|
+| `SmdHmi-0.3.0-windows-x64.exe` | `1e32d0c6eacf7e7bd24b8b958f36caccee5c9f659d56e7f0a310083b9ab6c240` |
+| `SmdBench-0.3.0-windows-x64.zip` | `907ec57bdd257aaabb7a4b2f399f927009ff9f78636235eb5665b718ff535f54` |
+| `software-acceptance.json` | `42efcf78240f7b2be1a3d4a17dd182f9511ba5246275a8b334538267b5902cc3` |
+
+元数据与脱敏诊断归档在该轮 `windows-release-metadata`、`windows-package-diagnostics` artifact；本地分别保存于仓库外 `hostcomm-fix-metadata-34829233667`、`hostcomm-fix-diagnostics-34829233667`。这些是 PR 构建证据，不是正式 Release 资产摘要。
+
+首轮检查通过后，[审查 4003963541](https://github.com/kevinalliswell/smd-web-hmi/pull/81#pullrequestreview-4003963541) 指出另一条遗漏路径：`_request()` 会把 `V2CapacityError` 转为 `CommandError(error_code="device_read_capacity")`，后台恢复处理仅识别前者，因而转换后的读容量拒绝没有登记待补传。首轮通过的已有场景不能证明这条遗漏已处理；PR #81 尚未合并。
+
+跟进修正统一使用本地读容量异常识别器，仅接受原生 `V2CapacityError` 或精确的 `CommandError(HTTP 503, device_read_capacity)`，源日志恢复与可选读取共用分类；未知结果、协议错误和远端 busy 不转为本地自动重试。在真实四个读取槽位占满的条件下，分别覆盖 `get_status` 前和日志暂存建立后两个入口，基线均因待补传标志仍为 false 而失败（0.77 / 0.72 秒）；修正后的 **13 项专项最终复验通过，耗时 4.86 秒**，包括新增的 **9 项**：2 项真实槽位、5 项反例和 2 项分类一致性。先失败日志为仓库外 `hostcomm-read-capacity-red-20260914.log`、`hostcomm-log-request-capacity-red-20260914.log`。补充修正工作区在 macOS / Python 3.13 下执行后端全量 **857 通过、3 项 Windows 专项跳过，覆盖率 87.00%，耗时 97.95 秒**，沿用上述全量命令和 80% 门槛，完整日志为仓库外 `hostcomm-read-capacity-backend-20260914.log`。本次仅统一恢复及可选读取的异常分类并补回归，传输层与控制路径不变；独立审查已通过。
+
+这些本机结果对应审查跟进的补充工作区，不能归到前次 `0f4397c92da7d21d669c13554cc9ec08069cd788` 或 PR 产物 `9a0a0a29891adb99d87c7e66a0eb7ea444be898e`。补充修正已实现并通过本机回归，新的完整 Windows CI 仍待验证，不能用首轮 CI 为不同代码背书。
+
+主线仍为 `b6cd21f4e9b89f6a0c050f415d05d0ce6795e79d`，正式标签与 Release 未创建；审查跟进、后续 PR 复验及合并后的主线/标签各自记录实际构建身份，不覆盖本轮已通过证据。
 
 ## 正式资产与其他验收
 
-`v0.3.0` 标签与正式 Release 尚未创建。PR #79 已完整验收并合入主线，但主线复验失败后的本地准入修正仍待完整 Windows CI 验证；最终安装器与工具 ZIP 摘要、软件/Windows 验收摘要、标签构建编号及公开发布时间，必须在修复后的主线和标签重新通过全部必要检查与实际安装版验收后登记。实际发布状态与下载字节以最终 Release 所附机器验收和 `SHA256SUMS.txt` 为真源；不复用 PR 摘要，不移动旧标签。
+`v0.3.0` 标签与正式 Release 尚未创建。PR #79 已完整验收并合入主线，PR #81 首轮完整 Windows CI 也已通过，但审查跟进的补充修正仍待新的完整 Windows CI 及合并；最终安装器与工具 ZIP 摘要、软件/Windows 验收摘要、标签构建编号及公开发布时间，必须在修复后的主线和标签重新通过全部必要检查与实际安装版验收后登记。实际发布状态与下载字节以最终 Release 所附机器验收和 `SHA256SUMS.txt` 为真源；不复用 PR 摘要，不移动旧标签。
 
 Win10/11 干净断网 WebView2、普通操作员、中文路径和显示缩放的人工验收，以及可信签名、真实 STM32H750 固件、实物安全联锁、国标符合性和持续运行仍分别未验收。软件正式版资格不关闭这些项目，也不证明用户发生 rc.5 升级失败的那台测试机已经完成恢复。
