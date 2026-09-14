@@ -40,30 +40,57 @@ async def test_upgrade_allows_only_fresh_idle_without_open_session():
     await validate_upgrade_ready(request, Db(), cache=SimpleNamespace(is_fresh=True, current_state="Idle"))
 
 
-async def test_prepare_hides_token_claim_requires_loopback(monkeypatch, tmp_path):
+@pytest.mark.parametrize("endpoint", ["prepare", "cancel", "claim"])
+async def test_manual_version_endpoints_are_retired(endpoint):
     from fastapi import HTTPException
 
     from app.api.routes import maintenance as route
-    from app.services.maintenance_service import MaintenanceManager
 
-    manager = MaintenanceManager()
-    manager.configure_upgrade(tmp_path / "maintenance.json")
-    monkeypatch.setattr(route, "maintenance_manager", manager)
-    monkeypatch.setattr(route, "get_settings", lambda: SimpleNamespace(db_path_resolved=tmp_path / "actual.db"))
-
-    async def ready(*args, **kwargs):
-        return None
-
-    monkeypatch.setattr(route, "validate_upgrade_ready", ready)
-    request = SimpleNamespace(client=SimpleNamespace(host="192.168.1.2"))
-    response = await route.prepare(
-        route.PrepareRequest(target_version="0.4.0-rc.1"), request, SimpleNamespace(username="admin"), None
-    )
-    assert "token" not in response["data"] and "db_path" not in response["data"]
-    token = manager.upgrade_state()["token"]
     with pytest.raises(HTTPException) as error:
-        await route.claim(request, None, token)
-    assert error.value.status_code == 403
-    request.client.host = "127.0.0.1"
-    result = await route.claim(request, None, token)
-    assert result["data"]["state"] == "claimed" and "token" not in result["data"]
+        await getattr(route, endpoint)()
+    assert error.value.status_code == 410
+    assert "安装器" in error.value.detail and "无需填写版本号" in error.value.detail
+
+
+async def test_browser_status_exposes_version_without_local_authorization(monkeypatch):
+    from app import __version__
+    from app.api.routes import maintenance as route
+
+    monkeypatch.setattr(
+        route.maintenance_manager,
+        "upgrade_state",
+        lambda: {
+            "state": "claimed",
+            "token": "secret",
+            "db_path": "private",
+            "admin_sid": "private",
+            "request_sha256": "private",
+            "operation": "upgrade",
+            "target_version": "0.4.0",
+        },
+    )
+    result = (await route.status())["data"]
+    assert result == {
+        "state": "claimed",
+        "operation": "upgrade",
+        "target_version": "0.4.0",
+        "current_version": __version__,
+    }
+
+
+async def test_retired_maintenance_routes_return_http_410_and_keep_read_status(monkeypatch):
+    from fastapi import FastAPI
+    from httpx import ASGITransport, AsyncClient
+
+    from app.api import deps
+    from app.api.routes import maintenance as route
+
+    app = FastAPI()
+    app.include_router(route.router)
+    app.dependency_overrides[deps.get_current_user] = lambda: deps.CurrentUser("admin", "admin")
+    monkeypatch.setattr(route.maintenance_manager, "upgrade_state", lambda: {"state": "idle"})
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as http:
+        for method, path in (("POST", "/prepare"), ("DELETE", ""), ("POST", "/claim")):
+            response = await http.request(method, "/api/system/maintenance" + path, json={"target_version": "0.4.0"})
+            assert response.status_code == 410 and "安装器" in response.json()["detail"]
+        assert (await http.get("/api/system/maintenance")).json()["data"]["state"] == "idle"

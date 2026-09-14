@@ -13,5 +13,6 @@
 
 | [009](ADR-009-hostcomm-v2-runtime.md) | 已接受；软件证据与现场验收分开 | 显式协议、PSK、持久操作、配方编译、源日志与RC交付 |
 | [010](ADR-010-installed-hostcomm-loop.md) | 已接受；实施中 | 租约时序、陌生实验恢复、独立Windows联调工具与分层验收 |
+| [011](ADR-011-overwrite-install-and-software-release.md) | 已接受；实施中 | 保留数据的覆盖安装、本机管理员维护与软件正式版证据门禁 |
 
 已接受表示选型成立，不代表实现或真机验收完成。旧 ADR 保留历史，在新 ADR 中说明变化。

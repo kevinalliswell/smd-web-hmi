@@ -29,7 +29,7 @@ class UninstallTransaction:
             self.install
         )
 
-    def apply(self):
+    def apply(self, *, permit=None):
         if self.journal_path.exists():
             journal = json.loads(self.journal_path.read_text(encoding="utf-8"))
             if (
@@ -47,8 +47,19 @@ class UninstallTransaction:
         else:
             previous = json.loads(self.pointer_path.read_text(encoding="utf-8"))
             gate = json.loads(self.gate_path.read_text(encoding="utf-8"))
+            local_authorized = (
+                permit is not None
+                and permit == gate
+                and gate.get("schema_version") == 2
+                and gate.get("issuer") == "windows_installer"
+                and gate.get("operation") == "uninstall"
+                and gate.get("state") == "claimed"
+                and re.fullmatch(r"[0-9a-f]{64}", str(gate.get("package_sha256", "")))
+                and re.fullmatch(r"[0-9a-f]{64}", str(gate.get("request_sha256", "")))
+                and re.fullmatch(r"S-1-(?:\d+-)+\d+", str(gate.get("admin_sid", "")))
+            )
             if (
-                gate.get("state") != "prepared"
+                (not local_authorized and gate.get("state") != "prepared")
                 or gate.get("current_version") != previous["version"]
                 or gate.get("target_version") != previous["version"]
                 or not re.fullmatch(r"[0-9a-f]{32}", gate.get("upgrade_id", ""))
@@ -60,9 +71,13 @@ class UninstallTransaction:
                 "previous": previous,
                 "upgrade_id": gate["upgrade_id"],
                 "operator_id": gate.get("operator_id"),
-                "authorized": False,
+                "authorized": bool(local_authorized),
+                "authorization_source": "windows_installer" if local_authorized else "legacy",
+                "admin_sid": gate.get("admin_sid"),
+                "package_sha256": gate.get("package_sha256"),
+                "permit": permit if local_authorized else None,
             }
-            self._record(journal, "authorizing")  # 领取回执丢失也保留明确卸载意图。
+            self._record(journal, "authorized" if local_authorized else "authorizing")
         if journal["phase"] == "committed":
             if self.pointer_path.exists() or not self._archive_matches(journal):
                 raise RuntimeError("卸载完成后安装状态已变化，禁止沿用旧日志")
@@ -93,6 +108,15 @@ class UninstallTransaction:
             journal["claimed_at"] = gate.get("claimed_at")
             self._record(journal, "authorized")
         try:
+            if journal.get("authorization_source") == "windows_installer" and journal["phase"] in {
+                "authorized",
+                "removing_task",
+            }:
+                permit = journal.get("permit")
+                if not isinstance(permit, dict) or permit != gate:
+                    raise RuntimeError("卸载授权记录与维护门禁不一致")
+                self.platform.stop()
+                self.platform.validate_stopped(permit)
             self._record(journal, "removing_task")
             self.platform.remove_recovery_task()
             self._record(journal, "removing_service")

@@ -107,6 +107,9 @@ async def run_scenarios(installation, result, scenario):
             from .faults import faults
 
             await faults(scenes)
+        from .maintenance import offline_confirmation
+
+        await offline_confirmation(scenes)
         if ui.page_errors or ui.api_failures or ui.console_errors:
             raise AssertionError("unexpected browser or API errors were observed")
         result["browser_errors"] = len(ui.page_errors)
@@ -138,6 +141,7 @@ def run(args):
     result = {
         "schema_version": 1,
         "run_id": installation.run_id,
+        "ci_run_id": os.environ.get("GITHUB_RUN_ID"),
         "version": manifest.version,
         "commit": manifest.commit,
         "installer_sha256": digest,

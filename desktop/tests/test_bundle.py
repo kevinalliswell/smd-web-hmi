@@ -49,9 +49,9 @@ def test_manifest_detects_modified_runtime_and_extra_executable(tmp_path):
 
 def test_manifest_rejects_traversal_and_unlisted_files(tmp_path):
     root = bundle(tmp_path)
-    manifest = json.loads((root / "manifest.json").read_text())
+    manifest = json.loads((root / "manifest.json").read_text(encoding="utf-8"))
     manifest["files"]["../outside.exe"] = "0" * 64
-    (root / "manifest.json").write_text(json.dumps(manifest))
+    (root / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
     with pytest.raises(BundleError):
         verify_bundle(root)
     bundle(root)
@@ -63,8 +63,8 @@ def test_manifest_rejects_traversal_and_unlisted_files(tmp_path):
 def test_public_certificate_allowed_but_private_key_not_shipped(tmp_path):
     from smd_desktop.bundle import _files
 
-    (tmp_path / "ca.pem").write_text("-----BEGIN CERTIFICATE-----\npublic")
+    (tmp_path / "ca.pem").write_text("-----BEGIN CERTIFICATE-----\npublic", encoding="utf-8")
     assert "ca.pem" in _files(tmp_path)
-    (tmp_path / "secret.pem").write_text("-----BEGIN PRIVATE KEY-----\nsecret")
+    (tmp_path / "secret.pem").write_text("-----BEGIN PRIVATE KEY-----\nsecret", encoding="utf-8")
     with pytest.raises(BundleError):
         _files(tmp_path)

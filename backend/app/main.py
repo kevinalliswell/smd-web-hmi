@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import os
 import re
+import sys
 import uuid
 from contextlib import asynccontextmanager, nullcontext
 
@@ -16,6 +18,7 @@ from sqlalchemy import select
 
 from app import __version__
 from app.api import websocket
+from app.api.maintenance_boundary import MaintenanceWriteBoundary
 from app.api.operation_api import operation_http_error
 from app.api.routes import (
     alarms,
@@ -48,6 +51,7 @@ from app.hostcomm.v2_transport import V2TransportError
 from app.services.background_jobs import background_jobs
 from app.services.cache import status_cache
 from app.services.gateway_lease import GatewayLease
+from app.services.local_maintenance import LocalMaintenanceBridge
 from app.services.maintenance_service import MaintenanceBlockedError, maintenance_manager
 from app.services.operations import OperationError, recover_interrupted_operations
 from app.services.sampling_health import sampling_health
@@ -321,6 +325,7 @@ async def lifespan(app: FastAPI):
     with nullcontext() if lease is None else lease:
         client = None
         recovery_worker = None
+        installer_bridge = None
         try:
             # 开发/联调允许按 ORM 元数据建表；生产必须由安装/升级流程执行受控迁移。
             if settings.hostcomm_mock:
@@ -348,8 +353,20 @@ async def lifespan(app: FastAPI):
                     await client.get_status()
                 except Exception as exc:  # noqa: BLE001
                     logger.warning("test_session.initial_status_failed", error=str(exc))
+            if os.name == "nt" and getattr(sys, "frozen", False) and not settings.hostcomm_mock:
+                installer_bridge = LocalMaintenanceBridge(
+                    maintenance_manager,
+                    settings.maintenance_file,
+                    settings.db_path_resolved,
+                    __version__,
+                    client,
+                    get_sessionmaker(),
+                )
+                await installer_bridge.start()
             yield
         finally:
+            if installer_bridge is not None:
+                await installer_bridge.close()
             try:
                 if client is not None:
                     await client.close()
@@ -373,6 +390,7 @@ def create_app() -> FastAPI:
         redoc_url="/redoc" if docs_enabled else None,
         openapi_url="/openapi.json" if docs_enabled else None,
     )
+    app.add_middleware(MaintenanceWriteBoundary, manager=maintenance_manager)
 
     request_id_pattern = re.compile(r"^[A-Za-z0-9._:-]{1,64}$")
 

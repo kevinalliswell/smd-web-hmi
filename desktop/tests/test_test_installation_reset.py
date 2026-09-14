@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 
 SCRIPT = Path(__file__).resolve().parents[2] / "deploy/windows/reset-test-installation.ps1"
+SMOKE_SCRIPT = Path(__file__).resolve().parents[2] / "scripts/release/test-reset-smoke.ps1"
 
 
 def literal(value):
@@ -42,6 +43,62 @@ def run(powershell, tmp_path, body):
 
 def test_script_is_ascii_for_windows_powershell_51():
     assert SCRIPT.read_bytes().isascii()
+
+
+@pytest.mark.parametrize(
+    "arguments,accepted",
+    [
+        ('--recover --install "C:\\Program Files\\SmdHmi"', True),
+        ('--recover --non-interactive --install "C:\\Program Files\\SmdHmi"', True),
+        ('--recover --non-interactive --install "C:\\Another App"', False),
+        ('--recover --install "C:\\Program Files\\SmdHmi" --force', False),
+        ('--recover --non-interactive --install "C:\\Program Files\\SmdHmi" --force', False),
+        ("--recover --install C:\\Program Files\\SmdHmi", False),
+        ('--RECOVER --install "C:\\Program Files\\SmdHmi"', False),
+        ('--recover --non-interactive --install "C:\\Program Files\\SmdHmi"; whoami', False),
+    ],
+)
+def test_recovery_task_accepts_only_exact_owned_released_arguments(powershell, tmp_path, arguments, accepted):
+    result = run(
+        powershell,
+        tmp_path,
+        f"Test-ResetRecoveryArguments -Arguments {literal(arguments)} "
+        "-InstallDir 'C:\\Program Files\\SmdHmi' | ConvertTo-Json",
+    )
+    assert result.returncode == 0, result.stderr
+    assert json.loads(result.stdout) is accepted
+
+
+@pytest.mark.parametrize(
+    "status,error_code,ticket,accepted",
+    [
+        (410, "http_error", False, True),
+        (503, "maintenance_active", False, False),
+        (200, "http_error", False, False),
+        (410, "maintenance_active", False, False),
+        (410, "http_error", True, False),
+    ],
+)
+def test_reset_smoke_requires_retired_api_without_maintenance_ticket(
+    powershell, tmp_path, status, error_code, ticket, accepted
+):
+    data = tmp_path / "data"
+    data.mkdir()
+    maintenance = data / "maintenance.json"
+    if ticket:
+        maintenance.write_text('{"state":"prepared"}', encoding="utf-8")
+    content = json.dumps({"error_code": error_code, "message": "Use the Windows installer"})
+    result = run(
+        powershell,
+        tmp_path,
+        f". {literal(SMOKE_SCRIPT)}\n"
+        f"$response=@{{StatusCode={status}; Content={literal(content)}}}\n"
+        f"Assert-RetiredMaintenancePrepare -Response $response -DataDir {literal(data)}",
+    )
+    assert (result.returncode == 0) is accepted
+    assert maintenance.exists() is ticket
+    if ticket:
+        assert maintenance.read_text(encoding="utf-8") == '{"state":"prepared"}'
 
 
 def test_stage_file_can_be_atomically_updated_twice_in_windows_powershell_51(powershell, tmp_path):

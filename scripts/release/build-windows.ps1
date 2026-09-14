@@ -48,7 +48,8 @@ try {
 } finally { Remove-Item Env:SMD_DATA_ROOT -ErrorAction SilentlyContinue }
 Invoke-Checked 'python' @('scripts/release/metadata.py','--bundle',$Stage)
 $MakeNsis = Join-Path ${env:ProgramFiles(x86)} 'NSIS/makensis.exe'
-$NsisArguments = @('/INPUTCHARSET','UTF8','/V3',"/DVERSION=$Version","/DPAYLOAD=$Stage","/DOUTPUT=$Repo/$OutputDir/SmdHmi-$Version-windows-x64.exe",'deploy/windows/installer.nsi')
+$PayloadBytes = [long](Get-ChildItem -LiteralPath $Stage -Recurse -File | Measure-Object -Property Length -Sum).Sum
+$NsisArguments = @('/INPUTCHARSET','UTF8','/V3',"/DVERSION=$Version","/DPAYLOAD=$Stage","/DPAYLOAD_BYTES=$PayloadBytes","/DOUTPUT=$Repo/$OutputDir/SmdHmi-$Version-windows-x64.exe",'deploy/windows/installer.nsi')
 Invoke-Checked 'python' (@('scripts/release/check_nsis_encoding.py','--makensis',$MakeNsis,'--') + $NsisArguments)
 Invoke-Checked $MakeNsis $NsisArguments
 Copy-Item "$Stage/manifest.json" "$OutputDir/manifest.json"

@@ -80,10 +80,28 @@ def test_stop_pending_can_be_waited_during_retry(tmp_path, monkeypatch, windows)
         raise WinError(1061)
 
     waited = []
+    monkeypatch.setattr(platform, "_open_service_process", lambda: None)
+    monkeypatch.setattr(platform, "_hold_backend", lambda: None)
     monkeypatch.setattr(platform, "_service", service)
     monkeypatch.setattr(platform, "_wait", lambda state: waited.append(state))
     platform.stop()
     assert waited == [windows.SERVICE_STOPPED]
+
+
+def test_stopped_scm_with_live_process_never_grants_database_access(tmp_path, monkeypatch, windows):
+    platform = WindowsPlatform(tmp_path, timeout=0)
+    closed, acquired = [], []
+    monkeypatch.setattr(platform, "_open_service_process", lambda: SimpleNamespace(Close=lambda: closed.append(True)))
+    monkeypatch.setattr(platform, "_service", lambda *args: None)
+    monkeypatch.setattr(platform, "_wait", lambda state: None)
+    monkeypatch.setattr(platform, "_hold_backend", lambda: acquired.append(True))
+    monkeypatch.setitem(
+        sys.modules, "win32event", SimpleNamespace(WaitForSingleObject=lambda *args: 258, WAIT_OBJECT_0=0)
+    )
+    with pytest.raises(RuntimeError, match="进程未退出"):
+        platform.stop()
+    assert closed == [True]
+    assert acquired == []
 
 
 @pytest.mark.parametrize(

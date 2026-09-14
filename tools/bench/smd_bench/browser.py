@@ -139,6 +139,7 @@ class Browser:
         if message.text.startswith("WebSocket connection") and self.current_stage in {
             "offline_pairing",
             "fault_host_service_restart",
+            "installer_offline_repair",
         }:
             expected = True
         target = self.expected_console_errors if expected else self.console_errors

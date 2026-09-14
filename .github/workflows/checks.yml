@@ -39,6 +39,9 @@ jobs:
           cache: pip
           cache-dependency-path: backend/requirements-dev.lock
       - run: pip install --require-hashes -r backend/requirements-dev.lock
+      - name: Native Windows service and ACL test dependencies
+        if: runner.os == 'Windows'
+        run: pip install --require-hashes -r desktop/requirements.lock
       - name: Safety red lines first
         working-directory: backend
         run: pytest tests/test_safety.py -v
@@ -126,6 +129,13 @@ jobs:
             backend/requirements.lock
             desktop/requirements.lock
       - run: pip install --require-hashes -r backend/requirements.lock -r desktop/requirements.lock
+      - name: Select release evidence scope
+        id: scope
+        shell: pwsh
+        run: |
+          $Version = (& python scripts/release/metadata.py).Trim()
+          if ($LASTEXITCODE -ne 0) { throw 'Source version mismatch' }
+          "stable=$($Version -match '^\d+\.\d+\.\d+$')".ToLower() >> $env:GITHUB_OUTPUT
       - uses: actions/download-artifact@v4
         with:
           name: frontend-dist
@@ -151,6 +161,24 @@ jobs:
           $Version = (& python scripts/release/metadata.py).Trim()
           if ($LASTEXITCODE -ne 0) { throw 'Source version mismatch' }
           ./scripts/release/smoke-windows.ps1 -Installer "artifacts/SmdHmi-$Version-windows-x64.exe" -Manifest artifacts/manifest.json -Evidence artifacts/windows-install-smoke.json
+      - name: Verify real RC upgrades, retained data, repair and legacy recovery
+        if: steps.scope.outputs.stable == 'true'
+        shell: pwsh
+        timeout-minutes: 35
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          New-Item -ItemType Directory artifacts/previous-installers | Out-Null
+          gh release download v0.3.0-rc.4 --pattern SmdHmi-0.3.0-rc.4-windows-x64.exe --dir artifacts/previous-installers
+          if ($LASTEXITCODE -ne 0) { throw 'Could not retrieve immutable rc.4 installer' }
+          gh release download v0.3.0-rc.5 --pattern SmdHmi-0.3.0-rc.5-windows-x64.exe --dir artifacts/previous-installers
+          if ($LASTEXITCODE -ne 0) { throw 'Could not retrieve immutable rc.5 installer' }
+          $Rc4 = 'artifacts/previous-installers/SmdHmi-0.3.0-rc.4-windows-x64.exe'
+          $Rc5 = 'artifacts/previous-installers/SmdHmi-0.3.0-rc.5-windows-x64.exe'
+          if ((Get-FileHash $Rc4 -Algorithm SHA256).Hash.ToLower() -ne 'aa266300e3ecfaa8d9212417adfdcbdc9474159a8793e03ce323b89fc64020e9') { throw 'rc.4 immutable asset changed' }
+          if ((Get-FileHash $Rc5 -Algorithm SHA256).Hash.ToLower() -ne '2950fac76760f76d041f51174948b1be1658815e6762f51d9173c9b5b6fa0de0') { throw 'rc.5 immutable asset changed' }
+          $Version = (& python scripts/release/metadata.py).Trim()
+          ./scripts/release/windows-overwrite-acceptance.ps1 -CurrentInstaller "artifacts/SmdHmi-$Version-windows-x64.exe" -Rc4Installer $Rc4 -Rc5Installer $Rc5 -EvidenceDir artifacts/overwrite-evidence
       - name: Installed TLS, experiment, recovery and report loop
         shell: pwsh
         timeout-minutes: 25
@@ -161,6 +189,12 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Installed HostComm bench failed; inspect sanitized evidence' }
           python scripts/release/package_bench.py --bundle artifacts/bench/SmdBench --output artifacts --evidence artifacts/bench-evidence
           if ($LASTEXITCODE -ne 0) { throw 'Bench packaging or acceptance gate failed' }
+      - name: Bind software stable acceptance to actual installer and bench bytes
+        if: steps.scope.outputs.stable == 'true'
+        shell: pwsh
+        run: |
+          python scripts/release/assemble_acceptance.py --artifacts artifacts --overwrite-evidence artifacts/overwrite-evidence --bench-evidence artifacts/bench-evidence
+          if ($LASTEXITCODE -ne 0) { throw 'Software acceptance evidence is incomplete or mismatched' }
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -169,6 +203,7 @@ jobs:
             artifacts/windows-install-smoke.json
             artifacts/freeze-work/**/warn-*.txt
             artifacts/bench-evidence/**
+            artifacts/overwrite-evidence/**
             artifacts/bench-work/**/warn-*.txt
           if-no-files-found: ignore
           retention-days: 14
@@ -184,6 +219,10 @@ jobs:
             artifacts/sbom.cdx.json
             artifacts/SHA256SUMS.txt
             artifacts/*.md
+            artifacts/software-acceptance.json
+            artifacts/windows-acceptance.json
+            artifacts/installer-*.json
+            artifacts/*.log
           if-no-files-found: error
           retention-days: 14
       - uses: actions/upload-artifact@v4
@@ -196,5 +235,9 @@ jobs:
             artifacts/sbom.cdx.json
             artifacts/SHA256SUMS.txt
             artifacts/*.md
+            artifacts/software-acceptance.json
+            artifacts/windows-acceptance.json
+            artifacts/installer-*.json
+            artifacts/*.log
           if-no-files-found: error
           retention-days: 90

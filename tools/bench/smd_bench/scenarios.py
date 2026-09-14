@@ -18,6 +18,8 @@ class Scenarios:
         self.result, self.installation = result, installation
         self.standard = self.custom = None
         self.last_report_metrics = None
+        self._installer_busy_observations = []
+        self._verify_busy_cooling = False
 
     def passed(self, name, **details):
         self.result["assertions"].append({"name": name, "status": "passed", **details})
@@ -180,6 +182,12 @@ class Scenarios:
         await self.worker.request("sample")
         await self.worker.request("complete_purge")
         await self.state("cooling")
+        if self._verify_busy_cooling:
+            from .maintenance import _record, busy_rejected
+
+            self._installer_busy_observations.append(await busy_rejected(self, "cooling"))
+            _record(self, "busy_rejected", self._installer_busy_observations)
+            self._verify_busy_cooling = False
         await self.worker.request("complete_cooling")
         complete = await self.state("completed")
         if not complete["run"]["safe_complete"] or int(complete["run"]["safe_boundary"]["sample_seq"]) <= int(
@@ -256,6 +264,11 @@ class Scenarios:
         await self.activate(recipe)
         test_id = "BENCH-" + self.run_id[:8] + "-" + scenario.upper().replace("_", "-")
         await self.start(test_id, recipe)
+        if scenario == "valid_drip":
+            from .maintenance import busy_rejected
+
+            self._installer_busy_observations.append(await busy_rejected(self, "measuring"))
+            self._verify_busy_cooling = True
         if scenario == "abort":
             await self.worker.request(
                 "sample",

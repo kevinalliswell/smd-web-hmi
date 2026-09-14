@@ -49,6 +49,8 @@ function Grant-WebView2RuntimeAccess([string]$InstallDir) {
 # SID literals avoid localized Administrators/Users names; service SID is resolved after registration.
 Invoke-Icacls @($InstallDir, '/inheritance:r', '/grant:r', '*S-1-5-18:(OI)(CI)F', '*S-1-5-32-544:(OI)(CI)F', '*S-1-5-32-545:(OI)(CI)RX')
 Invoke-Icacls @($DataDir, '/inheritance:r', '/grant:r', '*S-1-5-18:(OI)(CI)F', '*S-1-5-32-544:(OI)(CI)F', 'NT SERVICE\SmdHmi:(OI)(CI)M', '*S-1-5-32-545:RX')
+Invoke-Icacls @($InstallDir, '/setowner', '*S-1-5-32-544')
+Invoke-Icacls @($DataDir, '/setowner', '*S-1-5-32-544')
 foreach ($Restricted in @('config', 'updates')) {
     Invoke-Icacls @((Join-Path $DataDir $Restricted), '/inheritance:r', '/grant:r', '*S-1-5-18:(OI)(CI)F', '*S-1-5-32-544:(OI)(CI)F', 'NT SERVICE\SmdHmi:(OI)(CI)RX')
 }

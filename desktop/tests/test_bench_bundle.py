@@ -29,7 +29,7 @@ def test_bench_inventory_covers_runtime_and_browser_bytes(tmp_path):
     assert manifest["protocol_version"] == "2.0"
     assert manifest["design_revision"] == "2.0-design.1"
     assert "tool-manifest.json" not in manifest["files"]
-    assert json.loads((tmp_path / "tool-manifest.json").read_text()) == manifest
+    assert json.loads((tmp_path / "tool-manifest.json").read_text(encoding="utf-8")) == manifest
     with pytest.raises(FileExistsError):
         freeze.write_manifest(tmp_path, "0.3.0-rc.5", "a" * 40, {"browsers": []})
 

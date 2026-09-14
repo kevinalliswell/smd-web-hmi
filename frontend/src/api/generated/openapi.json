@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "smd-web-hmi 后端",
-    "version": "0.3.0-rc.5"
+    "version": "0.3.0"
   },
   "paths": {
     "/api/auth/login": {
@@ -3857,6 +3857,7 @@
         ],
         "summary": "Cancel",
         "operationId": "cancel_api_system_maintenance_delete",
+        "deprecated": true,
         "parameters": [
           {
             "name": "authorization",
@@ -3904,6 +3905,7 @@
         ],
         "summary": "Prepare",
         "operationId": "prepare_api_system_maintenance_prepare_post",
+        "deprecated": true,
         "parameters": [
           {
             "name": "authorization",
@@ -3922,16 +3924,6 @@
             }
           }
         ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/PrepareRequest"
-              }
-            }
-          }
-        },
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -3961,19 +3953,6 @@
         ],
         "summary": "Claim",
         "operationId": "claim_api_system_maintenance_claim_post",
-        "parameters": [
-          {
-            "name": "x-smd-upgrade-token",
-            "in": "header",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "minLength": 64,
-              "maxLength": 64,
-              "title": "X-Smd-Upgrade-Token"
-            }
-          }
-        ],
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -3982,18 +3961,9 @@
                 "schema": {}
               }
             }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
           }
-        }
+        },
+        "deprecated": true
       }
     },
     "/health": {
@@ -4407,20 +4377,6 @@
           "command"
         ],
         "title": "OperationCommandRequest"
-      },
-      "PrepareRequest": {
-        "properties": {
-          "target_version": {
-            "type": "string",
-            "pattern": "^\\d+\\.\\d+\\.\\d+(?:-[0-9A-Za-z.-]+)?$",
-            "title": "Target Version"
-          }
-        },
-        "type": "object",
-        "required": [
-          "target_version"
-        ],
-        "title": "PrepareRequest"
       },
       "RecipeDefinition": {
         "properties": {

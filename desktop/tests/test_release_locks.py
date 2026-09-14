@@ -12,8 +12,8 @@ SPEC.loader.exec_module(locks)
 def test_declaration_only_dependency_update_fails(tmp_path):
     declaration = tmp_path / "requirements.txt"
     locked = tmp_path / "requirements.lock"
-    declaration.write_text("fastapi==0.120.0\n")
-    locked.write_text("fastapi==0.119.0 \\\n    --hash=sha256:abc\n")
+    declaration.write_text("fastapi==0.120.0\n", encoding="utf-8")
+    locked.write_text("fastapi==0.119.0 \\\n    --hash=sha256:abc\n", encoding="utf-8")
     with pytest.raises(ValueError, match="differs"):
         locks.check(declaration, locked)
 
@@ -21,6 +21,6 @@ def test_declaration_only_dependency_update_fails(tmp_path):
 def test_dependency_versions_must_satisfy_declared_constraints(tmp_path):
     declaration = tmp_path / "requirements.txt"
     locked = tmp_path / "requirements.lock"
-    declaration.write_text("package-name[extra]>=1.0,<2.0 # context\n")
-    locked.write_text("package_name==1.2.3\n")
+    declaration.write_text("package-name[extra]>=1.0,<2.0 # context\n", encoding="utf-8")
+    locked.write_text("package_name==1.2.3\n", encoding="utf-8")
     assert locks.check(declaration, locked) == {"package-name": {"1.2.3"}}

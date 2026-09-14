@@ -6,7 +6,7 @@ from logging.handlers import RotatingFileHandler
 
 from .log_stream import LogStream
 from .runtime import data_root, load_environment, tls_options, version_root
-from .single_instance import single_instance
+from .single_instance import inherited_migration_guard, single_instance
 
 
 def migrate() -> None:
@@ -44,7 +44,12 @@ def main() -> None:
     data, version = data_root(), version_root()
     load_environment(data, version)
     if "--migrate" in sys.argv:
-        with single_instance("SmdHmi.Backend", data / "backend.lock"):
+        if "--migration-lock-handle" in sys.argv:
+            index = sys.argv.index("--migration-lock-handle")
+            guard = inherited_migration_guard(int(sys.argv[index + 1]))
+        else:
+            guard = single_instance("SmdHmi.Backend", data / "backend.lock")
+        with guard:
             migrate()
         return
     import servicemanager

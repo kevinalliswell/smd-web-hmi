@@ -2,6 +2,8 @@
 
 ## 状态与日期
 
+2026-09-13 补充：[ADR-011](ADR-011-overwrite-install-and-software-release.md)更新覆盖安装的维护入口，并将软件正式版与指定设备组合资格分开；以下保留当时决策和验收范围。
+
 已接受，2026-09-05；设计已落入本轮软件代码，Windows及真实组合仍以 M2—M5 分层证据为准；实验契约细化见[ADR-006](ADR-006-candidate-experiment-contracts.md)。
 
 ## 背景与决策

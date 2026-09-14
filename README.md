@@ -4,7 +4,7 @@
 
 ## 项目状态
 
-当前处于开发与联调阶段。`dev@855c84d / 0.3.0-rc.1` 是整改前基线，当前候选版本为 `0.3.0-rc.4`，修正 Windows 安装器中文及升级准备提示，见[安装错误排查](docs/verification/2026-09-06-windows-installer-errors.md)。HostComm 2.0 上位机适配、离线配对和无执行器模拟器沿用[rc.3 运行验证](docs/verification/2026-09-06-hostcomm-v2-runtime.md)，保留1.0兼容入口；[rc.2 软件记录](docs/verification/2026-09-06-software.md)保留为历史证据。固件尚未开发，不能代表整套设备已通过国标、干净断网Windows10/11现场或真机验收。已有功能与缺口见[验收证据基线](docs/verification.md)，后续进度统一记录在[任务清单](tasks/todo.md)。
+`0.3.0` 软件采用安装器自动覆盖升级，保留数据、配置和密钥，取消手填版本号的准备流程。实际发布状态以 GitHub Release 和同提交验收资产为准，未通过检查不发布。本轮覆盖安装验证见[执行记录](docs/verification/2026-09-13-overwrite-install.md)，rc.5 的安装版模拟器闭环见[历史证据](docs/verification/2026-09-08-installed-hostcomm-loop.md)。固件尚未开发，Win10/11 原生桌面、真机安全联锁和国标符合性仍单独验收。进度见[任务清单](tasks/todo.md)，发布边界见[验收契约](docs/release-acceptance.md)。
 
 | 项目 | 本轮软件实现 | 待验证边界 |
 |---|---|---|
@@ -13,7 +13,7 @@
 | Windows | 固定WebView2薄壳、PyInstaller、NSIS、Windows Service、事务升级 | [PR65 Windows CI安装与服务证据](docs/verification/2026-09-06-software.md#最终集成软件验证)；干净断网Win10/11未验收 |
 | 试验 | 标准/非标版本配方、测定/冷却归档、源日志补传、质量指标与重复性 | 2.0上位机与无执行器模拟器已有软件验证；真实固件、国标符合性和M5未验收 |
 
-发布状态与可下载候选包见 [GitHub Releases](https://github.com/kevinalliswell/smd-web-hmi/releases)；版本、提交与校验值以对应资产清单为准。
+发布状态与可下载安装包见 [GitHub Releases](https://github.com/kevinalliswell/smd-web-hmi/releases)；版本、提交与校验值以对应资产清单为准。
 
 详细设计、规范来源和维护入口见 [docs/README.md](docs/README.md)。工程协作规则见 [AGENTS.md](AGENTS.md)。
 

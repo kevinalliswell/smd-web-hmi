@@ -31,3 +31,6 @@
 本次整合是一次性例外：`dev@855c84d` 的历史经保留祖先关系的整合 PR 纳入 `main`，UI 独有改动另行审查、squash。清理前验证 Git bundle 可恢复；不重写主线或移动既有标签。[ADR-003](docs/decisions/ADR-003-project-baseline.md)记录理由。
 
 `backend/app/__init__.py` 的 `__version__` 是应用版本真源；前端、包清单和标签必须一致。发布流程见[发布与维护指南](docs/发布与维护指南.md)。提交、推送和 PR 在用户授权范围内完成，不因本文件额外要求重复确认。
+
+
+软件正式版与指定设备组合验收分开，依据 [ADR-011](docs/decisions/ADR-011-overwrite-install-and-software-release.md)。软件正式版必须取得同提交、实际资产及当前 CI 场景的[机器证据](docs/release-acceptance.md)，不得通过自由文本标记解锁。Win10/11人工环境、固件、物理联锁、国标符合性和M5仍逐项留证，不因版本去掉RC而改为已通过。

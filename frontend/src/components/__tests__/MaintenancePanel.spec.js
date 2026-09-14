@@ -1,39 +1,35 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import MaintenancePanel from '@/components/system/MaintenancePanel.vue'
-import ConfirmDialog from '@/components/shared/ConfirmDialog.vue'
-import { fetchMaintenance, prepareMaintenance, cancelMaintenance } from '@/api/maintenance'
-vi.mock('@/api/maintenance', () => ({ fetchMaintenance: vi.fn(), prepareMaintenance: vi.fn(), cancelMaintenance: vi.fn() }))
+import { fetchMaintenance } from '@/api/maintenance'
+vi.mock('@/api/maintenance', () => ({ fetchMaintenance: vi.fn() }))
 beforeEach(() => {
   vi.clearAllMocks()
-  fetchMaintenance.mockResolvedValue({ state: 'idle' })
+  fetchMaintenance.mockResolvedValue({ state: 'idle', current_version: '0.3.0' })
 })
-it('requires confirmation to prepare and supports cancelling without exposing a ticket', async () => {
-  prepareMaintenance.mockResolvedValue({ state: 'prepared', target_version: '0.3.0-rc.2' })
-  cancelMaintenance.mockResolvedValue({ state: 'idle' })
+it('shows installed version and direct installer instructions without manual preparation', async () => {
   const wrapper = mount(MaintenancePanel)
   await flushPromises()
-  await wrapper.find('input').setValue('0.3.0-rc.2')
-  await wrapper.find('button.primary').trigger('click')
-  expect(prepareMaintenance).not.toHaveBeenCalled()
-  await wrapper.findComponent(ConfirmDialog).find('button.primary').trigger('click')
-  await flushPromises()
-  expect(prepareMaintenance).toHaveBeenCalledWith('0.3.0-rc.2')
-  expect(wrapper.text()).toContain('等待本机安装器')
-  await wrapper.findAll('button').find((button) => button.text() === '取消准备').trigger('click')
-  await flushPromises()
-  expect(cancelMaintenance).toHaveBeenCalledOnce()
+  expect(wrapper.text()).toContain('版本与维护状态')
+  expect(wrapper.text()).toContain('当前版本：0.3.0')
+  expect(wrapper.text()).toContain('保留数据库、配置和账号')
+  expect(wrapper.findAll('input')).toHaveLength(0)
+  expect(wrapper.findAll('button').map(button => button.text())).toEqual(['刷新状态'])
+  expect(fetchMaintenance).toHaveBeenCalledOnce()
 })
-describe('rejected preparation', () => {
-  it('shows the backend reason and keeps the service out of a claimed-success state', async () => {
-    prepareMaintenance.mockRejectedValue({ response: { data: { error_code: 'maintenance_active', message: '存在待核查实验，禁止升级' } } })
-    const wrapper = mount(MaintenancePanel)
-    await flushPromises()
-    await wrapper.find('input').setValue('0.3.0-rc.2')
-    await wrapper.find('button.primary').trigger('click')
-    await wrapper.findComponent(ConfirmDialog).find('button.primary').trigger('click')
-    await flushPromises()
-    expect(wrapper.find('[role="alert"]').text()).toContain('存在待核查实验')
-    expect(wrapper.find('[role="status"]').text()).toContain('未进入维护')
-  })
+it('keeps unfinished maintenance visible and refreshes after installer recovery', async () => {
+  fetchMaintenance.mockResolvedValueOnce({ state: 'claimed', current_version: '0.3.0-rc.4', target_version: '0.3.0' })
+  const wrapper = mount(MaintenancePanel)
+  await flushPromises()
+  expect(wrapper.find('[role="status"]').text()).toContain('本机完成安装或恢复')
+  await wrapper.find('button').trigger('click')
+  await flushPromises()
+  expect(wrapper.find('[role="status"]').text()).toContain('当前无维护操作')
+})
+it('shows failure without reporting maintenance completion', async () => {
+  fetchMaintenance.mockRejectedValue({ response: { data: { message: '维护记录损坏' } } })
+  const wrapper = mount(MaintenancePanel)
+  await flushPromises()
+  expect(wrapper.find('[role="alert"]').text()).toContain('维护记录损坏')
+  expect(wrapper.find('[role="status"]').text()).toContain('维护状态未知')
 })
