@@ -82,9 +82,12 @@ onMounted(async () => {
     </div>
 
     <div class="card channels">
+      <!-- 不在这里放固定色标：曲线颜色按通道在其量纲分组内的位置分配，
+           固定色标会与图上实际颜色不符。颜色对应关系看各图的图例/标题。 -->
       <label v-for="ch in TREND_CHANNELS" :key="ch.key" class="chk">
         <input v-model="visible[ch.key]" type="checkbox" />
-        <span :style="{ color: ch.color }">{{ ch.label }}</span>
+        <span>{{ ch.label }}</span>
+        <span class="chk-unit">{{ ch.unit }}</span>
       </label>
     </div>
 
@@ -103,6 +106,7 @@ onMounted(async () => {
 .f { display: flex; align-items: center; gap: 6px; }
 .f label { color: var(--text-sec); font-size: 12px; }
 .channels { display: flex; gap: 16px; flex-wrap: wrap; }
+.chk-unit { color: var(--text-muted); font-size: 11px; }
 .chk { display: flex; align-items: center; gap: 6px; font-size: 12px; cursor: pointer; }
 .banner { background: var(--accent-dim); border: 1px solid var(--accent); color: var(--accent); border-radius: 6px; padding: 8px 12px; font-size: 12px; }
 @media (max-width: 560px) { .filters, .f { align-items: stretch; flex-direction: column; } .channels { gap: 10px 14px; } }

@@ -6,6 +6,12 @@ const FALLBACK = {
   series2: '#199e70',
 }
 
+/** 读取任意 CSS 颜色 token 的当前值（canvas 不接受 var()，须取计算值）。 */
+export function resolveToken(name, fallback = '') {
+  if (!name) return fallback
+  return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback
+}
+
 export function getChartTheme() {
   const styles = getComputedStyle(document.documentElement)
   const token = (name, fallback) => styles.getPropertyValue(name).trim() || fallback
@@ -28,10 +34,10 @@ export function applyChartTheme(chart) {
     if (scale.title) scale.title.color = name === 'yTemp' ? colors.accent : colors.tick
   })
   const seriesColors = [colors.series1, colors.series2]
-  ;(chart.data?.datasets || []).forEach((ds, i) => {
-    // 仅刷新按系列槽着色的数据集；显式指定颜色的（如 CO 橙）保持不变
-    if (ds.seriesSlot === undefined) return
-    ds.borderColor = seriesColors[ds.seriesSlot % seriesColors.length]
+  ;(chart.data?.datasets || []).forEach((ds) => {
+    // 语义色（如 CO 橙）按 token 重新取值，槽位色按当前主题的系列色重着
+    if (ds.colorToken) ds.borderColor = resolveToken(ds.colorToken, ds.borderColor)
+    else if (ds.seriesSlot !== undefined) ds.borderColor = seriesColors[ds.seriesSlot % seriesColors.length]
   })
   const legendLabels = chart.options.plugins?.legend?.labels
   if (legendLabels) legendLabels.color = colors.tick

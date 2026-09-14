@@ -6,6 +6,7 @@ import { fetchReports, generateReport, reportDownloadUrl } from '@/api/reports'
 import { exportLogs, logDownloadUrl } from '@/api/logs'
 import { downloadFile } from '@/utils/download'
 import { formatDateTime } from '@/utils/dateTime'
+import EmptyState from '@/components/shared/EmptyState.vue'
 
 const { canOperate } = useRole()
 
@@ -120,7 +121,6 @@ onMounted(loadAll)
           <tr><th>#</th><th>试验</th><th>生成时间</th><th>操作员</th><th>格式</th><th>大小</th><th></th></tr>
         </thead>
         <tbody>
-          <tr v-if="!reports.length"><td colspan="7" class="empty muted">暂无报告</td></tr>
           <tr v-for="r in reports" :key="r.id">
             <td>{{ r.id }}</td>
             <td class="mono">{{ r.test_id }}</td>
@@ -132,6 +132,7 @@ onMounted(loadAll)
           </tr>
         </tbody>
       </table>
+      <EmptyState v-if="!reports.length" title="暂无报告" hint="选择试验后生成报告，生成记录会列在这里。" />
     </div>
   </div>
 </template>

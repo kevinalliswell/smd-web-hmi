@@ -14,6 +14,7 @@ import { downloadFile } from '@/utils/download'
 import { formatDateTime } from '@/utils/dateTime'
 import HistoryChart from '@/components/charts/HistoryChart.vue'
 import AlarmTable from '@/components/alarms/AlarmTable.vue'
+import EmptyState from '@/components/shared/EmptyState.vue'
 
 const { canOperate } = useRole()
 
@@ -107,7 +108,6 @@ onMounted(loadTests)
             <tr><th>试验编号</th><th>操作员</th><th>开始</th><th>状态</th></tr>
           </thead>
           <tbody>
-            <tr v-if="!tests.length"><td colspan="4" class="empty muted">暂无试验</td></tr>
             <tr
               v-for="t in tests"
               :key="t.test_id"
@@ -179,6 +179,7 @@ onMounted(loadTests)
                 </tr>
               </tbody>
             </table>
+          <EmptyState v-if="!tests.length" title="暂无试验记录" hint="试验启动后会在这里归档。" />
           </div>
         </template>
       </div>

@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from 'vue'
 import { fetchTests, fetchTestSamples } from '@/api/tests'
 import { compareTests } from '@/api/analytics'
 import OverlayChart from '@/components/charts/OverlayChart.vue'
+import EmptyState from '@/components/shared/EmptyState.vue'
 
 const tests = ref([])
 const selected = ref(new Set())
@@ -98,7 +99,7 @@ onMounted(async () => {
           <input type="checkbox" :checked="selected.has(t.test_id)" @change="toggle(t.test_id)" />
           <span class="mono">{{ t.test_id }}</span>
         </label>
-        <div v-if="!tests.length" class="muted">暂无试验</div>
+        <EmptyState v-if="!tests.length" title="暂无可选试验" hint="完成试验后即可在此做多炉次对比。" />
         <div class="picker-foot">
           <div class="f">
             <label for="analytics-height">H (mm)</label>

@@ -15,7 +15,7 @@ import {
   PointElement,
   Tooltip,
 } from 'chart.js'
-import { getChartTheme, subscribeChartTheme } from '@/utils/chartTheme'
+import { getChartTheme, resolveToken, subscribeChartTheme } from '@/utils/chartTheme'
 
 Chart.register(LineController, LineElement, PointElement, LinearScale, CategoryScale, Tooltip, Legend)
 
@@ -23,7 +23,7 @@ const props = defineProps({
   // 标题与单位分开：单位只在轴上出现一次，不重复进图例
   title: { type: String, required: true },
   unit: { type: String, default: '' },
-  // [{ label, key, dashed?, color? }]；color 用于保留既有语义色（如 CO 橙）
+  // [{ label, key, dashed?, colorToken? }]；colorToken 用于保留既有语义色（如 CO 橙）
   series: { type: Array, required: true },
   // labels/values 是普通（非响应式）缓冲，由 revision 递增来通知刷新：
   // 若把响应式数组直接交给 Chart.js 持有，二者会互相触发更新直至爆栈。
@@ -46,9 +46,10 @@ function buildDatasets(colors) {
   return props.series.map((s, i) => ({
     label: s.label,
     data: [],
-    borderColor: s.color || slots[i % slots.length],
-    // 语义色显式指定时不参与主题换肤重着色
-    seriesSlot: s.color ? undefined : i,
+    borderColor: s.colorToken ? resolveToken(s.colorToken, slots[i % slots.length]) : slots[i % slots.length],
+    // 语义色按 token 换肤；其余按槽位换肤
+    colorToken: s.colorToken,
+    seriesSlot: s.colorToken ? undefined : i,
     borderWidth: 2,
     borderDash: s.dashed ? [5, 4] : undefined,
     pointRadius: 0,
