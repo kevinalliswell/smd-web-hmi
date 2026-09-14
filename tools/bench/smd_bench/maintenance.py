@@ -146,7 +146,11 @@ async def offline_confirmation(scenes) -> None:
     await scenes.worker.close()  # Real TLS listener disappears; do not edit application state.
     await eventually(
         lambda: scenes.ui.api("/api/status"),
-        lambda value: value.get("_v2", {}).get("online") is False,
+        # _v2 belongs to the last received board snapshot and remains cached after
+        # disconnect. The API's top-level fields reflect current link/freshness.
+        lambda value: value.get("comm_quality") == "offline"
+        and value.get("control_ready") is False
+        and value.get("data_fresh") is False,
     )
     before = await asyncio.to_thread(_snapshot, installation)
     archives_before = await _archives(scenes.ui)

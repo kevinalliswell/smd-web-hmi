@@ -9,6 +9,103 @@ from smd_bench import maintenance
 from smd_desktop.installer_authorization import request_digest
 
 
+def offline_scenes(api, close):
+    """Only the UI navigation is stubbed; no installer may run before admission."""
+    page = SimpleNamespace(
+        get_by_role=Mock(return_value=SimpleNamespace(wait_for=AsyncMock())),
+        locator=Mock(return_value=SimpleNamespace(count=AsyncMock(return_value=0))),
+    )
+    return SimpleNamespace(
+        installation=SimpleNamespace(),
+        state=AsyncMock(),
+        stage=Mock(),
+        ui=SimpleNamespace(go=AsyncMock(), page=page, api=api),
+        worker=SimpleNamespace(close=close),
+    )
+
+
+@pytest.mark.asyncio
+async def test_offline_confirmation_uses_current_api_link_not_last_v2_snapshot(monkeypatch):
+    from fastapi import FastAPI
+    from httpx import ASGITransport, AsyncClient
+    from smd_bench.browser import eventually
+
+    from app.api.deps import CurrentUser, get_current_user
+    from app.api.routes import status as status_route
+    from app.services.cache import StatusCache
+    from app.services.maintenance_service import MaintenanceManager
+
+    cache = StatusCache()
+    await cache.update({"system": {"protocol_version": "2.0", "current_state": "idle"}, "_v2": {"online": True}})
+    link = SimpleNamespace(is_online=True)
+    monkeypatch.setattr(status_route, "status_cache", cache)
+    monkeypatch.setattr(status_route, "maintenance_manager", MaintenanceManager())
+    app = FastAPI()
+    app.include_router(status_route.router)
+    app.state.hostcomm_client = link
+    app.dependency_overrides[get_current_user] = lambda: CurrentUser("admin", "admin")
+    observations = []
+
+    async def close():
+        # The production disconnect callback invalidates freshness, retaining the
+        # last board snapshot for display. An offline board cannot send a new one.
+        link.is_online = False
+        cache.invalidate()
+
+    async def short_wait(function, predicate):
+        return await eventually(function, predicate, timeout=0.02)
+
+    class OfflineObserved(Exception):
+        pass
+
+    def snapshot(_installation):
+        raise OfflineObserved
+
+    monkeypatch.setattr(maintenance, "eventually", short_wait)
+    monkeypatch.setattr(maintenance, "_snapshot", snapshot)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+
+        async def api(path):
+            response = await client.get(path)
+            assert response.status_code == 200
+            value = response.json()["data"]
+            observations.append(value)
+            return value
+
+        with pytest.raises(OfflineObserved):
+            await maintenance.offline_confirmation(offline_scenes(api, close))
+    assert observations[-1]["comm_quality"] == "offline"
+    assert observations[-1]["data_fresh"] is False and observations[-1]["control_ready"] is False
+    assert observations[-1]["_v2"]["online"] is True  # Historical snapshot is deliberately retained.
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "status",
+    [
+        {},
+        {"comm_quality": "online", "control_ready": False, "data_fresh": False},
+        {"comm_quality": "degraded", "control_ready": False, "data_fresh": False},
+        {"comm_quality": "offline", "control_ready": True, "data_fresh": False},
+        {"comm_quality": "offline", "control_ready": False, "data_fresh": True},
+        {"comm_quality": "offline", "control_ready": False},
+    ],
+)
+async def test_offline_confirmation_never_accepts_missing_or_contradictory_live_evidence(monkeypatch, status):
+    from smd_bench.browser import eventually
+
+    async def short_wait(function, predicate):
+        return await eventually(function, predicate, timeout=0.01)
+
+    snapshot = Mock(side_effect=AssertionError("installer preparation must not start"))
+    monkeypatch.setattr(maintenance, "eventually", short_wait)
+    monkeypatch.setattr(maintenance, "_snapshot", snapshot)
+    status = {**status, "_v2": {"online": False}}
+    with pytest.raises(TimeoutError):
+        await maintenance.offline_confirmation(offline_scenes(AsyncMock(return_value=status), AsyncMock()))
+    snapshot.assert_not_called()
+
+
 def request_and_reply(tmp_path, *, reason="device_busy", confirmed=True):
     request = {
         "transaction_id": "a" * 32,

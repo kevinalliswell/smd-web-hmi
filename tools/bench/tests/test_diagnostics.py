@@ -34,6 +34,20 @@ def test_public_frames_exclude_messages_source_and_secret_paths(tmp_path):
     assert len(traces) == 1 and payload in traces[0].read_text(encoding="utf-8")
 
 
+def test_shipped_maintenance_frame_keeps_location_without_private_context():
+    from smd_bench.diagnostics import public_frames
+
+    private = "private-maintenance-key-884422"
+    code = "def offline_confirmation():\n    secret = payload\n    raise TimeoutError(secret)\noffline_confirmation()"
+    try:
+        exec(compile(code, rf"C:\\private\\{private}\\maintenance.py", "exec"), {"payload": private})
+    except TimeoutError as error:
+        frames = public_frames(error)
+    assert frames[-1] == {"file": "maintenance.py", "function": "offline_confirmation", "line": 3}
+    assert all(set(frame) == {"file", "function", "line"} for frame in frames)
+    assert private not in json.dumps(frames) and "private" not in json.dumps(frames)
+
+
 def test_log_archive_is_private_and_only_copies_owned_service_logs(tmp_path):
     run_id, private, data = private_run(tmp_path)
     logs = data / "logs"

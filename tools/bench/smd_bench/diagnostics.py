@@ -15,6 +15,7 @@ PUBLIC_FILES = frozenset(
     {
         "cli.py",
         "installation.py",
+        "maintenance.py",
         "windows.py",
         "browser.py",
         "scenarios.py",
