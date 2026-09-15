@@ -880,30 +880,54 @@ async def test_cleared_unacknowledged_alarm_can_be_confirmed_before_run_ack(syst
     snapshot = await client.get_status()
     assert snapshot["alarm"]["ack_required"] is True
     assert snapshot["system"]["can_ack_run"] is False
+    renewals_injected = 0
     if renew_before_confirm:
-        client.transport._heartbeat_task.cancel()
-        await asyncio.gather(client.transport._heartbeat_task, return_exceptions=True)
         confirm_owned = client.operations.confirm_owned_lease
 
         async def renewal_arrives_before_confirmation(frame):
+            nonlocal renewals_injected
+            transport = client.transport
+            heartbeat = transport._heartbeat_task
+            writer = transport._writer
+            token = transport.lease_token()
+            assert heartbeat is not None and not heartbeat.done()
             # Reproduce a renewal arriving after the status read but before
-            # its application/database processing finishes, for both commands.
-            async with asyncio.timeout(1):
-                while True:
-                    ack = await client.transport.request("heartbeat", {"lease_id": client.transport.lease_id})
-                    if int(ack["uptime_ms"]) > int(frame["uptime_ms"]):
-                        break
-                    await asyncio.sleep(0.001)
-            assert ack["payload"]["state_revision"] == frame["payload"]["run"]["state_revision"]
+            # its confirmation, without pausing heartbeats during database work.
+            try:
+                heartbeat.cancel()
+                await asyncio.gather(heartbeat, return_exceptions=True)
+                async with asyncio.timeout(1):
+                    while True:
+                        ack = await transport.request("heartbeat", {"lease_id": transport.lease_id})
+                        if int(ack["uptime_ms"]) > int(frame["uptime_ms"]):
+                            break
+                        await asyncio.sleep(0.001)
+                assert ack["payload"]["state_revision"] == frame["payload"]["run"]["state_revision"]
+            finally:
+                same_context = (
+                    transport._writer is writer
+                    and transport.lease_token() == token
+                    and transport.is_online
+                    and transport._heartbeat_task is heartbeat
+                    and heartbeat.done()
+                )
+                if same_context:
+                    transport._heartbeat_task = asyncio.create_task(
+                        transport._heartbeats(), name="hostcomm-v2-heartbeat"
+                    )
+                assert same_context, "Lease/session changed during the injected renewal"
+            renewals_injected += 1
             return await confirm_owned(frame)
 
         monkeypatch.setattr(client.operations, "confirm_owned_lease", renewal_arrives_before_confirmation)
     acknowledged = await http.post(f"/api/alarms/{alarm['id']}/ack")
     assert acknowledged.status_code == 200, acknowledged.text
     assert acknowledged.json()["data"]["device_confirmed"] is True
+    assert renewals_injected == (1 if renew_before_confirm else 0)
     snapshot = await client.get_status()
     assert snapshot["alarm"]["ack_required"] is False
     assert snapshot["system"]["can_ack_run"] is True
     finished = await command(http, "ack_run", {}, "alarm-history-finish")
     assert finished.status_code == 200, finished.text
+    assert renewals_injected == (2 if renew_before_confirm else 0)
     assert sim.state.run["state"] == "idle"
