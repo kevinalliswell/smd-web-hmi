@@ -1,8 +1,10 @@
 # 文档入口
 
-维护角色：项目维护者。当前推进保留数据的覆盖安装与 `0.3.0` 软件正式版，实施及未验收边界见 [ADR-011](decisions/ADR-011-overwrite-install-and-software-release.md)、[路线图](../tasks/plan.md)和[软件发布证据契约](release-acceptance.md)。本机检查与后续 Windows CI、实际资产分层登记在[覆盖安装验证记录](verification/2026-09-13-overwrite-install.md)；未取得本轮证据前，不宣称已发布。
+维护角色：项目维护者。[v0.3.0 上位机软件正式版](https://github.com/kevinalliswell/smd-web-hmi/releases/tag/v0.3.0)已于 **2026-09-15 09:49:48 UTC** 发布，提供保留账户、配置、配对密钥及实际数据库路径的覆盖安装，无需手填目标版本。发布提交为 `404ecb50edf23864ed482e68cc4a1933deb3383f`，软件与设备验收边界见[ADR-011](decisions/ADR-011-overwrite-install-and-software-release.md)。
 
-2026-09-14，PR #79 的完整 Windows 安装、rc.4/rc.5 升级、TLS 实验与报告、故障和维护场景、九项机器证据聚合均已通过，随后合入主线。主线复验曾在 Windows 后端报警确认用例失败；修复 PR #81 的首轮完整 Windows CI 已通过，随后审查发现读容量异常转换后未登记待补传的遗漏，补充修正、本机专项及全量回归已完成，新的完整 Windows CI 待验证。PR #81 尚未合并，主线仍为原提交，未创建 `v0.3.0` 标签或正式 Release。PR 通过不能代替主线和标签验收，详见[完整 PR 验收](verification/2026-09-13-overwrite-install.md#修正后的完整-pr-验收与主线合并)、[主线失败记录](verification/2026-09-13-overwrite-install.md#主线复验失败与修复边界)与[修复 PR 验收及审查跟进](verification/2026-09-13-overwrite-install.md#修复-pr-首轮验收与审查跟进)。实际发布状态及下载字节以最终 Release 所附机器验收和 `SHA256SUMS.txt` 为准。
+主线和标签分别完成必要检查、真实 rc.4/rc.5 升级、完整 TLS 安装版实验与报告、故障恢复及资产门禁。标签工作流八项任务全部通过，Release 非草稿、非预发布，包含21项发行资产，实际下载和校验值均已核验，工具ZIP内部清单也已核验。构建身份、历史失败与分层证据见[本轮验证记录](verification/2026-09-13-overwrite-install.md#标签构建与正式发布)，任务见[路线图](../tasks/plan.md)和[待办](../tasks/todo.md)。实际发行字节与范围以该 Release 的机器验收和 `SHA256SUMS.txt` 为准；本轮19项联调结果与自动门禁的覆盖范围分别记录。
+
+仓库保持私有，GitHub Release 发行资产的下载需要本仓库访问权限。
 
 上一候选 `0.3.0-rc.5` 已完成 HOST-2006—2009 的软件实现及 Windows CI 安装版联调，完整构建身份、实际产物摘要和清理结果见[安装版闭环验证](verification/2026-09-08-installed-hostcomm-loop.md)。候选交付状态、最终提交与字节以对应标签流水线及 Release 附件为准。固件文档修订为 `2.0-doc.3`，协议仍为 `2.0 / 2.0-design.1`；交接要求与未验边界见[固件交接](hostcomm/v2/firmware-handoff.md)和[兼容核对](hostcomm/v2/compatibility.md)。Win10/11 WebView2 人工验收、真实 STM32、安全联锁与持续运行验收仍未完成。
 
