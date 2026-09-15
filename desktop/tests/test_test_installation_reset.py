@@ -1,6 +1,7 @@
 """File-level behavior of the standalone Windows PowerShell 5.1 reset tool."""
 
 import json
+import math
 import os
 import subprocess
 from pathlib import Path
@@ -222,6 +223,7 @@ def test_full_backup_preserves_empty_directories_and_verifies_bytes(powershell, 
     assert (backup / "data/config/service.env").read_bytes() == (data / "config/service.env").read_bytes()
     assert (backup / "data/db/smd.db").read_bytes() == (data / "db/smd.db").read_bytes()
     assert (backup / "data/empty").is_dir()
+    assert not (backup / "stage.json").exists()
     manifest = json.loads((backup / "manifest.json").read_text(encoding="utf-8-sig"))
     assert manifest["version"] == "0.3.0-rc.2"
     assert any(item["path"] == "db/smd.db" and item["sha256"] for item in manifest["data"])
@@ -366,3 +368,188 @@ def test_smoke_reset_phase_read_failure_is_redacted(powershell, tmp_path):
     assert result.returncode == 0
     assert not result.stderr
     assert json.loads(result.stdout) == "unknown"
+
+
+_BACKUP_STEPS = (
+    "program_source_snapshot",
+    "program_copy",
+    "program_protect",
+    "program_destination_snapshot",
+    "program_source_recheck",
+    "data_source_snapshot",
+    "data_copy",
+    "data_protect",
+    "data_destination_snapshot",
+    "data_source_recheck",
+    "metadata_snapshot",
+    "manifest_write",
+    "manifest_readback",
+)
+_TIMING_CONTEXT = (
+    "$timing=@{current_step=$null;completed_steps=[Collections.Generic.List[object]]::new();"
+    "timer=[Diagnostics.Stopwatch]::new()}\n"
+)
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        "first_step",
+        "running",
+        "completed",
+        "extra_private_fields",
+        "duplicate",
+        "out_of_order",
+        "too_many",
+        "negative",
+        "nan",
+        "positive_infinity",
+        "negative_infinity",
+        "bool",
+        "numeric_string",
+        "unknown_current",
+        "unknown_completed",
+        "current_already_completed",
+        "premature_completed",
+        "missing",
+        "non_array",
+    ],
+)
+def test_backup_timing_projection_rejects_invalid_data_and_drops_private_fields(powershell, tmp_path, case):
+    completed = [{"name": _BACKUP_STEPS[0], "elapsed_seconds": 1.25}]
+    operation = {"current_step": _BACKUP_STEPS[1], "completed_steps": completed}
+    if case == "first_step":
+        operation = {"current_step": _BACKUP_STEPS[0], "completed_steps": []}
+    elif case == "completed":
+        operation = {
+            "current_step": None,
+            "completed_steps": [{"name": step, "elapsed_seconds": 0} for step in _BACKUP_STEPS],
+        }
+    elif case == "extra_private_fields":
+        operation["secret"] = "DO_NOT_ECHO"
+        completed[0]["path"] = str(tmp_path)
+        completed[0]["password"] = "DO_NOT_ECHO"
+    elif case == "duplicate":
+        completed.append(completed[0].copy())
+    elif case == "out_of_order":
+        completed[0]["name"] = _BACKUP_STEPS[1]
+    elif case == "too_many":
+        completed[:] = [{"name": _BACKUP_STEPS[0], "elapsed_seconds": 0}] * 14
+    elif case == "negative":
+        completed[0]["elapsed_seconds"] = -1
+    elif case == "bool":
+        completed[0]["elapsed_seconds"] = True
+    elif case == "numeric_string":
+        completed[0]["elapsed_seconds"] = "1.25"
+    elif case == "unknown_current":
+        operation["current_step"] = "DO_NOT_ECHO"
+    elif case == "unknown_completed":
+        completed[0]["name"] = "DO_NOT_ECHO"
+    elif case == "current_already_completed":
+        operation["current_step"] = _BACKUP_STEPS[0]
+    elif case == "premature_completed":
+        operation["current_step"] = None
+    elif case == "non_array":
+        operation["completed_steps"] = completed[0]
+    stage = {"schema_version": 1, "phase": "copying", "backup_operation": operation}
+    if case == "missing":
+        del stage["backup_operation"]
+    mutate = ""
+    if case in {"nan", "positive_infinity", "negative_infinity"}:
+        member = {"nan": "NaN", "positive_infinity": "PositiveInfinity", "negative_infinity": "NegativeInfinity"}[case]
+        mutate = f"$stage.backup_operation.completed_steps[0].elapsed_seconds=[double]::{member}\n"
+    result = run(
+        powershell,
+        tmp_path,
+        f". {literal(SMOKE_SCRIPT)}\n"
+        f"$stage={literal(json.dumps(stage))} | ConvertFrom-Json\n"
+        + mutate
+        + "$safe=Get-TestResetBackupOperation -StageRecord $stage\n"
+        "ConvertTo-Json -InputObject $safe -Depth 6",
+    )
+    assert result.returncode == 0
+    assert not result.stderr
+    if case in {"first_step", "completed"}:
+        expected = operation
+    elif case in {"running", "extra_private_fields"}:
+        expected = {
+            "current_step": _BACKUP_STEPS[1],
+            "completed_steps": [{"name": _BACKUP_STEPS[0], "elapsed_seconds": 1.25}],
+        }
+    else:
+        expected = None
+    assert json.loads(result.stdout) == expected
+    assert "DO_NOT_ECHO" not in result.stdout
+    assert str(tmp_path) not in result.stdout
+
+
+def test_real_backup_records_all_thirteen_steps_without_exposing_source_contents(powershell, tmp_path, trees):
+    data, program, backup = trees
+    result = run(
+        powershell,
+        tmp_path,
+        f". {literal(SMOKE_SCRIPT)}\n"
+        f"$plan=@{{data_dir={literal(data)};install_dir={literal(program)};version='0.3.0'}}\n"
+        + _TIMING_CONTEXT
+        + f"$hash=New-VerifiedBackup $plan {literal(backup)} $timing\n"
+        + "if ($hash -isnot [string] -or $hash -cnotmatch '^[0-9a-f]{64}$') { throw 'Backup return changed' }\n"
+        + f"Set-ResetStage 'completed' $plan {literal(backup)} $timing\n"
+        + f"$record=Read-ResetJson {literal(backup / 'stage.json')}\n"
+        + "Get-TestResetBackupOperation $record | ConvertTo-Json -Depth 6",
+    )
+    assert result.returncode == 0, result.stderr
+    assert not result.stderr
+    progress = json.loads(result.stdout)
+    assert progress["current_step"] is None
+    assert [item["name"] for item in progress["completed_steps"]] == list(_BACKUP_STEPS)
+    assert all(
+        isinstance(item["elapsed_seconds"], (int, float))
+        and math.isfinite(item["elapsed_seconds"])
+        and item["elapsed_seconds"] >= 0
+        for item in progress["completed_steps"]
+    )
+    stage = json.loads((backup / "stage.json").read_text(encoding="utf-8"))
+    assert stage["phase"] == "completed"
+    assert (backup / "data/db/smd.db").read_bytes() == (data / "db/smd.db").read_bytes()
+    assert (backup / "data/empty").is_dir()
+    assert "private fixture" not in result.stdout
+    assert str(tmp_path) not in result.stdout
+
+
+@pytest.mark.parametrize("copy_fails", [False, True])
+def test_timing_write_failure_preserves_original_backup_error_or_success(powershell, tmp_path, trees, copy_fails):
+    data, program, backup = trees
+    body = (
+        "Rename-Item function:Write-ResetJson Write-OriginalResetJson\n"
+        "$script:TimingFailures=0\n"
+        "function Write-ResetJson { param($Path,$Value)\n"
+        "if ($Value.Contains('backup_operation')) { $script:TimingFailures++; throw 'DIAGNOSTIC_ONLY_FAILURE' }\n"
+        "Write-OriginalResetJson -Path $Path -Value $Value }\n"
+        f"$plan=@{{data_dir={literal(data)};install_dir={literal(program)};version='0.3.0'}}\n"
+        + _TIMING_CONTEXT
+        + f"Set-ResetStage 'copying' $plan {literal(backup)}\n"
+    )
+    if copy_fails:
+        body += (
+            "function Copy-ResetTree { param($Source,$Destination); throw 'ORIGINAL_COPY_FAILURE' }\n"
+            f"try {{ New-VerifiedBackup $plan {literal(backup)} $timing; throw 'BACKUP_SHOULD_FAIL' }}\n"
+            "catch { if ($_.Exception.Message -cne 'ORIGINAL_COPY_FAILURE') { throw } }\n"
+        )
+    else:
+        body += (
+            f"$hash=New-VerifiedBackup $plan {literal(backup)} $timing\n"
+            f"Set-ResetStage 'completed' $plan {literal(backup)} $timing\n"
+        )
+    body += (
+        "if ($script:TimingFailures -lt 1) { throw 'Timing failure was not exercised' }\n'original_result_preserved'"
+    )
+    result = run(powershell, tmp_path, body)
+    assert result.returncode == 0, result.stderr
+    assert not result.stderr
+    assert result.stdout.strip() == "original_result_preserved"
+    record = json.loads((backup / "stage.json").read_text(encoding="utf-8"))
+    assert record["phase"] == ("copying" if copy_fails else "completed")
+    assert "backup_operation" not in record
+    assert (data / "config/service.env").read_text(encoding="utf-8") == "private fixture\n"
+    assert (program / "service.exe").read_bytes() == b"program fixture"
+    assert (backup / "manifest.json").exists() is not copy_fails

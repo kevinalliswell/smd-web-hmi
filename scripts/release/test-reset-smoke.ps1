@@ -17,6 +17,35 @@ function Get-TestResetPhase {
     } catch { }
     return 'unknown'
 }
+function Get-TestResetBackupOperation {
+    param($StageRecord)
+    try {
+        if ((Get-TestResetPhase $StageRecord) -ceq 'unknown') { return $null }
+        $Operation = $StageRecord.backup_operation
+        $Steps = @('program_source_snapshot','program_copy','program_protect','program_destination_snapshot',
+            'program_source_recheck','data_source_snapshot','data_copy','data_protect','data_destination_snapshot',
+            'data_source_recheck','metadata_snapshot','manifest_write','manifest_readback')
+        $Completed = $Operation.completed_steps
+        if ($Completed -isnot [array] -or $Completed.Count -gt $Steps.Count) { return $null }
+        $Safe = [Collections.Generic.List[object]]::new()
+        foreach ($Item in $Completed) {
+            if ($Item.name -isnot [string] -or $Item.name -cne $Steps[$Safe.Count]) { return $null }
+            $Seconds = $Item.elapsed_seconds
+            if ($Seconds -isnot [int] -and $Seconds -isnot [long] -and $Seconds -isnot [double] -and
+                $Seconds -isnot [single] -and $Seconds -isnot [decimal]) { return $null }
+            $Seconds = [double]$Seconds
+            if ([double]::IsNaN($Seconds) -or [double]::IsInfinity($Seconds) -or $Seconds -lt 0) { return $null }
+            $Safe.Add(@{name=$Steps[$Safe.Count];elapsed_seconds=$Seconds})
+        }
+        $Current = $Operation.current_step
+        if ($null -eq $Current) {
+            if ($Safe.Count -ne $Steps.Count) { return $null }
+        } elseif ($Current -isnot [string] -or $Safe.Count -ge $Steps.Count -or $Current -cne $Steps[$Safe.Count]) {
+            return $null
+        }
+        return @{current_step=$Current;completed_steps=@($Safe.ToArray())}
+    } catch { return $null }
+}
 function Invoke-TestResetSmoke {
     param([string]$Installer, [string]$InstallDir, [string]$DataDir, [string]$Version,
         [string]$Identity, [string]$OwnerFile, [int]$TimeoutSeconds)
@@ -92,13 +121,13 @@ function Invoke-TestResetSmoke {
             -RedirectStandardOutput $Stdout -RedirectStandardError $Stderr -PassThru
         # Measure the exit wait here; the last durable phase is observed later in finally.
         $ResetTimer = [Diagnostics.Stopwatch]::StartNew()
-        if (-not $Process.WaitForExit(600000)) {
-            try {
-                $Result.test_reset_progress = @{ phase = 'unknown';
-                    elapsed_seconds = [Math]::Round($ResetTimer.Elapsed.TotalSeconds, 3) }
-            } catch { }
-            throw 'Test reset timed out under Windows PowerShell 5.1'
-        }
+        $ResetExited = $Process.WaitForExit(600000)
+        $ResetTimer.Stop()
+        try {
+            $Result.test_reset_progress = @{ phase = 'unknown';
+                elapsed_seconds = [Math]::Round($ResetTimer.Elapsed.TotalSeconds, 3) }
+        } catch { }
+        if (-not $ResetExited) { throw 'Test reset timed out under Windows PowerShell 5.1' }
         if ($Process.ExitCode -ne 0) {
             Write-Host (Get-Content -LiteralPath $Stderr -Raw)
             throw 'Test reset failed under Windows PowerShell 5.1'
@@ -161,6 +190,8 @@ function Invoke-TestResetSmoke {
                         try {
                             if ($BackupEntries.Count -eq 1 -and $Result.Contains('test_reset_progress')) {
                                 $Result.test_reset_progress.phase = Get-TestResetPhase -StageRecord $StageRecord
+                                $BackupOperation = Get-TestResetBackupOperation -StageRecord $StageRecord
+                                if ($null -ne $BackupOperation) { $Result.test_reset_progress.backup_operation = $BackupOperation }
                             }
                         } catch { }
                         Set-Content -LiteralPath (Join-Path $Directory.FullName $OwnerFile) -Value $Identity -Encoding ascii
