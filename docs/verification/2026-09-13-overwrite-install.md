@@ -225,6 +225,14 @@ PR #81 最终源提交为 `0a6baf0f0ae54eb6540e5edca3e790d8a9f04c0d`，原[审�
 
 后续CI将冻结构建与实际安装分到不同runner，通过同轮构建候选和摘要传递产物；原 `windows-package` 必需检查仍执行完整验收，并在构建失败时明确失败。临时诊断工作流不进入主线，证据与分支在仓库外备份后清理。最终构建与安装回归见[PR检查](https://github.com/kevinalliswell/smd-web-hmi/pull/82/checks)。
 
+### 释放租约测试的通信交错
+
+拆分后的首轮 [34970067232](https://github.com/kevinalliswell/smd-web-hmi/actions/runs/34970067232) 对应源提交 `d4ee9d489333c0b8bdbed1276a55db743a429754`。Windows桌面431项和工具单元106项通过；后端在690项通过、4项POSIX跳过后，因 `test_release_lost_receipt_keeps_unknown_and_revokes_connection` 失败而停止。操作状态为 `unknown`、板端租约为空的断言均通过，失败的是返回瞬间TCP必须离线。构建未启动；`windows-package` 按新增的上游失败检查明确失败，没有将跳过构建当作通过。此轮尚未验证拆分后的产物传递与安装。
+
+独立真实TCP复现将一次实际 `get_status` 放在未知结果落盘后、释放结束前：状态先确认板端无租约并清除本地租约、增加代次，旧代次的释放收尾因此不再断开当前连接。连接保持同一会话，本地控制租约无效，操作仍持久化为 `unknown`，重新获取控制权被 `operation_unresolved` 拒绝。这证明原瞬时离线断言过度约束合法交错；本次Windows日志不能区分实际触发的是这条路径还是先断线再重连。
+
+测试分别固定“状态尚未撤销租约”和“状态已经撤销租约”两个边界，保留前者必须撤销连接、后者不得恢复控制权限的严格断言。生产通信、租约时限和重连策略保持不变。本机Python3.13的五份直接相关测试96项通过，格式与文档链接检查通过；此结果不替代Windows验证。原始失败日志保存在仓库外 `release-closeout-windows-tests-34970067232.log`；最终回归结果以PR必要检查为准。
+
 ## 正式资产与其他验收
 
 v0.3.0标签和GitHub Release已发布；主线、标签各自的完整验收及发布任务通过。21项实际发行资产的本地下载与校验值、ZIP内部清单、机器门禁及独立补验均通过。Release的机器验收与SHA256SUMS是发行字节的真源；上文PR及主线包只为自身构建背书。
