@@ -6,6 +6,17 @@ function Assert-RetiredMaintenancePrepare {
         throw 'Retired maintenance entry must return HTTP 410 without creating a maintenance ticket'
     }
 }
+function Get-TestResetPhase {
+    param($StageRecord)
+    $Phases = @('planned', 'stopping', 'copying', 'verified', 'removing_registration',
+                'retiring_program', 'retiring_data', 'completed')
+    try {
+        if (($StageRecord.schema_version -is [int] -or $StageRecord.schema_version -is [long]) -and
+            $StageRecord.schema_version -eq 1 -and $StageRecord.phase -is [string] -and
+            $Phases -ccontains $StageRecord.phase) { return $StageRecord.phase }
+    } catch { }
+    return 'unknown'
+}
 function Invoke-TestResetSmoke {
     param([string]$Installer, [string]$InstallDir, [string]$DataDir, [string]$Version,
         [string]$Identity, [string]$OwnerFile, [int]$TimeoutSeconds)
@@ -79,7 +90,15 @@ function Invoke-TestResetSmoke {
         $Process = Start-Process -FilePath $WindowsPowerShell -ArgumentList `
             "-NoProfile -NonInteractive -ExecutionPolicy Bypass -File `"$ResetScript`" -Apply -ConfirmNoDeviceAttached" `
             -RedirectStandardOutput $Stdout -RedirectStandardError $Stderr -PassThru
-        if (-not $Process.WaitForExit(600000)) { throw 'Test reset timed out under Windows PowerShell 5.1' }
+        # Measure the exit wait here; the last durable phase is observed later in finally.
+        $ResetTimer = [Diagnostics.Stopwatch]::StartNew()
+        if (-not $Process.WaitForExit(600000)) {
+            try {
+                $Result.test_reset_progress = @{ phase = 'unknown';
+                    elapsed_seconds = [Math]::Round($ResetTimer.Elapsed.TotalSeconds, 3) }
+            } catch { }
+            throw 'Test reset timed out under Windows PowerShell 5.1'
+        }
         if ($Process.ExitCode -ne 0) {
             Write-Host (Get-Content -LiteralPath $Stderr -Raw)
             throw 'Test reset failed under Windows PowerShell 5.1'
@@ -131,12 +150,19 @@ function Invoke-TestResetSmoke {
             try {
                 if (Test-Path -LiteralPath $BackupRoot) {
                     if ((Get-Item -LiteralPath $BackupRoot).Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'Backup root is a reparse point' }
-                    foreach ($Directory in @(Get-ChildItem -LiteralPath $BackupRoot -Force)) {
+                    $BackupEntries = @(Get-ChildItem -LiteralPath $BackupRoot -Force)
+                    foreach ($Directory in $BackupEntries) {
                         if (-not $Directory.PSIsContainer -or $Directory.Name -notmatch '^\d{8}T\d{6}Z-[0-9a-f]{32}$' -or
                             $Directory.Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'Unexpected reset backup entry' }
                         $StageRecord = Get-Content -LiteralPath (Join-Path $Directory.FullName 'stage.json') -Raw | ConvertFrom-Json
                         if (-not (Test-SamePath $StageRecord.install_dir $InstallDir) -or -not (Test-SamePath $StageRecord.data_dir $DataDir) -or
                             -not (Test-SamePath $StageRecord.backup_dir $Directory.FullName) -or $StageRecord.version -ne $Version) { throw 'Reset backup ownership is unknown' }
+                        # Observe only after confirmed child exit and existing ownership checks, before cleanup.
+                        try {
+                            if ($BackupEntries.Count -eq 1 -and $Result.Contains('test_reset_progress')) {
+                                $Result.test_reset_progress.phase = Get-TestResetPhase -StageRecord $StageRecord
+                            }
+                        } catch { }
                         Set-Content -LiteralPath (Join-Path $Directory.FullName $OwnerFile) -Value $Identity -Encoding ascii
                         $CreatedRoots.Add($Directory.FullName)
                     }

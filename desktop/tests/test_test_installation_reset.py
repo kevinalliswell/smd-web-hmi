@@ -309,3 +309,60 @@ def test_retired_tree_removes_service_ownership_and_access(powershell, tmp_path,
     assert result.returncode == 0, result.stderr
     assert not data.exists()
     assert (retired / "config/service.env").read_text(encoding="utf-8") == "private fixture\n"
+
+
+@pytest.mark.parametrize(
+    "stage,expected",
+    [
+        ({"schema_version": 1, "phase": phase}, phase)
+        for phase in (
+            "planned",
+            "stopping",
+            "copying",
+            "verified",
+            "removing_registration",
+            "retiring_program",
+            "retiring_data",
+            "completed",
+        )
+    ]
+    + [
+        ({"schema_version": 1, "phase": "DO_NOT_ECHO"}, "unknown"),
+        ({"schema_version": 1, "phase": ["copying"]}, "unknown"),
+        ({"schema_version": 1, "phase": "COPYING"}, "unknown"),
+        ({"schema_version": 1}, "unknown"),
+        ({"schema_version": True, "phase": "copying"}, "unknown"),
+        ({"schema_version": "1", "phase": "copying"}, "unknown"),
+        ({"schema_version": 2, "phase": "copying"}, "unknown"),
+        ({"phase": "copying"}, "unknown"),
+    ],
+)
+def test_smoke_reset_phase_serializes_only_a_fixed_enum(powershell, tmp_path, stage, expected):
+    stage = {**stage, "password": "DO_NOT_ECHO", "install_dir": str(tmp_path)}
+    result = run(
+        powershell,
+        tmp_path,
+        f". {literal(SMOKE_SCRIPT)}\n"
+        f"$Stage={literal(json.dumps(stage))} | ConvertFrom-Json\n"
+        "Get-TestResetPhase -StageRecord $Stage | ConvertTo-Json",
+    )
+    assert result.returncode == 0
+    assert not result.stderr
+    assert json.loads(result.stdout) == expected
+    assert "DO_NOT_ECHO" not in result.stdout
+    assert str(tmp_path) not in result.stdout
+
+
+def test_smoke_reset_phase_read_failure_is_redacted(powershell, tmp_path):
+    result = run(
+        powershell,
+        tmp_path,
+        f". {literal(SMOKE_SCRIPT)}\n"
+        "$Stage=New-Object PSObject\n"
+        "Add-Member -InputObject $Stage -MemberType ScriptProperty -Name schema_version "
+        "-Value { throw 'DO_NOT_ECHO' }\n"
+        "Get-TestResetPhase -StageRecord $Stage | ConvertTo-Json",
+    )
+    assert result.returncode == 0
+    assert not result.stderr
+    assert json.loads(result.stdout) == "unknown"

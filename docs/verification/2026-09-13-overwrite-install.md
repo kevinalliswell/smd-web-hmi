@@ -193,6 +193,14 @@ PR #81 最终源提交为 `0a6baf0f0ae54eb6540e5edca3e790d8a9f04c0d`，原[审�
 
 最终下载门禁和独立补验日志分别保存在仓库外 `release-v0.3.0-publish-verification.log`、`release-v0.3.0-asset-verification.log`。OVER-01—07按本轮软件发行范围完成；历史失败、各次PR成功、主线与标签的不同产物摘要均保留。
 
+### 文档收尾期间的 CI 脚本诊断
+
+发布后的[PR #82](https://github.com/kevinalliswell/smd-web-hmi/pull/82)最初只更新四份文档，应用和安装器源码与标签相同。[CI 34955791654 第1次尝试](https://github.com/kevinalliswell/smd-web-hmi/actions/runs/34955791654/attempts/1)的六项基础检查通过，实际 PR 构建为 `b0f9f24d135387d4993fddb9865325de6d29b276`。首次安装、LocalService、数据库/schema/存储/备份验活、静态页面及同版修复均通过；独立测试机归档重置在 `test-reset-smoke.ps1` 的600秒子进程等待处超时，安全清理完成。原诊断没有保留重置内部阶段，不能确定具体原因。此前该阶段曾成功运行约404、455和551秒；这些时长不足以证明本次是环境原因。
+
+同提交仅重跑失败作业的[第2次尝试](https://github.com/kevinalliswell/smd-web-hmi/actions/runs/34955791654/attempts/2)在安装前的只读 `Get-CimInstance` 服务查询处超时，未开始安装，也未产生安装结果 JSON。这与第一次归档重置超时是两个不同失败点。两轮原始日志、独立诊断分别保存于仓库外 `release-docs-windows-package-34955791654.log`、`release-docs-diagnostics-34955791654` 和带 `-attempt2` 后缀的对应记录；不覆盖已发布标签的验收。
+
+后续修正只作用于 CI 脚本：只读 CIM 查询最多尝试三次，每次仍设5秒操作超时，仅 CIM 异常允许有限重试；持续错误必须抛出，只有成功查询才可认定服务不存在。归档重置保留600秒上限和原始超时，在子进程确认退出、现有归属校验通过之后、清理之前，复用已有阶段记录，仅输出固定阶段枚举与退出等待的单调耗时。未知或无效记录保留 `unknown`，不上传路径、配置、密钥或原始阶段内容，也不改变退出确认和清理判断。Windows 原生正反例及完整安装检查的执行结果见[该 PR 检查](https://github.com/kevinalliswell/smd-web-hmi/pull/82/checks)；本节不以本机静态检查替代 Windows 验证，不重新发布或移动 `v0.3.0`。
+
 ## 正式资产与其他验收
 
 v0.3.0标签和GitHub Release已发布；主线、标签各自的完整验收及发布任务通过。21项实际发行资产的本地下载与校验值、ZIP内部清单、机器门禁及独立补验均通过。Release的机器验收与SHA256SUMS是发行字节的真源；上文PR及主线包只为自身构建背书。
