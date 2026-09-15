@@ -458,6 +458,7 @@ def test_backup_timing_projection_rejects_invalid_data_and_drops_private_fields(
     if case in {"nan", "positive_infinity", "negative_infinity"}:
         member = {"nan": "NaN", "positive_infinity": "PositiveInfinity", "negative_infinity": "NegativeInfinity"}[case]
         mutate = f"$stage.backup_operation.completed_steps[0].elapsed_seconds=[double]::{member}\n"
+    # Windows PowerShell 5.1 emits no text for a top-level null; preserve it inside an object.
     result = run(
         powershell,
         tmp_path,
@@ -465,7 +466,7 @@ def test_backup_timing_projection_rejects_invalid_data_and_drops_private_fields(
         f"$stage={literal(json.dumps(stage))} | ConvertFrom-Json\n"
         + mutate
         + "$safe=Get-TestResetBackupOperation -StageRecord $stage\n"
-        "ConvertTo-Json -InputObject $safe -Depth 6",
+        "@{value=$safe} | ConvertTo-Json -Depth 6",
     )
     assert result.returncode == 0
     assert not result.stderr
@@ -478,7 +479,7 @@ def test_backup_timing_projection_rejects_invalid_data_and_drops_private_fields(
         }
     else:
         expected = None
-    assert json.loads(result.stdout) == expected
+    assert json.loads(result.stdout)["value"] == expected
     assert "DO_NOT_ECHO" not in result.stdout
     assert str(tmp_path) not in result.stdout
 
