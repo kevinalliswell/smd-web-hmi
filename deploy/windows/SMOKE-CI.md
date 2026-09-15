@@ -2,7 +2,9 @@
 
 `scripts/release/smoke-windows.ps1` 在本轮 NSIS 生成后运行，验证真实安装器、SCM LocalService 与生产后台启动。它只接受提升权限的 Windows x64 PowerShell 7 和 `GITHUB_ACTIONS=true`、`RUNNER_ENVIRONMENT=github-hosted`；没有跳过这些限制的开关。不能在开发机、现场机或自托管 runner 执行，也不能把手工设置这两个环境变量当作隔离。
 
-由包装 job 在同一个一次性 runner 上调用，例如：
+`windows-build` 负责冻结、编译和工具自检；`windows-package` 在另一台干净的一次性runner上验证同一提交的产物。它按成功构建输出的实际artifact ID下载候选，核对来源与摘要并验证完整bench清单后，执行安装冒烟。构建未成功时，最终必需检查明确失败。联调工具传递包含浏览器所需隐藏文件；构建暂存数据库、配置和解包目录不进入候选。
+
+安装验收job调用示例：
 
 ```powershell
 $Version = (python scripts/release/metadata.py).Trim()
