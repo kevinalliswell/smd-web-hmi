@@ -739,9 +739,12 @@ async def test_full_read_slots_preserve_source_scan_until_idle_poll_can_resume(s
     original_request = client._request
     original_begin = client.logs.begin
     original_finish = client.logs.finish
+    log_received = asyncio.Event()
     completed = asyncio.Event()
     reads, rejected = [], []
     filled = False
+    resuming = False
+    phase = "capacity_fixture"
 
     async def occupy_read_slots():
         nonlocal filled
@@ -759,11 +762,22 @@ async def test_full_read_slots_preserve_source_scan_until_idle_poll_can_resume(s
         assert sum(item.kind == "get_profile" for item in client.transport._pending.values()) == 4
 
     async def record_request(kind, payload, **kwargs):
+        nonlocal phase
+        if resuming and kind == "get_status" and phase == "waiting_idle_poll":
+            phase = "retry_status"
+        if resuming and kind == "log_request":
+            assert asyncio.current_task() is client._source_recovery_task
+            phase = "log_request"
         try:
-            return await original_request(kind, payload, **kwargs)
+            result = await original_request(kind, payload, **kwargs)
         except CommandError as exc:
             rejected.append((kind, exc.status_code, exc.error_code))
             raise
+        if resuming and kind == "log_request":
+            assert result["type"] == "log_result"
+            phase = "log_result"
+            log_received.set()
+        return result
 
     async def fill_after_begin(*args, **kwargs):
         result = await original_begin(*args, **kwargs)
@@ -771,9 +785,19 @@ async def test_full_read_slots_preserve_source_scan_until_idle_poll_can_resume(s
         return result
 
     async def record_finish(frame):
+        nonlocal phase
+        phase = "finish_transaction"
         result = await original_finish(frame)
+        phase = "finish_committed"
         completed.set()
         return result
+
+    def task_state(task):
+        if task is None:
+            return "absent"
+        if task.cancelled():
+            return "cancelled"
+        return "done" if task.done() else "running"
 
     monkeypatch.setattr(client, "_request", record_request)
     monkeypatch.setattr(client.logs, "finish", record_finish)
@@ -791,11 +815,38 @@ async def test_full_read_slots_preserve_source_scan_until_idle_poll_can_resume(s
         for task in reads:
             task.cancel()
         await asyncio.gather(*reads, return_exceptions=True)
+        resuming, phase = True, "waiting_idle_poll"
         client._poll_task = asyncio.create_task(client._poll())
         # The real idle poll, rather than another manual source scan, must
-        # complete the history deferred by this local pre-send rejection.
-        await asyncio.wait_for(completed.wait(), 6)
-        await asyncio.wait_for(asyncio.shield(client._source_recovery_task), 1)
+        # reach a real log response. Its scheduling/read work and the following
+        # durable commit have separate integration budgets; wire deadlines stay unchanged.
+        wait_phase = "idle_log_response"
+        try:
+            await asyncio.wait_for(log_received.wait(), 6)
+            wait_phase = "finish_commit"
+            await asyncio.wait_for(completed.wait(), 6)
+            wait_phase = "source_task_exit"
+            await asyncio.wait_for(asyncio.shield(client._source_recovery_task), 1)
+        except TimeoutError:
+            pytest.fail(
+                "Deferred source scan exceeded its integration stage budget: "
+                + json.dumps(
+                    {
+                        "wait_phase": wait_phase,
+                        "stage": phase,
+                        "poll_task": task_state(client._poll_task),
+                        "source_task": task_state(client._source_recovery_task),
+                        "online": client.is_online,
+                        "ready": client._ready,
+                        "recovery_pending": client._source_recovery_pending,
+                        "pending_requests": client.transport.stats["pending_requests"],
+                        "log_received": log_received.is_set(),
+                        "finish_committed": completed.is_set(),
+                    },
+                    sort_keys=True,
+                ),
+                pytrace=False,
+            )
         assert not client._source_recovery_pending
         assert client.is_online and client._ready
         assert not sim.state.data["operations"]  # A read retry never acquires control or sends a command.
@@ -829,30 +880,54 @@ async def test_cleared_unacknowledged_alarm_can_be_confirmed_before_run_ack(syst
     snapshot = await client.get_status()
     assert snapshot["alarm"]["ack_required"] is True
     assert snapshot["system"]["can_ack_run"] is False
+    renewals_injected = 0
     if renew_before_confirm:
-        client.transport._heartbeat_task.cancel()
-        await asyncio.gather(client.transport._heartbeat_task, return_exceptions=True)
         confirm_owned = client.operations.confirm_owned_lease
 
         async def renewal_arrives_before_confirmation(frame):
+            nonlocal renewals_injected
+            transport = client.transport
+            heartbeat = transport._heartbeat_task
+            writer = transport._writer
+            token = transport.lease_token()
+            assert heartbeat is not None and not heartbeat.done()
             # Reproduce a renewal arriving after the status read but before
-            # its application/database processing finishes, for both commands.
-            async with asyncio.timeout(1):
-                while True:
-                    ack = await client.transport.request("heartbeat", {"lease_id": client.transport.lease_id})
-                    if int(ack["uptime_ms"]) > int(frame["uptime_ms"]):
-                        break
-                    await asyncio.sleep(0.001)
-            assert ack["payload"]["state_revision"] == frame["payload"]["run"]["state_revision"]
+            # its confirmation, without pausing heartbeats during database work.
+            try:
+                heartbeat.cancel()
+                await asyncio.gather(heartbeat, return_exceptions=True)
+                async with asyncio.timeout(1):
+                    while True:
+                        ack = await transport.request("heartbeat", {"lease_id": transport.lease_id})
+                        if int(ack["uptime_ms"]) > int(frame["uptime_ms"]):
+                            break
+                        await asyncio.sleep(0.001)
+                assert ack["payload"]["state_revision"] == frame["payload"]["run"]["state_revision"]
+            finally:
+                same_context = (
+                    transport._writer is writer
+                    and transport.lease_token() == token
+                    and transport.is_online
+                    and transport._heartbeat_task is heartbeat
+                    and heartbeat.done()
+                )
+                if same_context:
+                    transport._heartbeat_task = asyncio.create_task(
+                        transport._heartbeats(), name="hostcomm-v2-heartbeat"
+                    )
+                assert same_context, "Lease/session changed during the injected renewal"
+            renewals_injected += 1
             return await confirm_owned(frame)
 
         monkeypatch.setattr(client.operations, "confirm_owned_lease", renewal_arrives_before_confirmation)
     acknowledged = await http.post(f"/api/alarms/{alarm['id']}/ack")
     assert acknowledged.status_code == 200, acknowledged.text
     assert acknowledged.json()["data"]["device_confirmed"] is True
+    assert renewals_injected == (1 if renew_before_confirm else 0)
     snapshot = await client.get_status()
     assert snapshot["alarm"]["ack_required"] is False
     assert snapshot["system"]["can_ack_run"] is True
     finished = await command(http, "ack_run", {}, "alarm-history-finish")
     assert finished.status_code == 200, finished.text
+    assert renewals_injected == (2 if renew_before_confirm else 0)
     assert sim.state.run["state"] == "idle"

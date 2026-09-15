@@ -6,6 +6,46 @@ function Assert-RetiredMaintenancePrepare {
         throw 'Retired maintenance entry must return HTTP 410 without creating a maintenance ticket'
     }
 }
+function Get-TestResetPhase {
+    param($StageRecord)
+    $Phases = @('planned', 'stopping', 'copying', 'verified', 'removing_registration',
+                'retiring_program', 'retiring_data', 'completed')
+    try {
+        if (($StageRecord.schema_version -is [int] -or $StageRecord.schema_version -is [long]) -and
+            $StageRecord.schema_version -eq 1 -and $StageRecord.phase -is [string] -and
+            $Phases -ccontains $StageRecord.phase) { return $StageRecord.phase }
+    } catch { }
+    return 'unknown'
+}
+function Get-TestResetBackupOperation {
+    param($StageRecord)
+    try {
+        if ((Get-TestResetPhase $StageRecord) -ceq 'unknown') { return $null }
+        $Operation = $StageRecord.backup_operation
+        $Steps = @('program_source_snapshot','program_copy','program_protect','program_destination_snapshot',
+            'program_source_recheck','data_source_snapshot','data_copy','data_protect','data_destination_snapshot',
+            'data_source_recheck','metadata_snapshot','manifest_write','manifest_readback')
+        $Completed = $Operation.completed_steps
+        if ($Completed -isnot [array] -or $Completed.Count -gt $Steps.Count) { return $null }
+        $Safe = [Collections.Generic.List[object]]::new()
+        foreach ($Item in $Completed) {
+            if ($Item.name -isnot [string] -or $Item.name -cne $Steps[$Safe.Count]) { return $null }
+            $Seconds = $Item.elapsed_seconds
+            if ($Seconds -isnot [int] -and $Seconds -isnot [long] -and $Seconds -isnot [double] -and
+                $Seconds -isnot [single] -and $Seconds -isnot [decimal]) { return $null }
+            $Seconds = [double]$Seconds
+            if ([double]::IsNaN($Seconds) -or [double]::IsInfinity($Seconds) -or $Seconds -lt 0) { return $null }
+            $Safe.Add(@{name=$Steps[$Safe.Count];elapsed_seconds=$Seconds})
+        }
+        $Current = $Operation.current_step
+        if ($null -eq $Current) {
+            if ($Safe.Count -ne $Steps.Count) { return $null }
+        } elseif ($Current -isnot [string] -or $Safe.Count -ge $Steps.Count -or $Current -cne $Steps[$Safe.Count]) {
+            return $null
+        }
+        return @{current_step=$Current;completed_steps=@($Safe.ToArray())}
+    } catch { return $null }
+}
 function Invoke-TestResetSmoke {
     param([string]$Installer, [string]$InstallDir, [string]$DataDir, [string]$Version,
         [string]$Identity, [string]$OwnerFile, [int]$TimeoutSeconds)
@@ -79,7 +119,15 @@ function Invoke-TestResetSmoke {
         $Process = Start-Process -FilePath $WindowsPowerShell -ArgumentList `
             "-NoProfile -NonInteractive -ExecutionPolicy Bypass -File `"$ResetScript`" -Apply -ConfirmNoDeviceAttached" `
             -RedirectStandardOutput $Stdout -RedirectStandardError $Stderr -PassThru
-        if (-not $Process.WaitForExit(600000)) { throw 'Test reset timed out under Windows PowerShell 5.1' }
+        # Measure the exit wait here; the last durable phase is observed later in finally.
+        $ResetTimer = [Diagnostics.Stopwatch]::StartNew()
+        $ResetExited = $Process.WaitForExit(600000)
+        $ResetTimer.Stop()
+        try {
+            $Result.test_reset_progress = @{ phase = 'unknown';
+                elapsed_seconds = [Math]::Round($ResetTimer.Elapsed.TotalSeconds, 3) }
+        } catch { }
+        if (-not $ResetExited) { throw 'Test reset timed out under Windows PowerShell 5.1' }
         if ($Process.ExitCode -ne 0) {
             Write-Host (Get-Content -LiteralPath $Stderr -Raw)
             throw 'Test reset failed under Windows PowerShell 5.1'
@@ -131,12 +179,21 @@ function Invoke-TestResetSmoke {
             try {
                 if (Test-Path -LiteralPath $BackupRoot) {
                     if ((Get-Item -LiteralPath $BackupRoot).Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'Backup root is a reparse point' }
-                    foreach ($Directory in @(Get-ChildItem -LiteralPath $BackupRoot -Force)) {
+                    $BackupEntries = @(Get-ChildItem -LiteralPath $BackupRoot -Force)
+                    foreach ($Directory in $BackupEntries) {
                         if (-not $Directory.PSIsContainer -or $Directory.Name -notmatch '^\d{8}T\d{6}Z-[0-9a-f]{32}$' -or
                             $Directory.Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'Unexpected reset backup entry' }
                         $StageRecord = Get-Content -LiteralPath (Join-Path $Directory.FullName 'stage.json') -Raw | ConvertFrom-Json
                         if (-not (Test-SamePath $StageRecord.install_dir $InstallDir) -or -not (Test-SamePath $StageRecord.data_dir $DataDir) -or
                             -not (Test-SamePath $StageRecord.backup_dir $Directory.FullName) -or $StageRecord.version -ne $Version) { throw 'Reset backup ownership is unknown' }
+                        # Observe only after confirmed child exit and existing ownership checks, before cleanup.
+                        try {
+                            if ($BackupEntries.Count -eq 1 -and $Result.Contains('test_reset_progress')) {
+                                $Result.test_reset_progress.phase = Get-TestResetPhase -StageRecord $StageRecord
+                                $BackupOperation = Get-TestResetBackupOperation -StageRecord $StageRecord
+                                if ($null -ne $BackupOperation) { $Result.test_reset_progress.backup_operation = $BackupOperation }
+                            }
+                        } catch { }
                         Set-Content -LiteralPath (Join-Path $Directory.FullName $OwnerFile) -Value $Identity -Encoding ascii
                         $CreatedRoots.Add($Directory.FullName)
                     }

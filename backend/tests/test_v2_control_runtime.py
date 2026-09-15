@@ -5,6 +5,7 @@ import asyncio
 import pytest
 
 from app.hostcomm.v2_transport import V2TransportError
+from app.services.v2_operations import V2OperationError
 from tests.test_v2_client import connected  # noqa: F401
 
 
@@ -76,20 +77,99 @@ async def test_release_waits_for_inflight_renewal_and_does_not_resume_it(connect
         await asyncio.gather(*(task for task in (heartbeat, release) if task), return_exceptions=True)
 
 
-async def test_release_lost_receipt_keeps_unknown_and_revokes_connection(connected):
+def hold_status_reads_and_reconnect(client, monkeypatch):
+    """Observe release before later polling/reconnect, without changing wire deadlines."""
+    gate = asyncio.Event()
+    request, open_connection = client.transport.request, client.transport._open
+
+    async def held_request(kind, payload, **kwargs):
+        if kind == "get_status":
+            await gate.wait()
+        return await request(kind, payload, **kwargs)
+
+    async def held_open():
+        await gate.wait()
+        await open_connection()
+
+    monkeypatch.setattr(client.transport, "request", held_request)
+    monkeypatch.setattr(client.transport, "_open", held_open)
+    return request, gate
+
+
+async def test_release_lost_receipt_keeps_unknown_and_revokes_connection(connected, monkeypatch):
     client, sim, factory = connected
     await client.operations.acquire_lease(actor="admin", role="admin")
     lease = client.transport.lease_id
+    token = client.transport.lease_token()
+    _, gate = hold_status_reads_and_reconnect(client, monkeypatch)
+    disconnect, disconnected = client.transport._disconnect, []
+
+    def observe_disconnect(reason):
+        disconnected.append((reason, client.transport.lease_token()))
+        disconnect(reason)
+
+    monkeypatch.setattr(client.transport, "_disconnect", observe_disconnect)
     sim.drop_reply("command_result")
     client.transport.response_timeout = 0.15
-    row = await client.operations.release_lease(
-        actor="admin", role="admin", lease_id=lease, state_revision=sim.state.run["state_revision"]
-    )
-    assert row["status"] == "unknown"
-    assert sim.state.data["lease"] is None
-    assert not client.transport.is_online
-    assert client.transport.lease_id is None
-    assert (await client.operations.get(row["operation_id"]))["status"] == "unknown"
+    try:
+        row = await client.operations.release_lease(
+            actor="admin", role="admin", lease_id=lease, state_revision=sim.state.run["state_revision"]
+        )
+        assert row["status"] == "unknown"
+        assert sim.state.data["lease"] is None
+        assert ("lease_release_unconfirmed", token) in disconnected
+        assert not client.transport.is_online
+        assert client.transport.lease_id is None
+        assert (await client.operations.get(row["operation_id"]))["status"] == "unknown"
+    finally:
+        gate.set()
+
+
+async def test_release_lost_receipt_after_status_revocation_keeps_control_blocked(connected, monkeypatch):
+    client, sim, factory = connected
+    await client.operations.acquire_lease(actor="admin", role="admin")
+    lease = client.transport.lease_id
+    token = client.transport.lease_token()
+    request, gate = hold_status_reads_and_reconnect(client, monkeypatch)
+    unknown = client.operations._unknown
+    observed = []
+    disconnect, disconnected = client.transport._disconnect, []
+
+    async def read_status_after_unknown(operation_id, reason, error=None):
+        await unknown(operation_id, reason, error)
+        # A real status response can arrive while the release's database work is
+        # settling. It revokes ownership without claiming the command succeeded.
+        frame = await request("get_status", {})
+        observed.append(frame)
+
+    def observe_disconnect(reason):
+        disconnected.append(reason)
+        disconnect(reason)
+
+    monkeypatch.setattr(client.operations, "_unknown", read_status_after_unknown)
+    monkeypatch.setattr(client.transport, "_disconnect", observe_disconnect)
+    sim.drop_reply("command_result")
+    client.transport.response_timeout = 0.15
+    try:
+        row = await client.operations.release_lease(
+            actor="admin", role="admin", lease_id=lease, state_revision=sim.state.run["state_revision"]
+        )
+        assert row["status"] == "unknown"
+        assert sim.state.data["lease"] is None
+        assert len(observed) == 1 and observed[0]["payload"]["lease_id"] is None
+        assert client.transport.session_id == token.session_id
+        assert client.transport.lease_token().generation != token.generation
+        assert not disconnected
+        assert client.transport.is_online
+        assert client.transport.lease_id is None
+        assert not client.transport.lease_evidence()["valid"]
+        assert (await client.operations.get(row["operation_id"]))["status"] == "unknown"
+        sequence = sim.state.data["highwater"][sim.pairing.controller_epoch]
+        with pytest.raises(V2OperationError, match="operation_unresolved"):
+            await client.operations.acquire_lease(actor="admin", role="admin")
+        assert sim.state.data["highwater"][sim.pairing.controller_epoch] == sequence
+    finally:
+        gate.set()
 
 
 async def test_expired_lease_is_checked_again_after_waiting_for_writer(connected):

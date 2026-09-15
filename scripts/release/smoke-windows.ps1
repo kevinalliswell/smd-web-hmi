@@ -23,7 +23,17 @@ function Test-SamePath([string]$Left, [string]$Right) {
     if (-not $Left -or -not $Right) { return $false }
     return [string]::Equals([IO.Path]::GetFullPath($Left.Trim('"')), [IO.Path]::GetFullPath($Right), [StringComparison]::OrdinalIgnoreCase)
 }
-function Get-SmokeService { return Get-CimInstance Win32_Service -Filter "Name='SmdHmi'" -OperationTimeoutSec 5 }
+function Get-SmokeService {
+    for ($Attempt = 1; $Attempt -le 3; $Attempt++) {
+        try {
+            $ServiceQuery = @(Get-CimInstance Win32_Service -Filter "Name='SmdHmi'" -OperationTimeoutSec 5 -ErrorAction Stop)
+            return $ServiceQuery
+        } catch [Microsoft.Management.Infrastructure.CimException] {
+            if ($Attempt -eq 3) { throw }
+            Start-Sleep -Milliseconds 100
+        }
+    }
+}
 
 $Installer = (Resolve-Path -LiteralPath $Installer).Path
 $Manifest = (Resolve-Path -LiteralPath $Manifest).Path

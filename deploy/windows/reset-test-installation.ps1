@@ -202,10 +202,49 @@ function Enter-ResetMutex([string]$Name) {
     if (-not $Created) { $Mutex.Dispose(); Stop-ResetError 'Another backend or updater process is active' }
     return $Mutex
 }
-function Set-ResetStage([string]$Phase, $Plan, [string]$BackupDir) {
+function Set-ResetStage([string]$Phase, $Plan, [string]$BackupDir, $BackupOperation = $null) {
     $script:ResetStage = $Phase
-    Write-ResetJson (Join-Path $BackupDir 'stage.json') @{schema_version=1;phase=$Phase;version=$Plan.version;
+    $Record = @{schema_version=1;phase=$Phase;version=$Plan.version;
         install_dir=$Plan.install_dir;data_dir=$Plan.data_dir;backup_dir=$BackupDir;updated_at=[DateTime]::UtcNow.ToString('o')}
+    if ($null -ne $BackupOperation) {
+        try {
+            $Measured = $Record.Clone()
+            $Measured.backup_operation = @{current_step=$BackupOperation.current_step;
+                completed_steps=@($BackupOperation.completed_steps.ToArray())}
+            Write-ResetJson (Join-Path $BackupDir 'stage.json') $Measured
+            return
+        } catch { }
+    }
+    # If optional timing cannot be persisted, preserve the original phase write.
+    Write-ResetJson (Join-Path $BackupDir 'stage.json') $Record
+}
+function Set-ResetBackupStep($Context, $Plan, [string]$BackupDir, [string]$Step) {
+    if ($null -eq $Context) { return }
+    # This optional timing must never replace a backup error or change its checks.
+    try {
+        $Steps = @('program_source_snapshot','program_copy','program_protect','program_destination_snapshot',
+            'program_source_recheck','data_source_snapshot','data_copy','data_protect','data_destination_snapshot',
+            'data_source_recheck','metadata_snapshot','manifest_write','manifest_readback')
+        $Count = $Context.completed_steps.Count
+        if ($Count -gt $Steps.Count) { return }
+        $NextCount = $Count
+        if ($null -ne $Context.current_step) {
+            if ($Count -ge $Steps.Count -or $Context.current_step -cne $Steps[$Count]) { return }
+            $NextCount++
+        }
+        if ([string]::IsNullOrEmpty($Step)) {
+            if ($NextCount -ne $Steps.Count) { return }
+        } elseif ($NextCount -ge $Steps.Count -or $Step -cne $Steps[$NextCount]) { return }
+        if ($null -ne $Context.current_step) {
+            $Context.timer.Stop()
+            $Seconds = [Math]::Round($Context.timer.Elapsed.TotalSeconds, 3)
+            if ([double]::IsNaN($Seconds) -or [double]::IsInfinity($Seconds) -or $Seconds -lt 0) { return }
+            $Context.completed_steps.Add(@{name=$Context.current_step;elapsed_seconds=$Seconds})
+        }
+        $Context.current_step = if ([string]::IsNullOrEmpty($Step)) { $null } else { $Step }
+        try { Set-ResetStage 'copying' $Plan $BackupDir $Context } catch { }
+        if ($null -ne $Context.current_step) { $Context.timer.Restart() }
+    } catch { }
 }
 function Get-TreeSnapshot([string]$Root) {
     Assert-NoReparse $Root
@@ -223,25 +262,35 @@ function Copy-ResetTree([string]$Source, [string]$Destination) {
     if (Test-Path -LiteralPath $Destination) { Stop-ResetError 'A backup destination already exists' }
     Copy-Item -LiteralPath $Source -Destination $Destination -Recurse -Force
 }
-function New-VerifiedBackup($Plan, [string]$BackupDir) {
+function New-VerifiedBackup($Plan, [string]$BackupDir, $TimingContext = $null) {
     $Manifest = [ordered]@{schema_version=1;version=$Plan.version}
     foreach ($Name in @('program','data')) {
         $Source = if ($Name -eq 'program') { $Plan.install_dir } else { $Plan.data_dir }
+        Set-ResetBackupStep $TimingContext $Plan $BackupDir ($Name + '_source_snapshot')
         $Before = @(Get-TreeSnapshot $Source)
         $Destination = Join-Path $BackupDir $Name
+        Set-ResetBackupStep $TimingContext $Plan $BackupDir ($Name + '_copy')
         Copy-ResetTree $Source $Destination
+        Set-ResetBackupStep $TimingContext $Plan $BackupDir ($Name + '_protect')
         Protect-ResetTree $Destination
+        Set-ResetBackupStep $TimingContext $Plan $BackupDir ($Name + '_destination_snapshot')
         Assert-SameSnapshot $Before @(Get-TreeSnapshot $Destination)
+        Set-ResetBackupStep $TimingContext $Plan $BackupDir ($Name + '_source_recheck')
         Assert-SameSnapshot $Before @(Get-TreeSnapshot $Source)
         $Manifest[$Name] = $Before
     }
+    Set-ResetBackupStep $TimingContext $Plan $BackupDir 'metadata_snapshot'
     $Manifest['metadata'] = @(Get-TreeSnapshot (Join-Path $BackupDir 'metadata'))
     $Path = Join-Path $BackupDir 'manifest.json'
+    Set-ResetBackupStep $TimingContext $Plan $BackupDir 'manifest_write'
     Write-ResetJson $Path $Manifest
+    Set-ResetBackupStep $TimingContext $Plan $BackupDir 'manifest_readback'
     $ReadBack = Read-ResetJson $Path
     Assert-SameSnapshot $Manifest.data @($ReadBack.data)
     Assert-SameSnapshot $Manifest.program @($ReadBack.program)
-    return (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLower()
+    $ManifestHash = (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLower()
+    Set-ResetBackupStep $TimingContext $Plan $BackupDir $null
+    return $ManifestHash
 }
 function Export-ResetMetadata($Plan, [string]$BackupDir) {
     $Metadata = Join-Path $BackupDir 'metadata'
@@ -323,19 +372,21 @@ function Invoke-TestInstallationReset([switch]$Apply, [switch]$ConfirmNoDeviceAt
         Stop-ResetInstallation $Plan
         $BackendMutex = Enter-ResetMutex 'SmdHmi.Backend'
         Set-ResetStage 'copying' $Plan $Backup
-        $ManifestHash = New-VerifiedBackup $Plan $Backup
-        Set-ResetStage 'verified' $Plan $Backup
+        $BackupTiming = @{current_step=$null;completed_steps=[Collections.Generic.List[object]]::new();
+            timer=[Diagnostics.Stopwatch]::new()}
+        $ManifestHash = New-VerifiedBackup $Plan $Backup $BackupTiming
+        Set-ResetStage 'verified' $Plan $Backup $BackupTiming
         $Manifest = Read-ResetJson (Join-Path $Backup 'manifest.json')
         Assert-SameSnapshot @($Manifest.program) @(Get-TreeSnapshot $Plan.install_dir)
         Assert-SameSnapshot @($Manifest.data) @(Get-TreeSnapshot $Plan.data_dir)
-        Set-ResetStage 'removing_registration' $Plan $Backup
+        Set-ResetStage 'removing_registration' $Plan $Backup $BackupTiming
         Remove-ResetRegistration $Plan
-        Set-ResetStage 'retiring_program' $Plan $Backup
+        Set-ResetStage 'retiring_program' $Plan $Backup $BackupTiming
         Move-RetiredTree $Plan.install_dir (Join-Path $Backup 'retired-program')
-        Set-ResetStage 'retiring_data' $Plan $Backup
+        Set-ResetStage 'retiring_data' $Plan $Backup $BackupTiming
         Move-RetiredTree $Plan.data_dir (Join-Path $Backup 'retired-data')
         if (Test-Path -LiteralPath $Plan.menu_dir) { Move-RetiredTree $Plan.menu_dir (Join-Path $Backup 'retired-menu') }
-        Set-ResetStage 'completed' $Plan $Backup
+        Set-ResetStage 'completed' $Plan $Backup $BackupTiming
         return @{mode='apply';phase='completed';version=$Plan.version;install_dir=$Plan.install_dir;data_dir=$Plan.data_dir;
             backup_dir=$Backup;backup_manifest_sha256=$ManifestHash;retired_program_dir=(Join-Path $Backup 'retired-program');retired_data_dir=(Join-Path $Backup 'retired-data')}
     } finally {

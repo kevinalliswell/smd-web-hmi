@@ -1,6 +1,6 @@
 # 2026-09-13 覆盖安装与软件正式版验证
 
-维护角色：集成、Windows 测试与发布负责人。关联任务：OVER-01—07；范围依据[ADR-011](../decisions/ADR-011-overwrite-install-and-software-release.md)。目标应用版本为 `0.3.0`，协议保持 `2.0 / 2.0-design.1`、文档修订 `2.0-doc.3`。2026-09-14，PR #79 的完整安装版联调与九项机器证据聚合已通过并合入主线；**随后主线 Windows 后端报警确认回归失败；修复 PR #81 首轮完整 Windows CI 已通过，但审查跟进的补充修正仍待新的完整 Windows CI，尚未合并，正式标签与 Release 未创建**。历史失败、PR 成功和主线失败按各自构建身份分别记录。
+维护角色：集成、Windows测试与发布负责人。关联任务OVER-01—07，范围依据[ADR-011](../decisions/ADR-011-overwrite-install-and-software-release.md)。[v0.3.0](https://github.com/kevinalliswell/smd-web-hmi/releases/tag/v0.3.0)已于 **2026-09-15 09:49:48 UTC** 发布，非草稿、非预发布；发布提交为 `404ecb50edf23864ed482e68cc4a1933deb3383f`，协议保持 `2.0 / 2.0-design.1`、文档修订 `2.0-doc.3`。主线与标签的实际验收均通过，21项实际发行资产的本地下载、完整门禁及独立集合核验均通过。历史失败、预算限制和各构建身份按下文保留，不以软件发布替代现场验收。
 
 本机执行基线为 `0701a136d73560221e7d32dc4cf2747b3397ab86` 加测试当时尚未提交的实现和测试；这些结果不能归到未包含改动的基线提交。随后实现分别整理在维护协调 `ec363a8bb1b81865071ab87fb564f0b5d09253cd`、覆盖安装与恢复 `5cd9c9a401a9fa714b0a01bf531a6c45ff00bf23`、实际安装验收及门禁 `5ee5b27019b3a3ce2c9056bb7142778db44b5ea4`。最终集成、合并及标签构建后应追加实际构建完整 SHA、CI 编号、产物摘要与日志链接，不覆盖早期执行记录。rc.5 的[历史安装版联调](2026-09-08-installed-hostcomm-loop.md)不为本轮不同字节背书。
 
@@ -99,7 +99,7 @@ CI 34815548895 的结论为失败。安装套件七项及 SmdBench 先前断言�
 
 新增 **13 个行为用例**。空闲恢复用例先在旧代码进入 idle 后等待 8 秒仍未自动补齐，以失败结束（13.58 秒），新逻辑通过（6.51 秒）。受控 6 ms 异步数据库延迟的同一原场景修复前后记录分别归档在仓库外 `hostcomm-slow-sqlite-before-20260914.log`、`hostcomm-slow-sqlite-after-20260914.log`；准入和空闲恢复的先失败证据分别为 `hostcomm-callback-admission-red-20260914.log`、`hostcomm-source-idle-red-20260914.log`。
 
-修复工作区在 macOS / Python 3.13 下执行后端全量 **848 通过、3 项 Windows 专项跳过，覆盖率 86.94%，耗时 94.05 秒**。命令为在 `backend/` 执行 `../../implementation-venv/bin/python -m pytest --maxfail=1 --cov=app --cov-report=term --cov-fail-under=80`，完整日志归档在仓库外 `hostcomm-callback-admission-backend-20260914.log`。这些结果对应当时修复分支工作区，不能归到未含修正的主线提交；其后首轮完整 Windows CI 结果及审查跟进见下节。OVER-01—04 保持 implemented，OVER-05—07 保持 doing，主线及发布必要检查继续执行。
+修复工作区在 macOS / Python 3.13 下执行后端全量 **848 通过、3 项 Windows 专项跳过，覆盖率 86.94%，耗时 94.05 秒**。命令为在 `backend/` 执行 `../../implementation-venv/bin/python -m pytest --maxfail=1 --cov=app --cov-report=term --cov-fail-under=80`，完整日志归档在仓库外 `hostcomm-callback-admission-backend-20260914.log`。这些结果对应当时修复分支工作区，不能归到未含修正的主线提交；其后首轮完整 Windows CI 结果及审查跟进见下节。该阶段OVER-01—04记录为implemented、OVER-05—07为doing，后续结果另行追加。
 
 ## 修复 PR 首轮验收与审查跟进
 
@@ -115,16 +115,148 @@ CI 34815548895 的结论为失败。安装套件七项及 SmdBench 先前断言�
 
 元数据与脱敏诊断归档在该轮 `windows-release-metadata`、`windows-package-diagnostics` artifact；本地分别保存于仓库外 `hostcomm-fix-metadata-34829233667`、`hostcomm-fix-diagnostics-34829233667`。这些是 PR 构建证据，不是正式 Release 资产摘要。
 
-首轮检查通过后，[审查 4003963541](https://github.com/kevinalliswell/smd-web-hmi/pull/81#pullrequestreview-4003963541) 指出另一条遗漏路径：`_request()` 会把 `V2CapacityError` 转为 `CommandError(error_code="device_read_capacity")`，后台恢复处理仅识别前者，因而转换后的读容量拒绝没有登记待补传。首轮通过的已有场景不能证明这条遗漏已处理；PR #81 尚未合并。
+首轮检查通过后，[审查 4003963541](https://github.com/kevinalliswell/smd-web-hmi/pull/81#discussion_r4003963541) 指出另一条遗漏路径：`_request()` 会把 `V2CapacityError` 转为 `CommandError(error_code="device_read_capacity")`，后台恢复处理仅识别前者，因而转换后的读容量拒绝没有登记待补传。首轮通过的已有场景不能证明当时这条遗漏已处理；审查阶段 PR #81 尚未合并，后续修正及合并见下节。
 
 跟进修正统一使用本地读容量异常识别器，仅接受原生 `V2CapacityError` 或精确的 `CommandError(HTTP 503, device_read_capacity)`，源日志恢复与可选读取共用分类；未知结果、协议错误和远端 busy 不转为本地自动重试。在真实四个读取槽位占满的条件下，分别覆盖 `get_status` 前和日志暂存建立后两个入口，基线均因待补传标志仍为 false 而失败（0.77 / 0.72 秒）；修正后的 **13 项专项最终复验通过，耗时 4.86 秒**，包括新增的 **9 项**：2 项真实槽位、5 项反例和 2 项分类一致性。先失败日志为仓库外 `hostcomm-read-capacity-red-20260914.log`、`hostcomm-log-request-capacity-red-20260914.log`。补充修正工作区在 macOS / Python 3.13 下执行后端全量 **857 通过、3 项 Windows 专项跳过，覆盖率 87.00%，耗时 97.95 秒**，沿用上述全量命令和 80% 门槛，完整日志为仓库外 `hostcomm-read-capacity-backend-20260914.log`。本次仅统一恢复及可选读取的异常分类并补回归，传输层与控制路径不变；独立审查已通过。
 
-这些本机结果对应审查跟进的补充工作区，不能归到前次 `0f4397c92da7d21d669c13554cc9ec08069cd788` 或 PR 产物 `9a0a0a29891adb99d87c7e66a0eb7ea444be898e`。补充修正已实现并通过本机回归，新的完整 Windows CI 仍待验证，不能用首轮 CI 为不同代码背书。
+这些本机结果对应审查跟进的补充工作区，不能归到前次 `0f4397c92da7d21d669c13554cc9ec08069cd788` 或 PR 产物 `9a0a0a29891adb99d87c7e66a0eb7ea444be898e`。补充修正当时已实现并通过本机回归；随后的完整 Windows CI 另见下节，不使用首轮 CI 为不同代码背书。
 
-主线仍为 `b6cd21f4e9b89f6a0c050f415d05d0ce6795e79d`，正式标签与 Release 未创建；审查跟进、后续 PR 复验及合并后的主线/标签各自记录实际构建身份，不覆盖本轮已通过证据。
+上述审查跟进阶段，主线仍为 `b6cd21f4e9b89f6a0c050f415d05d0ce6795e79d`，正式标签与 Release 未创建。随后的 PR 复验及主线合并使用各自实际构建身份记录，不覆盖本轮已通过证据。
+
+## 补充提交与后续验收登记
+
+PR #81 最终源提交为 `0a6baf0f0ae54eb6540e5edca3e790d8a9f04c0d`，原[审查线程](https://github.com/kevinalliswell/smd-web-hmi/pull/81#discussion_r4003963541)已回复并标记 resolved。最终 [CI 34835133703](https://github.com/kevinalliswell/smd-web-hmi/actions/runs/34835133703) 的七项检查全部通过，实际 PR 合并构建及产物清单提交为 `a147dba9fe812c9b5d5575c98aadc0b21c369a07`。Windows 桌面 **384 通过**、联调工具单元 **106 通过**、后端 **856 通过、4 项 POSIX 限定跳过，覆盖率 88.12%**。
+
+该轮实际安装冒烟、rc.4/rc.5 升级与恢复、**9 项安装场景及 19 项联调断言**全部通过，归属清理完成；10 份实际报告文件的字节摘要已核验。离线同版修复前后保留 **8 个实验、262 条采样、10 份报告**，账户、配置和配对密钥保留。九份场景日志、元数据身份及摘要已核对，PR 产物的实际文件门禁通过；以下摘要仅属于本轮 PR，不能用作重新冻结的主线或正式标签包摘要。
+
+| 最终 PR 产物 | CI 34835133703 记录的 SHA256 |
+|---|---|
+| `SmdHmi-0.3.0-windows-x64.exe` | `a2008c6c8fae86ceacc32624dad30551f8a2f3b00cf834aec1ff87e14e15d449` |
+| `SmdBench-0.3.0-windows-x64.zip` | `5bea72ba8d134535b364881d6e8b2ebff7a919ead71b0ddd78e39e5e7a82bed3` |
+| `software-acceptance.json` | `dd573c5b7a368f5cea88b182cbc08b2a917a9afdd06a65d760f8a8a3a604913d` |
+
+该轮元数据及脱敏诊断保存在 `windows-release-metadata`、`windows-package-diagnostics` artifact；本地分别归档在仓库外 `hostcomm-capacity-metadata-34835133703`、`hostcomm-capacity-diagnostics-34835133703`。首轮 `9a0a0a29891adb99d87c7e66a0eb7ea444be898e` 和本轮 `a147dba9fe812c9b5d5575c98aadc0b21c369a07` 的证据分开保留。
+
+2026-09-14 **11:55:58 UTC**，[PR #81](https://github.com/kevinalliswell/smd-web-hmi/pull/81) 正常通过受保护的 squash 合并进入 `main@404ecb50edf23864ed482e68cc4a1933deb3383f`；文件树与最终源 `0a6baf0f0ae54eb6540e5edca3e790d8a9f04c0d` 相同。提交身份仍不同；相同文件树和 PR 通过不代替主线及标签构建验收。
+
+### 修复后主线的预算阻塞与恢复
+
+[主线 CI 34840701388 第1次尝试](https://github.com/kevinalliswell/smd-web-hmi/actions/runs/34840701388/attempts/1) 的六项基础任务均未启动，安装打包任务 skipped。Check `103964751685` 的 annotation 原文为：
+
+> The job was not started because an Actions budget is preventing further use.
+
+第1次尝试因 GitHub Actions 预算阻塞而未执行，**不是代码测试失败，也没有该次主线测试通过结果**。[第2次尝试](https://github.com/kevinalliswell/smd-web-hmi/actions/runs/34840701388/attempts/2) 的重试记录时间为 **2026-09-14 14:34:42 UTC**，仍因预算未运行基础任务；GitHub 整体结论为 failure，不应转述为代码回归失败。两次尝试均对应 `404ecb50edf23864ed482e68cc4a1933deb3383f`；预算阻塞和此前已经实际完成的 PR 验收分别保留。
+
+2026-09-15 用户再次上调 Actions 预算。[第3次尝试](https://github.com/kevinalliswell/smd-web-hmi/actions/runs/34840701388/attempts/3) 的 `run_started_at` 为 **2026-09-15 07:38:48 UTC**，构建源仍为 `404ecb50edf23864ed482e68cc4a1933deb3383f`。该次随后完成六项基础检查，均通过。[Windows 测试 job 104295030065](https://github.com/kevinalliswell/smd-web-hmi/actions/runs/34840701388/job/104295030065) 使用 Python 3.13.15，结果如下：
+
+| Windows 检查 | 实际结果 |
+|---|---|
+| 桌面事务单元回归 | 384 通过，241.98 秒 |
+| SmdBench 单元回归 | 106 通过，21.36 秒 |
+| 后端全量回归 | 856 通过、4 项 POSIX 限定跳过、1 条警告，734.39 秒；覆盖率 88.02% |
+
+原报警确认用例的 False/True 两个分支和新增的读槽位占满后回补用例均通过。1 条警告是 Starlette TestClient 使用 httpx 的弃用提醒，不是失败；不得将本轮写为无警告。完整原始日志在仓库外 `overwrite-main-windows-tests-34840701388-attempt3.log`。
+
+[Windows 安装打包 job 104300196182](https://github.com/kevinalliswell/smd-web-hmi/actions/runs/34840701388/job/104300196182) 已完成程序冻结；真实 rc.4/rc.5 覆盖安装套件于 **2026-09-15 08:23:28—08:33:14 UTC** 执行并通过。完整安装版联调随后于 **08:33:14—08:44:09 UTC** 执行并通过，正式版资产门禁于 **08:44:21 UTC** 完成；该次主线 CI 七项检查全部通过。
+
+该次主线构建身份为 `404ecb50edf23864ed482e68cc4a1933deb3383f`，版本 `0.3.0`。下载后已核验 **9 项 Windows 场景、19 项联调断言、10 份实际报告文件字节及摘要、13 份元数据文件摘要**，两个套件均记录 `cleanup_complete=true`。元数据归档在仓库外 `overwrite-main-metadata-34840701388-attempt3`，诊断与报告归档在 `overwrite-main-diagnostics-34840701388-attempt3`。安装器 EXE 与工具 ZIP 的完整字节由该轮 CI 资产门禁核验；本机只下载元数据和诊断，未再下载这两个大包。
+
+主线离线确认场景的未确认安装返回20，服务PID保持7144，程序、配置、数据库与维护门禁不变；确认后安装返回0，服务PID由7144变为5392，保留 **8个实验、246条采样、10份报告**。档案ID、采样数、报告字节及摘要、账户登录、配置树与PSK均已比对，模拟器重新连接并确认idle。该证据只属于本次主线产物，不为标签重新构建的包背书。
+
+| 主线产物 | CI 34840701388 第3次尝试记录的 SHA256 |
+|---|---|
+| `SmdHmi-0.3.0-windows-x64.exe` | `83c9dd4eeefaf2fe295e3c63536591d00c55e8466ea84a3ab21ce856e0d61852` |
+| `SmdBench-0.3.0-windows-x64.zip` | `36f8c1229080565b18d9912e96567da38f91d5fa906f22965d7c0a73689cf360` |
+| `software-acceptance.json` | `02061bc6134d546b5eb2a440661440c1821ccd26204b04deef1614c8bd260470` |
+
+### 标签构建与正式发布
+
+**2026-09-15 08:46 UTC** 已创建并推送 `v0.3.0`，标签对象为 `4a1760fc5fff9cdb6b6e11b762d12ecbb096085a`，剥离后的提交目标为已通过主线检查的 `404ecb50edf23864ed482e68cc4a1933deb3383f`。旧标签保持原样。
+
+[Release run 34948794299](https://github.com/kevinalliswell/smd-web-hmi/actions/runs/34948794299) 已完成，**八项任务全部成功：七项必要检查与发布任务**。标签Windows测试job104314502230使用Python3.13.15：桌面384通过（172.79秒）、联调工具106通过（20.22秒）、后端856通过/4项POSIX跳过/1条Starlette TestClient弃用警告（363.08秒），覆盖率87.95%。报警确认两个场景通过，原始日志为仓库外 `overwrite-tag-windows-tests-34948794299.log`。
+
+标签安装任务job104317694699依次完成：实际安装冒烟 **09:11:44—09:23:05 UTC**、rc.4/rc.5升级套件 **09:23:05—09:34:52 UTC**、完整安装版联调 **09:34:52—09:47:50 UTC**、正式版资产门禁 **09:47:50—09:48:00 UTC**，均通过。9项Windows场景、19条联调断言均为passed、清理完成；下载的13份元数据摘要和10份实际报告字节及摘要已经核验。该轮元数据、诊断分别归档在仓库外 `overwrite-tag-metadata-34948794299`、`overwrite-tag-diagnostics-34948794299`。
+
+标签离线确认独立复核：未确认返回20、服务PID保持9164；确认后返回0、PID由9164变为7040，保留 **8个实验、282条采样、10份报告** 以及账户、配置和PSK，模拟器重连后为idle。该批采样数属于标签构建，不能与主线的246条混用。
+
+[GitHub Release v0.3.0](https://github.com/kevinalliswell/smd-web-hmi/releases/tag/v0.3.0) 于 **2026-09-15 09:49:48 UTC** 发布，`draft=false`、`prerelease=false`，有 **21项资产**。实际21项Release文件已全部下载至仓库外 `release-v0.3.0-404ecb5`。在提交 `404ecb50edf23864ed482e68cc4a1933deb3383f`、`GITHUB_RUN_ID=34948794299` 下执行 `scripts/release/publish_gate.py` 返回0；实际安装器与工具ZIP摘要、ZIP内部逐文件清单和内嵌manifest核验通过。下表为实际下载后比对通过的发行摘要，不能与上文主线包混用。
+
+| 标签发行文件 | SHA256 |
+|---|---|
+| `SmdHmi-0.3.0-windows-x64.exe` | `1574ca2819c1efdd4bfa32548c1482d2c196fd09e140a4687ca00aec31a9d926` |
+| `SmdBench-0.3.0-windows-x64.zip` | `cd64945e7f7951ad0a7d287b96636d35a130ea9c487460d58973ba3cbd732005` |
+| `software-acceptance.json` | `8991101bc9890ac2c22669c0efb4e27056ab148e377608ab923c2f00f07b2b11` |
+
+验证范围须区分自动门禁与本轮补验：[package_bench.validate_evidence](../../scripts/release/package_bench.py)强制基础12项联调断言子集存在、名字唯一且所有提交断言passed；Windows发布门禁强制精确9项场景。本轮发行产物通过独立补验脚本 `verify-final-release-assets.py`：精确21项资产、15条校验值、精确9项Windows场景、精确19项联调断言集合及身份和证据均通过，脚本返回0。因此本轮19项完整结果有实际产物与独立复核支持；不能将生产门禁描述为自动强制完整19项集合。补验不替代生产门禁或成功的标签工作流，不修改协议或门禁行为。
+
+另一次独立复核确认：19份标签CI附件与Release对应副本逐字节相同，9份场景日志与诊断归档相同；SmdBench ZIP的982条文件清单和内嵌manifest一致；10份实际报告（8份HTML、1份PDF、1份XLSX）的文件格式、长度和SHA一致。
+
+最终下载门禁和独立补验日志分别保存在仓库外 `release-v0.3.0-publish-verification.log`、`release-v0.3.0-asset-verification.log`。OVER-01—07按本轮软件发行范围完成；历史失败、各次PR成功、主线与标签的不同产物摘要均保留。
+
+### 文档收尾期间的 CI 脚本诊断
+
+发布后的[PR #82](https://github.com/kevinalliswell/smd-web-hmi/pull/82)最初只更新四份文档，应用和安装器源码与标签相同。[CI 34955791654 第1次尝试](https://github.com/kevinalliswell/smd-web-hmi/actions/runs/34955791654/attempts/1)的六项基础检查通过，实际 PR 构建为 `b0f9f24d135387d4993fddb9865325de6d29b276`。首次安装、LocalService、数据库/schema/存储/备份验活、静态页面及同版修复均通过；独立测试机归档重置在 `test-reset-smoke.ps1` 的600秒子进程等待处超时，安全清理完成。原诊断没有保留重置内部阶段，不能确定具体原因。此前该阶段曾成功运行约404、455和551秒；这些时长不足以证明本次是环境原因。
+
+同提交仅重跑失败作业的[第2次尝试](https://github.com/kevinalliswell/smd-web-hmi/actions/runs/34955791654/attempts/2)在安装前的只读 `Get-CimInstance` 服务查询处超时，未开始安装，也未产生安装结果 JSON。这与第一次归档重置超时是两个不同失败点。两轮原始日志、独立诊断分别保存于仓库外 `release-docs-windows-package-34955791654.log`、`release-docs-diagnostics-34955791654` 和带 `-attempt2` 后缀的对应记录；不覆盖已发布标签的验收。
+
+后续修正只作用于 CI 脚本：只读 CIM 查询最多尝试三次，每次仍设5秒操作超时，仅 CIM 异常允许有限重试；持续错误必须抛出，只有成功查询才可认定服务不存在。归档重置保留600秒上限和原始超时，在子进程确认退出、现有归属校验通过之后、清理之前，复用已有阶段记录，仅输出固定阶段枚举与退出等待的单调耗时。未知或无效记录保留 `unknown`，不上传路径、配置、密钥或原始阶段内容，也不改变退出确认和清理判断。Windows 原生正反例及完整安装检查的执行结果见[该 PR 检查](https://github.com/kevinalliswell/smd-web-hmi/pull/82/checks)；本节不以本机静态检查替代 Windows 验证，不重新发布或移动 `v0.3.0`。
+
+
+新增诊断后的 [CI 34961858215](https://github.com/kevinalliswell/smd-web-hmi/actions/runs/34961858215) 对应 PR 源提交 `f9e8fe0291d33675e4e6d94e87d1ad0446371099`，实际合并构建为 `30b591ec3f561e2708b26096959985dd1e8330ac`。六项基础检查通过；Windows 桌面 **409 通过**（包含新增的25个原生PowerShell用例）、联调工具单元 **106 通过**、后端 **856 通过/4项POSIX跳过，覆盖率88.00%**。安装、LocalService、应用和页面验活、同版修复仍通过；测试机重置在 **600.004秒** 超时，新增诊断确认清理前阶段为 `copying`，安全清理完成。后续旧版升级和完整联调步骤未执行，该轮不能记为安装套件通过。日志与诊断保存在仓库外 `release-closeout-windows-package-34961858215.log`、`release-closeout-diagnostics-34961858215`。
+
+`copying` 包含源文件清单与SHA256、复制、备份权限处理、目标校验和源文件复查，当前证据不能进一步认定某个子步骤是瓶颈。同版修复还保留当前事务的完整程序回退副本，重置时必须一并归档；不能通过删除该副本、跳过校验或放宽超时来取得通过结果。独立重置脚本不在已经发布的安装包文件清单中。后续测量在原调用边界加入13个固定子步骤的单调计时；原 `copying` 阶段、600秒等待及全部校验保持原样。私有阶段记录保留当前子步骤和已完成步骤耗时，CI只在原有退出及归属检查后投影有限字段。诊断字段写入失败回退到原阶段记录，不能掩盖备份成功或原业务异常。原生专项和实际测量结果仍须分别记录，尚未据此优化底层复制或权限算法。
+
+
+### 独立安装环境的备份计时
+
+临时诊断分支复用已经发布的 `404ecb5` 安装器和 manifest，分别核对上表安装器SHA256和 manifest 摘要 `bfe7573acee5369f38f709c63b4293f118c32c191052be3d581f138cbdb90b44`。诊断脚本提交与安装包提交分开记录，此测量不作为新安装包或新版本验收，也不替代正式PR完整检查。
+
+首轮 [34967730697](https://github.com/kevinalliswell/smd-web-hmi/actions/runs/34967730697) 的原生专项为66通过、15失败，未进入安装。15项失败均来自测试错误地假设Windows PowerShell 5.1会将顶层空值输出为JSON `null`；实际为空文本。测试包装改用对象保留空值，原拒绝断言与产品逻辑保持。修正后的 [34968057593](https://github.com/kevinalliswell/smd-web-hmi/actions/runs/34968057593) 以诊断提交 `b43c00e10d8e2fabb35bf041a1e8dd7567595562` 执行：**81项原生专项通过（53.99秒）**，固定发行包的安装、同版修复、完整归档、空库重装、LocalService配对凭据读取及清理全部通过。其 `test_reset_progress.elapsed_seconds` 为 **77.454秒**，最终阶段为 `completed`。
+
+| 备份子步骤 | 本轮耗时（秒） |
+|---|---:|
+| 程序源清单与SHA256 | 7.821 |
+| 程序复制 | 14.357 |
+| 备份程序权限处理 | 12.149 |
+| 程序目标清单与SHA256 | 7.817 |
+| 程序源复查 | 7.767 |
+
+13项完整计时、原生日志及身份文件保存在仓库外 `reset-copy-diagnostic-34968057593` 和同名 `.log`。其余每项备份计时均小于0.3秒；单步耗时不含探针持久写入，总退出等待还包括前置检查、服务停止、登记清理及原目录保留等操作。本轮工具SHA256为 `67fe49fc1b1f2a414c3abc7ce9f6024addfbc505a97336338a452b15342642b9`。此前 `copying` 超时来自包含冻结/编译的完整构建runner，当前来自只使用发行包的独立安装runner；差异支持继续验证环境隔离，不能证明某项文件操作或底层算法是根因。所有原SHA256、ACL、备份范围与600秒限制保留。
+
+后续CI将冻结构建与实际安装分到不同runner，通过同轮构建候选和摘要传递产物；原 `windows-package` 必需检查仍执行完整验收，并在构建失败时明确失败。临时诊断工作流不进入主线，证据与分支在仓库外备份后清理。最终构建与安装回归见[PR检查](https://github.com/kevinalliswell/smd-web-hmi/pull/82/checks)。
+
+### 释放租约测试的通信交错
+
+拆分后的首轮 [34970067232](https://github.com/kevinalliswell/smd-web-hmi/actions/runs/34970067232) 对应源提交 `d4ee9d489333c0b8bdbed1276a55db743a429754`。Windows桌面431项和工具单元106项通过；后端在690项通过、4项POSIX跳过后，因 `test_release_lost_receipt_keeps_unknown_and_revokes_connection` 失败而停止。操作状态为 `unknown`、板端租约为空的断言均通过，失败的是返回瞬间TCP必须离线。构建未启动；`windows-package` 按新增的上游失败检查明确失败，没有将跳过构建当作通过。此轮尚未验证拆分后的产物传递与安装。
+
+独立真实TCP复现将一次实际 `get_status` 放在未知结果落盘后、释放结束前：状态先确认板端无租约并清除本地租约、增加代次，旧代次的释放收尾因此不再断开当前连接。连接保持同一会话，本地控制租约无效，操作仍持久化为 `unknown`，重新获取控制权被 `operation_unresolved` 拒绝。这证明原瞬时离线断言过度约束合法交错；本次Windows日志不能区分实际触发的是这条路径还是先断线再重连。
+
+测试分别固定“状态尚未撤销租约”和“状态已经撤销租约”两个边界，保留前者必须撤销连接、后者不得恢复控制权限的严格断言。生产通信、租约时限和重连策略保持不变。本机Python3.13的五份直接相关测试96项通过，格式与文档链接检查通过；此结果不替代Windows验证。原始失败日志保存在仓库外 `release-closeout-windows-tests-34970067232.log`；最终回归结果以PR必要检查为准。
+
+### 回补调度与数据库完成的观察边界
+
+下一轮 [34972108003](https://github.com/kevinalliswell/smd-web-hmi/actions/runs/34972108003) 源提交为 `64b74265b5990f15bad543d321ad0418de7ea4fb`。Windows桌面431项、工具106项通过，后端在645项通过、4项POSIX跳过后，于 `test_full_read_slots_preserve_source_scan_until_idle_poll_can_resume[log_request]` 等待完成事件6秒处失败；尚未执行到上节的租约用例。容量拒绝、待回补标记、四个读请求占位、连接就绪及设备空闲的断言都通过。该日志缺少回补阶段记录，不能认定实际Windows停在哪一步。
+
+在预期容量拒绝之后，对真实aiosqlite操作加入每次30ms的异步延迟，可复现相同超时：2.120秒进入真实轮询状态读取、2.659秒自动启动回补、3.728秒登记传输、4.452秒开始接收块落盘（0.943秒内完成并ACK）、5.398秒进入最终落盘。原6秒整体观察到期时连接仍就绪、无在途网络请求，真实 `finish` 事务仍在执行；这是受控数据库延迟证据，不是Windows原失败根因证明。日志保存在仓库外 `source-scan-delay-30ms.log`。
+
+测试改为先在6秒内确认真实轮询的回补任务收到实际 `log_result`，再用独立6秒观察真实持久化完成，明确不再将两阶段限制在合计6秒。仍要求完成事件、对应任务结束、待回补清除、连接就绪及未下发控制命令；补充有限的失败阶段信息。生产的3秒通信进度期限、30秒日志请求期限和数据库策略保持原样，第二次回补由真实后台轮询触发。同一30ms受控延迟下，修正后的测试通过：5.389秒进入最终事务、1.412秒完成落盘，整项7.23秒；应用整文件及五份直接相关测试本机共118项通过。红绿日志分别保存在仓库外 `source-scan-delay-30ms.log` 与 `source-scan-delay-30ms-fixed.log`。
+
+[Windows专项34974135560](https://github.com/kevinalliswell/smd-web-hmi/actions/runs/34974135560) 的诊断提交为 `a6584e52e2bac1536ad6993bca42eeb3d0e25380`，引用上述修正的 `cdd05af650cee55e135a1aca184053f46d3504b0`，只增加临时工作流和无延迟注入的阶段记录插件。96项租约相关测试通过，6轮各两个容量边界场景全部通过；六份 `log_request` 参数阶段记录均完整且无丢弃，自动回补与提交合计2.167–2.683秒。此原生专项未重现原6秒超时，不能证明此前Windows失败根因，也不替代完整CI。日志、身份和阶段记录保存在仓库外 `source-scan-diagnostic-34974135560` 及同名 `.log`，临时分支已备份验证后清理。
+
+### 续租回执注入保留正常周期心跳
+
+[完整CI34974136194](https://github.com/kevinalliswell/smd-web-hmi/actions/runs/34974136194) 的上述两条回补用例均通过，Windows桌面431项、工具106项也通过；后端在647项通过、4项POSIX跳过后，于 `test_cleared_unacknowledged_alarm_can_be_confirmed_before_run_ack[True]` 的报警确认收到503而失败。该用例为插入较新的续租回执，永久取消了后续整段HTTP/数据库操作的周期心跳。实际Windows日志只记录连接撤销，未保存断连原因；原始记录为仓库外 `release-closeout-windows-tests-34974136194.log`。
+
+受控复现在停止心跳后，对真实aiosqlite操作施加每次20ms异步延迟：停止时剩余租期7.784秒，报警前置检查耗时5.690秒，7.972秒后明确发生 `lease_expired`，此时人工续租注入尚未执行，在途状态请求被撤销并产生同样的503。真实8秒租约与网络时钟未改。该证据说明测试人为停止心跳能够制造合法过期，不能将此断连原因推定为Windows原失败的已确认原因；复现日志为仓库外 `alarm-heartbeat-cancel-20ms.log`。
+
+修正仅调整测试：在真实确认回读的注入窗口取消并等待原心跳任务，保留原1秒手动续租和回执时间/状态版本断言；同writer、完整租约代次、在线且原任务已结束时，立即恢复真实周期心跳，再继续数据库确认。上下文已变则明确失败，不接管新会话。注入计数要求报警确认和归档确认各执行一次。修正后正常环境六份相关测试118项通过（34.50秒），格式、文档检查及独立审查通过；Windows全量结果仍以PR必要检查为准。
+
+从报警前置检查开始持续施加20ms延迟的修正后对照，报警确认、设备回读和首次注入均通过；后续持续慢盘导致另一日志回调超时，断连时租约仍有7.751秒，整项未通过。此结果只证明原心跳抑制造成的报警失败得到纠正，不能宣称无限持续慢盘下完整流程通过；该失败没有用于放宽日志进度期限。对应红/对照记录分别为仓库外 `alarm-preflight-delay-20ms-original.log`、`alarm-preflight-delay-20ms-fixed.log`，原始复现记录另行保留。
 
 ## 正式资产与其他验收
 
-`v0.3.0` 标签与正式 Release 尚未创建。PR #79 已完整验收并合入主线，PR #81 首轮完整 Windows CI 也已通过，但审查跟进的补充修正仍待新的完整 Windows CI 及合并；最终安装器与工具 ZIP 摘要、软件/Windows 验收摘要、标签构建编号及公开发布时间，必须在修复后的主线和标签重新通过全部必要检查与实际安装版验收后登记。实际发布状态与下载字节以最终 Release 所附机器验收和 `SHA256SUMS.txt` 为真源；不复用 PR 摘要，不移动旧标签。
+v0.3.0标签和GitHub Release已发布；主线、标签各自的完整验收及发布任务通过。21项实际发行资产的本地下载与校验值、ZIP内部清单、机器门禁及独立补验均通过。Release的机器验收与SHA256SUMS是发行字节的真源；上文PR及主线包只为自身构建背书。
+
+2026-09-15 经 GitHub 仓库 API 核对，`private=true`、`visibility=private`。仓库可见性保持原样；GitHub Release 即使 `draft=false`，仍遵循该私有仓库的访问权限。发行资产下载需要相应仓库权限，发布记录不表示将仓库改为互联网公开。
 
 Win10/11 干净断网 WebView2、普通操作员、中文路径和显示缩放的人工验收，以及可信签名、真实 STM32H750 固件、实物安全联锁、国标符合性和持续运行仍分别未验收。软件正式版资格不关闭这些项目，也不证明用户发生 rc.5 升级失败的那台测试机已经完成恢复。

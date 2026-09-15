@@ -1,22 +1,22 @@
 # 执行任务清单
 
-进度真源。历史审查基线为`dev@855c84d`；2026-09-05开始执行，2026-09-08完成的固件交接doc.3和rc.5安装版闭环软件验收见[上一轮验证](../docs/verification/2026-09-08-installed-hostcomm-loop.md)。当前实施`0.3.0`保留数据的覆盖安装与软件正式版，结果及待验项目见[本轮验证](../docs/verification/2026-09-13-overwrite-install.md)。rc.4安装诊断与用户反馈见[排查记录](../docs/verification/2026-09-06-windows-installer-errors.md)，rc.3功能和[HostComm 2.0验证](../docs/verification/2026-09-06-hostcomm-v2-runtime.md)保留为历史证据，均不能代替本轮发布检查。状态：`todo`未做、`doing`执行中、`implemented`实现并软件验证但等待上层验收、`done`本项全部验收完成、`blocked`需要外部证据。完成时记录完整SHA和验证产物；“文档已描述”不是代码已实现。用户已确认固件尚未开发；HostComm v2.0 的主机实现和新固件实现分别在 HOST/FW 任务中维护，软件验证不等于真机验收。
+进度真源。历史审查基线为`dev@855c84d`；2026-09-05开始执行，2026-09-08完成的固件交接doc.3和rc.5安装版闭环软件验收见[上一轮验证](../docs/verification/2026-09-08-installed-hostcomm-loop.md)。`0.3.0`保留数据的覆盖安装软件正式版已发布并完成发行资产核验，结果及待验项目见[本轮验证](../docs/verification/2026-09-13-overwrite-install.md)。rc.4安装诊断与用户反馈见[排查记录](../docs/verification/2026-09-06-windows-installer-errors.md)，rc.3功能和[HostComm 2.0验证](../docs/verification/2026-09-06-hostcomm-v2-runtime.md)保留为历史证据，均不能代替本轮发布检查。状态：`todo`未做、`doing`执行中、`implemented`实现并软件验证但等待上层验收、`done`本项全部验收完成、`blocked`需要外部证据。完成时记录完整SHA和验证产物；“文档已描述”不是代码已实现。用户已确认固件尚未开发；HostComm v2.0 的主机实现和新固件实现分别在 HOST/FW 任务中维护，软件验证不等于真机验收。
 
 ## 当前优先：覆盖安装与软件正式版
 
-2026-09-13 批准 [ADR-011](../docs/decisions/ADR-011-overwrite-install-and-software-release.md)。以下任务继续推进，目标 `0.3.0` 软件正式版；无对应执行证据时不得标 done。PR #79 的[完整 PR 验收](../docs/verification/2026-09-13-overwrite-install.md#修正后的完整-pr-验收与主线合并)已通过并于 2026-09-14 合入主线，包括实际安装、完整联调与机器门禁。随后[主线 Windows 后端回归失败](../docs/verification/2026-09-13-overwrite-install.md#主线复验失败与修复边界)，该轮主线安装打包未运行。[修复 PR #81 首轮完整 CI](../docs/verification/2026-09-13-overwrite-install.md#修复-pr-首轮验收与审查跟进)已通过；审查另发现读容量异常转换后未登记待补传，补充修正、本机专项及全量回归已完成，新的完整Windows CI待验证，尚未合并，未创建正式标签或 Release。PR 产物不代替最终发行字节，OVER-01—04 保持 implemented，OVER-05—07 保持 doing。升级保留当前数据和配置，历史“空库重装”选择不作为此次默认行为。
+2026-09-13 批准 [ADR-011](../docs/decisions/ADR-011-overwrite-install-and-software-release.md)。PR79/81合并后，`main@404ecb50edf23864ed482e68cc4a1933deb3383f` 的主线及v0.3.0标签分别完整验收；[Release工作流34948794299](https://github.com/kevinalliswell/smd-web-hmi/actions/runs/34948794299)八项任务全部通过，软件正式版于2026-09-15 09:49:48 UTC发布，非草稿、非预发布，21项资产。21项实际发行资产、15条校验值、精确9项Windows及19项联调断言、身份和证据独立核验均通过，OVER-01—07按本轮软件发行范围完成。本轮仍不关闭人工Windows或M5任务；历史故障及预算阻塞保留[验证记录](../docs/verification/2026-09-13-overwrite-install.md)。升级默认保留当前数据和配置。
 
 | ID / 优先级 | 任务 | 责任角色 | 依赖 | 验收条件 / 证据 | 状态 |
 |---|---|---|---|---|---|
-| OVER-01 / P0 | 安装器本机维护授权及 rc.4/rc.5 桥接 | Windows/后端负责人 | ADR-011；两条命令锁 | 受限请求/回执绑定 SID/事务/操作/包；已知忙碌拒绝、未知确认、实际停止和旧版不伪造令牌；行为测试 | implemented |
-| OVER-02 / P1 | 版本与维护状态界面及旧 API 退役 | 前后端负责人 | OVER-01 | 无目标文本框和prepare/cancel正常流程；旧入口明确退役；GET与源日志保留；类型/页面/API回归 | implemented |
-| OVER-03 / P0 | 数据保留、单次暂存与空间预检 | Windows/后端负责人 | OVER-01 | 实际自定义DB/配置/密钥保留；按卷空间检查及低空间拒绝；只一次完整解压；程序保留与备份不自动删除 | implemented |
-| OVER-04 / P0 | 同版修复、旧失败事务恢复与明确操作分派 | Windows/后端负责人 | OVER-01/03 | 拒绝版本复用/普通降级；旧事务额外保全、分阶段回退；只待验活不再次覆库；升级不继续卸载；故障测试 | implemented |
-| OVER-05 / P0 | 实际 Windows 覆盖安装与安装版联调 | Windows/测试负责人 | OVER-01—04；全部必要检查 | 真实rc.4/rc.5升级、账户/配置保留及九项固定安装场景、SmdBench完整业务/故障/离线修复已在PR通过；修复PR81首轮完整验收通过，审查发现的读容量异常遗漏已修正，本机专项及全量通过，新的完整Windows CI待验，见[本轮记录](../docs/verification/2026-09-13-overwrite-install.md#修复-pr-首轮验收与审查跟进) | doing |
-| OVER-06 / P1 | 软件正式版机器门禁与范围声明 | 发布负责人 | OVER-05；全部必要检查 | [证据契约](../docs/release-acceptance.md)校验实际文件、当前CI、完整场景；PR聚合与反例通过，修复后的主线及标签仍须重新执行；不将M5标通过 | doing |
-| OVER-07 / P1 | 文档、资产与不可移动 v0.3.0 | 发布/维护负责人 | OVER-05/06 | 同提交安装器/工具/摘要/升级说明/限制发布，prerelease=false；旧标签不动；PR79已合并；PR81首轮CI通过，审查跟进已修正，待完整复验及合并；正式标签及Release未创建 | doing |
+| OVER-01 / P0 | 安装器本机维护授权及 rc.4/rc.5 桥接 | Windows/后端负责人 | ADR-011；两条命令锁 | 受限请求/回执绑定 SID/事务/操作/包；已知忙碌拒绝、未知确认、实际停止和旧版不伪造令牌；行为测试 | done |
+| OVER-02 / P1 | 版本与维护状态界面及旧 API 退役 | 前后端负责人 | OVER-01 | 无目标文本框和prepare/cancel正常流程；旧入口明确退役；GET与源日志保留；类型/页面/API回归 | done |
+| OVER-03 / P0 | 数据保留、单次暂存与空间预检 | Windows/后端负责人 | OVER-01 | 实际自定义DB/配置/密钥保留；按卷空间检查及低空间拒绝；只一次完整解压；程序保留与备份不自动删除 | done |
+| OVER-04 / P0 | 同版修复、旧失败事务恢复与明确操作分派 | Windows/后端负责人 | OVER-01/03 | 拒绝版本复用/普通降级；旧事务额外保全、分阶段回退；只待验活不再次覆库；升级不继续卸载；故障测试 | done |
+| OVER-05 / P0 | 实际 Windows 覆盖安装与安装版联调 | Windows/测试负责人 | OVER-01—04；全部必要检查 | 主线及标签实际九项安装场景、19项联调断言通过，报告字节已核验；实际发行资产独立精确集合及下载核验通过，见[发行证据](../docs/verification/2026-09-13-overwrite-install.md#标签构建与正式发布) | done |
+| OVER-06 / P1 | 软件正式版机器门禁与范围声明 | 发布负责人 | OVER-05；全部必要检查 | [机器门禁](../docs/release-acceptance.md)已通过；基础12项联调子集与本轮独立19项核验分别记录，Windows场景精确9项；最终下载和独立精确集合核验通过，不将M5标通过 | done |
+| OVER-07 / P1 | 文档、资产与不可移动 v0.3.0 | 发布/维护负责人 | OVER-05/06 | 标签及非草稿/非预发布GitHub Release已创建，21项发行资产；实际下载21项资产及15条校验值核验通过，旧标签不动 | done |
 
-OVER-01—04 已实现，PR79及PR81首轮的实际安装、联调和机器门禁证据保留；PR81审查跟进尚未关闭，仍等待补充修正后的 OVER-05/06 完整复验及主线验收。M4-06c 的现场失败仍保留历史证据；新自动恢复回归不意味着这台测试机已恢复。OVER 任务完成也不关闭 Win10/11 人工、签名和 M5 未完成项目。
+主线、标签与Release的身份及摘要分别保存，不混用不同构建的安装器和工具包。此前预算阻塞及修复证据保留；本次仅关闭列明的软件发行范围。M4-06c的现场失败仍为历史待核查事项，不能从CI恢复推断用户测试机已恢复；Win10/11人工、可信签名和M5未验项目保持原状态。
 
 ## M0 文档基线
 
