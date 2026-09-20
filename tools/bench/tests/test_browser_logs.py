@@ -10,6 +10,7 @@ import pytest
 from smd_bench import browser as browser_module
 from smd_bench import cli, windows
 from smd_bench.browser import Browser
+from windows_capabilities import requires_admin_owner
 
 
 def browser_process_stub(monkeypatch, *, fail_content=False, write_log=True):
@@ -97,6 +98,7 @@ async def test_browser_refuses_missing_or_public_log_storage_before_launch(tmp_p
     assert not calls and not list(tmp_path.iterdir())
 
 
+@requires_admin_owner
 @pytest.mark.parametrize("fail_content,write_log,expected", [(False, True, 0), (True, True, 1), (False, False, 1)])
 def test_self_check_requires_private_log_and_cleans_only_its_temp_storage(
     tmp_path, monkeypatch, fail_content, write_log, expected

@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 from smd_bench.diagnostics import archive_logs, failure_details
 from smd_bench.ownership import claim
+from windows_capabilities import requires_admin_owner, requires_symlink_privilege
 
 
 def private_run(tmp_path):
@@ -18,6 +19,7 @@ def private_run(tmp_path):
     return run_id, private, data
 
 
+@requires_admin_owner
 def test_public_frames_exclude_messages_source_and_secret_paths(tmp_path):
     run_id, private, _data = private_run(tmp_path)
     payload = "super-private-token-48625077"
@@ -48,6 +50,7 @@ def test_shipped_maintenance_frame_keeps_location_without_private_context():
     assert private not in json.dumps(frames) and "private" not in json.dumps(frames)
 
 
+@requires_admin_owner
 def test_log_archive_is_private_and_only_copies_owned_service_logs(tmp_path):
     run_id, private, data = private_run(tmp_path)
     logs = data / "logs"
@@ -61,6 +64,7 @@ def test_log_archive_is_private_and_only_copies_owned_service_logs(tmp_path):
     assert (logs / "service.log").exists()
 
 
+@requires_symlink_privilege
 def test_log_archive_refuses_link_instead_of_following_it(tmp_path):
     run_id, private, data = private_run(tmp_path)
     logs = data / "logs"
@@ -73,6 +77,7 @@ def test_log_archive_refuses_link_instead_of_following_it(tmp_path):
     assert outside.read_text() == "not owned"
 
 
+@requires_admin_owner
 def test_owned_cleanup_archives_logs_before_removing_installation(tmp_path, monkeypatch):
     from smd_bench.installation import Installation
 
@@ -95,6 +100,7 @@ def test_owned_cleanup_archives_logs_before_removing_installation(tmp_path, monk
     assert len(archived) == 1 and archived[0].read_text() == "private failed installer evidence"
 
 
+@requires_admin_owner
 def test_log_preservation_failure_keeps_original_data(tmp_path, monkeypatch):
     from smd_bench.installation import Installation
 
@@ -148,6 +154,7 @@ def installation_with_database(tmp_path, monkeypatch):
     return installation
 
 
+@requires_admin_owner
 def test_cleanup_closes_both_real_backup_connections_before_removal(tmp_path, monkeypatch):
     import shutil
 
@@ -181,6 +188,7 @@ def test_cleanup_closes_both_real_backup_connections_before_removal(tmp_path, mo
 
 
 @pytest.mark.skipif(os.name != "nt", reason="requires Windows SQLite file-sharing and real directory removal")
+@requires_admin_owner
 def test_windows_cleanup_releases_database_for_real_removal_and_retains_backup(tmp_path, monkeypatch):
     installation = installation_with_database(tmp_path, monkeypatch)
     installation.cleanup()  # Real sqlite connections, backup, ACL checks and shutil.rmtree.
@@ -239,7 +247,7 @@ def test_shutdown_evidence_extracts_fixed_stages_after_latest_start_only(tmp_pat
     assert log.read_bytes() == raw and "secret" not in json.dumps(result) and "1234" not in json.dumps(result)
 
 
-@pytest.mark.parametrize("mode", ["missing", "foreign", "link"])
+@pytest.mark.parametrize("mode", ["missing", "foreign", pytest.param("link", marks=requires_symlink_privilege)])
 def test_shutdown_evidence_refuses_unowned_or_unavailable_logs(tmp_path, mode):
     from smd_bench.diagnostics import service_shutdown_evidence
 
