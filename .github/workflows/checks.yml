@@ -192,11 +192,6 @@ jobs:
         timeout-minutes: 20
         with:
           nsis: 'true'
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '24'
-          cache: npm
-          cache-dependency-path: frontend/package-lock.json
       - name: Install locked compile dependencies
         shell: pwsh
         run: pip install --require-hashes -r backend/requirements.lock -r desktop/requirements.lock

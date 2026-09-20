@@ -67,6 +67,16 @@ runs:
         [IO.File]::AppendAllText($env:GITHUB_PATH, "$Pwsh`n", $Utf8)
         & (Join-Path $Pwsh 'pwsh.exe') -NoProfile -NonInteractive -Command '$PSVersionTable.PSVersion.ToString()'
         if ($LASTEXITCODE -ne 0) { throw 'Portable PowerShell did not start' }
+        # Digest from https://nodejs.org/dist/v24.21.0/SHASUMS256.txt.
+        $NodeArchive = Install-Archive 'node' 'https://nodejs.org/dist/v24.21.0/node-v24.21.0-win-x64.zip' '158f7685b44de51f6c0df1d153526cbcd3e1bc739a8dfc607721cef75de9e541'
+        $Node = Join-Path $NodeArchive 'node-v24.21.0-win-x64'
+        [IO.File]::AppendAllText($env:GITHUB_PATH, "$Node`n", $Utf8)
+        $NodeVersion = (& (Join-Path $Node 'node.exe') --version).Trim()
+        if ($LASTEXITCODE -ne 0 -or $NodeVersion -cne 'v24.21.0') { throw 'Portable Node version mismatch' }
+        $NpmVersion = (& (Join-Path $Node 'npm.cmd') --version).Trim()
+        if ($LASTEXITCODE -ne 0) { throw 'Portable npm did not start' }
+        Write-Host "Node $NodeVersion ($Node\node.exe); npm $NpmVersion ($Node\npm.cmd)"
+        Add-Environment 'npm_config_cache' (Join-Path $Root 'npm-cache')
         if ($env:SMD_NEEDS_NSIS -ceq 'true') {
             # SHA-256 published by the NSIS project in the SourceForge 3.11 file metadata.
             $Nsis = Install-Archive 'nsis' 'https://downloads.sourceforge.net/project/nsis/NSIS%203/3.11/nsis-3.11.zip' 'c7d27f780ddb6cffb4730138cd1591e841f4b7edb155856901cdf5f214394fa1'

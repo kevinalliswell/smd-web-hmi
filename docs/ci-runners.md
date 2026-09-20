@@ -28,7 +28,7 @@ Mac 选择 `[self-hosted, macOS, ARM64, local-mac, smd-web]`，登记名称 `kev
 
 本机 Python 通过固定提交的 setup-uv、uv `0.10.11` 和可移动 Python `3.13.12` 创建，避免要求创建 setup-python macOS 包的 `/Users/runner/hostedtoolcache` 系统路径；托管 Linux/Windows 保持 setup-python。每个任务在 `RUNNER_TEMP` 建立唯一 venv，禁用用户 site-packages，要求 pip 只在 venv 安装，并保留 requirements 锁文件哈希校验。Mac 任务断言 Darwin/ARM64、Python 3.13 和 `ssl.HAS_PSK`，确保 TLS-PSK 能力缺失时失败而非把跳过算通过。
 
-Node 继续通过 setup-node 选择 24。checkout 不保留 Git 凭据；Mac 任务结束的 `always()` 步骤仅删除本任务的 venv 和该 checkout 未跟踪生成文件，保留源码及下载缓存。不更改主机 HOME、用户 Python、其他仓库工作区或运行器服务。取消/进程崩溃可能中断清理；下次 checkout 的清理和管理员对本运行器目录的维护仍需保留。
+Mac 和托管任务的 Node 继续通过 setup-node 选择 24。checkout 不保留 Git 凭据；Mac 任务结束的 `always()` 步骤仅删除本任务的 venv 和该 checkout 未跟踪生成文件，保留源码及下载缓存。不更改主机 HOME、用户 Python、其他仓库工作区或运行器服务。取消/进程崩溃可能中断清理；下次 checkout 的清理和管理员对本运行器目录的维护仍需保留。
 
 本机与另一仓库运行器共享主机资源；接入前可用磁盘约 8.5 GiB。Windows 非交互编译在 Server 2019 执行；实际程序运行、安装和桌面验收仍留在独立环境。运行器以用户 LaunchAgent 运行，主机重启后需该用户登录；不能将服务登记“在线”视为跨重启可用性验收。
 
@@ -37,7 +37,7 @@ Node 继续通过 setup-node 选择 24。checkout 不保留 Git 凭据；Mac 任
 
 `windows-compile` 是额外的兼容构建，不代替原 `windows-build`、`windows-package` 或 Windows 后端矩阵。它独立编译同一 SHA 的前端，以便托管预算或跨任务产物传递被阻塞时仍能取得实际编译结果。原前端类型、测试、构建及 `frontend-dist` 上传门禁保留；原发布仍等待共享工作流全部必要任务成功。fork/Dependabot PR 不进入两个长期主机。
 
-Server 2019 使用 `NT AUTHORITY\NETWORK SERVICE`，非管理员、Session 0。工具在本任务 `RUNNER_TEMP/smd-hmi-<run>-<attempt>-<job>-<随机值>` 下准备：checkout 前下载并核验 MinGit 2.55.0.5；随后准备 PowerShell 7.4.20、NSIS 3.11 与可移动 Python 3.13.12（来源为 uv 0.10.11 官方元数据锁定的 python-build-standalone 包），均不安装到 Program Files、不修改系统 PATH/业务 Python。归档的 SHA-256 固定在工作流和[准备动作](../.github/actions/local-windows-tools/action.yml)；Node 24 通过 setup-node 使用运行器工具目录。Python 必须支持 TLS-PSK，依赖仍按现有锁文件及哈希安装。官方归档可预缓存在本运行器 `RUNNER_TOOL_CACHE/smd-archives`；每次使用仍重新核验固定 SHA-256，展开和运行均在本任务目录。缓存缺失时由 curl 在固定总时限内下载，下载失败使任务失败；不使用未校验镜像或修改主机代理。准备步骤记录实际账户、Session、OS、架构、Git、Python、OpenSSL、PowerShell、NSIS；最终记录源码 SHA 和输出文件摘要。
+Server 2019 使用 `NT AUTHORITY\NETWORK SERVICE`，非管理员、Session 0。工具在本任务 `RUNNER_TEMP/smd-hmi-<run>-<attempt>-<job>-<随机值>` 下准备：checkout 前下载并核验 MinGit 2.55.0.5；随后准备 PowerShell 7.4.20、NSIS 3.11 与可移动 Python 3.13.12（来源为 uv 0.10.11 官方元数据锁定的 python-build-standalone 包），均不安装到 Program Files、不修改系统 PATH/业务 Python。归档的 SHA-256 固定在工作流和[准备动作](../.github/actions/local-windows-tools/action.yml)；Windows 纯编译使用同样经过归档摘要校验的 Node 24.21.0，npm 缓存位于本任务目录。Python 必须支持 TLS-PSK，依赖仍按现有锁文件及哈希安装。官方归档可预缓存在本运行器 `RUNNER_TOOL_CACHE/smd-archives`；每次使用仍重新核验固定 SHA-256，展开和运行均在本任务目录。缓存缺失时由 curl 在固定总时限内下载，下载失败使任务失败；不使用未校验镜像或修改主机代理。准备步骤记录实际账户、Session、OS、架构、Git、Python、OpenSSL、PowerShell、NSIS；最终记录源码 SHA 和输出文件摘要。
 
 编译入口显式使用 `build-windows.ps1 -CompileOnly -MakeNsis <任务内路径>`，自托管环境遗漏 `-CompileOnly` 会在下载或冻结前拒绝。该模式仅省去新增任务中的冻结程序执行；托管 `windows-build` 仍使用默认完整模式，继续运行迁移、服务/更新器/桌面 renderer 自检、冻结 Bench 的 Chromium 自检。`windows-compile` 会检查拒绝路径、PowerShell 语法并完成应用和 Bench 编译，但不会启动生成的应用、安装器或浏览器。
 
