@@ -456,3 +456,128 @@ jobs:
           node-version: '24'
       - working-directory: frontend
         run: npm audit --audit-level=high
+
+  # —— Windows x64 自托管验证通道（标签 local-windows，runner: ustb-win-smd）——
+  # 只承接单元测试与非交互构建。安装/升级/卸载/服务/防火墙类验收固定在一次性
+  # github-hosted runner：scripts/release 下相应脚本的 RUNNER_ENVIRONMENT 门控为
+  # 硬性设计，自托管不可执行，也绝不伪造环境变量绕过。
+  # 服务器为在营业务机：解释器与依赖全部装入 runner 自有目录（uv 托管 CPython 的
+  # venv、actions 工具缓存），不触碰业务 Python、系统 PATH 与业务目录。
+  backend-win-local:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [self-hosted, Windows, X64, local-windows]
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: powershell
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - name: Provision CPython 3.13 virtualenv
+        run: |
+          uv venv --seed --python 3.13 "$env:RUNNER_TEMP\ci-venv"
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          Add-Content -Path $env:GITHUB_ENV -Value "VIRTUAL_ENV=$env:RUNNER_TEMP\ci-venv"
+          Add-Content -Path $env:GITHUB_PATH -Value "$env:RUNNER_TEMP\ci-venv\Scripts"
+      - run: pip install --require-hashes -r backend/requirements-dev.lock
+      - name: Native Windows service and ACL test dependencies
+        run: pip install --require-hashes -r desktop/requirements.lock
+      - name: Safety red lines first
+        working-directory: backend
+        run: pytest tests/test_safety.py -v
+      - name: Empty database migration
+        working-directory: backend
+        run: alembic upgrade head
+      - name: Desktop transaction and process tests
+        run: pytest -c backend/pytest.ini desktop/tests -q
+      - name: Install bench dependencies
+        run: pip install --require-hashes -r tools/bench/requirements.lock
+      - name: Independent bench behavior tests
+        run: pytest -c backend/pytest.ini tools/bench/tests -q
+      - name: Backend tests and coverage gate
+        timeout-minutes: 15
+        working-directory: backend
+        run: pytest -v --maxfail=1 -o faulthandler_timeout=60 --durations=10 --cov=app --cov-report=term --cov-fail-under=80
+      - name: PowerShell syntax
+        run: |
+          Get-ChildItem deploy/windows,scripts/release -Filter *.ps1 -Recurse | ForEach-Object {
+            $Tokens = $null; $ParseErrors = $null
+            [void][System.Management.Automation.Language.Parser]::ParseFile($_.FullName, [ref]$Tokens, [ref]$ParseErrors)
+            if ($ParseErrors.Count) { throw ($ParseErrors | Out-String) }
+          }
+  windows-build-local:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [self-hosted, Windows, X64, local-windows]
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: powershell
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Build frontend dist on this runner
+        working-directory: frontend
+        run: |
+          npm ci
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npm run build
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - uses: astral-sh/setup-uv@v5
+      - name: Provision CPython 3.13 virtualenv
+        run: |
+          uv venv --seed --python 3.13 "$env:RUNNER_TEMP\ci-venv"
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          Add-Content -Path $env:GITHUB_ENV -Value "VIRTUAL_ENV=$env:RUNNER_TEMP\ci-venv"
+          Add-Content -Path $env:GITHUB_PATH -Value "$env:RUNNER_TEMP\ci-venv\Scripts"
+      - run: pip install --require-hashes -r backend/requirements.lock -r desktop/requirements.lock
+      - name: Verify NSIS at its standard path (本工作流不做系统级安装)
+        run: |
+          $MakeNsis = Join-Path ${env:ProgramFiles(x86)} 'NSIS/makensis.exe'
+          if (-not (Test-Path $MakeNsis)) {
+            throw "makensis.exe 不在 $MakeNsis；请在服务器预装 NSIS 3.11，本工作流不改动系统组件"
+          }
+          & $MakeNsis /VERSION
+      - name: Freeze service, shell and updater; verify Fixed Runtime; compile NSIS
+        run: ./scripts/release/build-windows.ps1
+      - name: Build the separate offline bench and bundled Chromium
+        run: |
+          pip install --require-hashes -r tools/bench/requirements.lock
+          if ($LASTEXITCODE -ne 0) { throw 'Bench dependency installation failed' }
+          python tools/bench/freeze.py --output artifacts/bench --work artifacts/bench-work
+          if ($LASTEXITCODE -ne 0) { throw 'Bench freeze failed' }
+          & ./artifacts/bench/SmdBench/SmdBench.exe self-check
+          if ($LASTEXITCODE -ne 0) { throw 'Frozen bench process and browser self-check failed' }
+          python scripts/release/package_bench.py --bundle artifacts/bench/SmdBench --inventory-only
+          if ($LASTEXITCODE -ne 0) { throw 'Frozen bench self-check changed the bundle inventory' }
+      - name: Retain build artifacts on this runner (Actions 工件配额受限时的留存点)
+        run: |
+          $Version = (& python scripts/release/metadata.py).Trim()
+          if ($LASTEXITCODE -ne 0) { throw 'Source version mismatch' }
+          $WorkRoot = Split-Path (Split-Path $env:GITHUB_WORKSPACE -Parent) -Parent
+          $Retain = Join-Path $WorkRoot ("smd-retained-artifacts\run-" + $env:GITHUB_RUN_ID + "-" + $env:GITHUB_RUN_ATTEMPT)
+          New-Item -ItemType Directory -Path $Retain -Force | Out-Null
+          foreach ($Name in @("SmdHmi-$Version-windows-x64.exe", 'manifest.json', 'sbom.cdx.json', 'SHA256SUMS.txt')) {
+            Copy-Item (Join-Path 'artifacts' $Name) $Retain
+          }
+          $Lines = @('### windows-build-local artifacts retained on runner', "- path: $Retain")
+          Get-ChildItem $Retain -File | ForEach-Object {
+            $H = (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower()
+            $Lines += ('- ' + $_.Name + ' | ' + $_.Length + ' bytes | sha256=' + $H)
+          }
+          $Lines | Add-Content -Path $env:GITHUB_STEP_SUMMARY
+          $Lines | Write-Output
+      - name: Upload artifacts when quota permits
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-local-build-${{ github.run_attempt }}
+          path: |
+            artifacts/SmdHmi-*.exe
+            artifacts/manifest.json
+            artifacts/sbom.cdx.json
+            artifacts/SHA256SUMS.txt
+          retention-days: 7
