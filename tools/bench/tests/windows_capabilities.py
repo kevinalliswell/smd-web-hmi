@@ -12,7 +12,10 @@ import tempfile
 from functools import lru_cache
 from pathlib import Path
 
-import pytest
+try:
+    import pytest
+except ModuleNotFoundError:  # 构建 job 只装运行时锁,无 pytest;探测函数仍需可导入
+    pytest = None
 
 
 @lru_cache(maxsize=1)
@@ -47,12 +50,13 @@ def can_create_symlink() -> bool:
     return True
 
 
-requires_admin_owner = pytest.mark.skipif(
-    not can_assign_administrators_owner(),
-    reason="需要能把文件所有者设为 Administrators 的特权;非管理员环境(如 NetworkService 自托管服务)无法执行,托管 Windows runner 照常运行",
-)
+if pytest is not None:
+    requires_admin_owner = pytest.mark.skipif(
+        not can_assign_administrators_owner(),
+        reason="需要能把文件所有者设为 Administrators 的特权;非管理员环境(如 NetworkService 自托管服务)无法执行,托管 Windows runner 照常运行",
+    )
 
-requires_symlink_privilege = pytest.mark.skipif(
-    not can_create_symlink(),
-    reason="需要创建符号链接的特权(SeCreateSymbolicLink);非管理员环境无法执行,托管 Windows runner 照常运行",
-)
+    requires_symlink_privilege = pytest.mark.skipif(
+        not can_create_symlink(),
+        reason="需要创建符号链接的特权(SeCreateSymbolicLink);非管理员环境无法执行,托管 Windows runner 照常运行",
+    )
