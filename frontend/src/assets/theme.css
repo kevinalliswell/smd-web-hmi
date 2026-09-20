@@ -61,7 +61,8 @@
   --border-hi: #38445f;
   --text-pri: #e8edf6;
   --text-sec: #9fabc4;
-  --text-muted: #67748f;
+  /* muted 承载 11–12px 小字(侧栏分组题/空态提示/底栏),对 card/base/card2 对比均 ≥4.6:1 */
+  --text-muted: #7e8ba4;
   --accent: #38bdf8;
   --accent-dim: #123349;
   --accent-soft: rgba(56, 189, 248, 0.08);
@@ -111,7 +112,7 @@
   --border-hi: #b6c2d4;
   --text-pri: #18202f;
   --text-sec: #4d5b73;
-  --text-muted: #697790;
+  --text-muted: #66748d;
   --accent: #0369a1;
   --accent-dim: #e0f2fe;
   --accent-soft: rgba(3, 105, 161, 0.08);

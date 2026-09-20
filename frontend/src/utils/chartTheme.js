@@ -44,7 +44,12 @@ export function applyChartTheme(chart) {
   })
   const seriesColors = colors.series
   ;(chart.data?.datasets || []).forEach((ds) => {
-    // 仅刷新按系列槽着色的数据集；显式指定颜色的（如 CO 橙）保持不变
+    // 语义色数据集(CO 橙)按语义令牌刷新,保证换肤后曲线与图例/标签同色
+    if (ds.seriesSemantic === 'co') {
+      ds.borderColor = colors.co
+      return
+    }
+    // 仅刷新按系列槽着色的数据集；无标记的裸显式颜色保持不变
     if (ds.seriesSlot === undefined) return
     const color = seriesColors[ds.seriesSlot % seriesColors.length]
     ds.borderColor = color

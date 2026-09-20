@@ -72,8 +72,10 @@ describe('chartTheme', () => {
           { seriesSlot: 1, borderColor: 'old' },
           // 高槽位与带填充的数据集同样按槽换色,填充同步为同色淡化
           { seriesSlot: 3, borderColor: 'old', fill: true, backgroundColor: 'old' },
-          // CO 橙等语义色不带 seriesSlot，不参与换肤重着色
-          { borderColor: '#f97316' },
+          // CO 语义数据集换肤时按 --orange 刷新(曲线与图例/通道标签保持同色)
+          { seriesSemantic: 'co', borderColor: '#f97316' },
+          // 无任何标记的裸显式颜色保持不变
+          { borderColor: '#123456' },
         ],
       },
       update: vi.fn(),
@@ -85,7 +87,8 @@ describe('chartTheme', () => {
     expect(chart.data.datasets[1].borderColor).toBe('#1baf7a')
     expect(chart.data.datasets[2].borderColor).toBe('#1e8db1')
     expect(chart.data.datasets[2].backgroundColor).toBe('rgba(30, 141, 177, 0.08)')
-    expect(chart.data.datasets[3].borderColor).toBe('#f97316')
+    expect(chart.data.datasets[3].borderColor).toBe('#c2410c')
+    expect(chart.data.datasets[4].borderColor).toBe('#123456')
   })
 
   it('withAlpha 只转换 6 位 hex,其余原样返回', () => {
