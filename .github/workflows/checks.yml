@@ -6,11 +6,15 @@ on:
         description: Use the repository's trusted persistent Mac runner
         type: boolean
         default: false
+      local_windows:
+        description: Use the trusted Server 2019 runner for compile-only validation
+        type: boolean
+        default: false
 permissions:
   contents: read
 jobs:
   lint:
-    runs-on: ${{ inputs.local_mac && fromJSON('["self-hosted", "macOS", "ARM64", "local-mac"]') || 'ubuntu-latest' }}
+    runs-on: ${{ inputs.local_mac && fromJSON('["self-hosted", "macOS", "ARM64", "local-mac", "smd-web"]') || 'ubuntu-latest' }}
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
@@ -44,7 +48,7 @@ jobs:
         include:
           - os: ubuntu-latest
             python: '3.11'
-    runs-on: ${{ matrix.os == 'local-mac' && fromJSON('["self-hosted", "macOS", "ARM64", "local-mac"]') || matrix.os }}
+    runs-on: ${{ matrix.os == 'local-mac' && fromJSON('["self-hosted", "macOS", "ARM64", "local-mac", "smd-web"]') || matrix.os }}
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
@@ -92,7 +96,7 @@ jobs:
       - uses: ./.github/actions/local-mac-cleanup
         if: ${{ always() && runner.os == 'macOS' }}
   frontend:
-    runs-on: ${{ inputs.local_mac && fromJSON('["self-hosted", "macOS", "ARM64", "local-mac"]') || 'ubuntu-latest' }}
+    runs-on: ${{ inputs.local_mac && fromJSON('["self-hosted", "macOS", "ARM64", "local-mac", "smd-web"]') || 'ubuntu-latest' }}
     timeout-minutes: 25
     defaults:
       run:
@@ -145,6 +149,102 @@ jobs:
           node-version: '24'
       - working-directory: frontend
         run: npm audit --audit-level=high
+  windows-compile:
+    # Additive portability check. Hosted Windows tests/build/package remain required.
+    if: inputs.local_windows
+    runs-on: [self-hosted, Windows, X64, local-windows, windows-build, smd-web]
+    timeout-minutes: 90
+    steps:
+      - name: Bootstrap private Git before checkout
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+          $Root = Join-Path $env:RUNNER_TEMP ('smd-hmi-{0}-{1}-{2}-{3}' -f $env:GITHUB_RUN_ID, $env:GITHUB_RUN_ATTEMPT, $env:GITHUB_JOB, [guid]::NewGuid().ToString('N'))
+          New-Item -ItemType Directory -Path $Root | Out-Null
+          $Utf8 = New-Object Text.UTF8Encoding($false)
+          [IO.File]::AppendAllText($env:GITHUB_ENV, "SMD_CI_WINDOWS_ROOT=$Root`n", $Utf8)
+          try {
+              $Zip = Join-Path $Root 'git.zip'
+              Invoke-WebRequest -UseBasicParsing -Uri 'https://github.com/git-for-windows/git/releases/download/v2.55.0.windows.5/MinGit-2.55.0.5-64-bit.zip' -OutFile $Zip -TimeoutSec 180
+              if ((Get-FileHash $Zip -Algorithm SHA256).Hash.ToLowerInvariant() -ne '56d7b226b7693196cfc71fef26568f536c4a021ab6c37ff2db4287bed908e96e') { throw 'MinGit archive digest mismatch' }
+              Expand-Archive -LiteralPath $Zip -DestinationPath (Join-Path $Root 'git')
+              [IO.File]::AppendAllText($env:GITHUB_PATH, (Join-Path $Root 'git/cmd') + "`n", $Utf8)
+              Remove-Item -LiteralPath $Zip
+              & (Join-Path $Root 'git/cmd/git.exe') --version
+              if ($LASTEXITCODE -ne 0) { throw 'Private Git cannot run' }
+          } catch {
+              Remove-Item -LiteralPath $Root -Recurse -Force
+              throw
+          }
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: ./.github/actions/local-windows-tools
+        with:
+          nsis: 'true'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install locked compile dependencies
+        shell: pwsh
+        run: pip install --require-hashes -r backend/requirements.lock -r desktop/requirements.lock
+      - name: Compile frontend from the same checkout
+        shell: pwsh
+        working-directory: frontend
+        run: |
+          npm ci
+          if ($LASTEXITCODE -ne 0) { throw 'Frontend dependency installation failed' }
+          npm run build
+          if ($LASTEXITCODE -ne 0) { throw 'Frontend compilation failed' }
+      - name: PowerShell syntax and self-hosted execution refusal
+        shell: pwsh
+        run: |
+          Get-ChildItem deploy/windows,scripts/release -Filter *.ps1 -Recurse | ForEach-Object {
+              $Tokens = $null; $ParseErrors = $null
+              [void][System.Management.Automation.Language.Parser]::ParseFile($_.FullName, [ref]$Tokens, [ref]$ParseErrors)
+              if ($ParseErrors.Count) { throw ($ParseErrors | Out-String) }
+          }
+          try {
+              & ./scripts/release/build-windows.ps1 -OutputDir 'must-not-exist'
+              throw 'Unsafe build unexpectedly accepted the self-hosted runner'
+          } catch {
+              if ($_.Exception.Message -notlike 'Frozen executable validation requires a disposable GitHub-hosted Windows runner*') { throw }
+          }
+          if (Test-Path 'must-not-exist') { throw 'Refused build modified the checkout' }
+      - name: Freeze application and compile NSIS without executing product binaries
+        shell: pwsh
+        run: ./scripts/release/build-windows.ps1 -CompileOnly -MakeNsis $env:SMD_MAKENSIS
+      - name: Freeze independent bench without launching Chromium or installation
+        shell: pwsh
+        run: |
+          pip install --require-hashes -r tools/bench/requirements.lock
+          if ($LASTEXITCODE -ne 0) { throw 'Bench dependency installation failed' }
+          python tools/bench/freeze.py --output artifacts/bench --work artifacts/bench-work
+          if ($LASTEXITCODE -ne 0) { throw 'Bench freeze failed' }
+          python scripts/release/package_bench.py --bundle artifacts/bench/SmdBench --inventory-only
+          if ($LASTEXITCODE -ne 0) { throw 'Frozen bench inventory differs' }
+      - name: Record compile identity and limits
+        shell: pwsh
+        env:
+          SMD_RUNNER_NAME: ${{ runner.name }}
+        run: |
+          $Commit = (& git rev-parse HEAD).Trim()
+          if ($LASTEXITCODE -ne 0 -or $Commit -cne $env:GITHUB_SHA) { throw 'Build source identity mismatch' }
+          $Version = (& python scripts/release/metadata.py).Trim()
+          if ($LASTEXITCODE -ne 0) { throw 'Source version mismatch' }
+          $Files = @("artifacts/SmdHmi-$Version-windows-x64.exe", 'artifacts/manifest.json', 'artifacts/bench/SmdBench/tool-manifest.json')
+          $Hashes = [ordered]@{}
+          foreach ($File in $Files) { $Hashes[$File] = (Get-FileHash -LiteralPath $File -Algorithm SHA256).Hash.ToLowerInvariant() }
+          $Result = [ordered]@{runner=$env:SMD_RUNNER_NAME; commit=$Commit; version=$Version; scope='compile-only'; files=$Hashes} | ConvertTo-Json -Depth 3 -Compress
+          Write-Output $Result
+          $Result >> $env:GITHUB_STEP_SUMMARY
+          'Compilation only; frozen execution, service/ACL, install, upgrade, uninstall and GUI acceptance remain unverified here. These bytes are not release candidates.' >> $env:GITHUB_STEP_SUMMARY
+      - uses: ./.github/actions/local-windows-cleanup
+        if: always()
   windows-build:
     needs: [lint, backend, frontend, audit]
     runs-on: windows-latest

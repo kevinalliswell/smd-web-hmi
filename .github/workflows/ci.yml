@@ -15,3 +15,4 @@ jobs:
     with:
       # Never execute fork or Dependabot pull-request code on the persistent host.
       local_mac: ${{ github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]') }}
+      local_windows: ${{ github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]') }}

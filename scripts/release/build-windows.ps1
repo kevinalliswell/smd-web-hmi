@@ -1,6 +1,13 @@
-param([string]$OutputDir = 'artifacts')
+param(
+    [string]$OutputDir = 'artifacts',
+    [string]$MakeNsis = (Join-Path ${env:ProgramFiles(x86)} 'NSIS/makensis.exe'),
+    [switch]$CompileOnly
+)
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
+if ($env:RUNNER_ENVIRONMENT -eq 'self-hosted' -and -not $CompileOnly) {
+    throw 'Frozen executable validation requires a disposable GitHub-hosted Windows runner; use -CompileOnly on self-hosted runners'
+}
 $Repo = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
 Set-Location $Repo
 function Invoke-Checked([string]$Program, [string[]]$Arguments) {
@@ -33,21 +40,24 @@ Copy-Item deploy/windows/configure-recovery.ps1 $Stage
 Copy-Item CHANGELOG.md (Join-Path $Stage 'CHANGELOG.md')
 Copy-Item deploy/windows/README.md (Join-Path $Stage 'UPGRADE.md')
 Copy-Item docs/hostcomm/v2/runtime.md (Join-Path $Stage 'HOSTCOMM-2-RUNTIME.md')
-# Exercise the frozen binaries with a scratch DB; migrations never start HostComm.
-$Smoke = Join-Path $Repo "$OutputDir/smoke"
-New-Item -ItemType Directory (Join-Path $Smoke 'config') -Force | Out-Null
-$env:SMD_DATA_ROOT = $Smoke
-$Db = (Join-Path $Smoke 'smd.db').Replace('\','/')
-@("SMD_DB_PATH=$Db",'HOSTCOMM_MOCK=true','PROTOCOL_VERSION=2.0','HOSTCOMM_DEVICE_ID=','HOSTCOMM_CONTROLLER_ID=','HOSTCOMM_CONTROLLER_EPOCH=','HOSTCOMM_PSK_FILE=','SMD_JWT_SECRET=ci-only-secret-at-least-thirty-two-bytes') | Set-Content (Join-Path $Smoke 'config/service.env') -Encoding utf8
-try {
-    Invoke-Checked (Join-Path $Stage 'SmdService/SmdService.exe') @('--migrate')
-    Invoke-Checked (Join-Path $Stage 'SmdService/SmdService.exe') @('--self-check')
-    Invoke-Checked (Join-Path $Stage 'SmdUpdate/SmdUpdate.exe') @('--self-check')
-    Invoke-Checked (Join-Path $Stage 'SmdDesktop/SmdDesktop.exe') @('--self-check')
-    if (-not (Test-Path (Join-Path $Smoke 'smd.db'))) { throw 'Frozen migration did not create configured DB' }
-} finally { Remove-Item Env:SMD_DATA_ROOT -ErrorAction SilentlyContinue }
+# These executions use product mutexes and renderer/ACL support. The original
+# hosted build keeps all of them; the additive persistent-host job only compiles.
+if (-not $CompileOnly) {
+    # Exercise the frozen binaries with a scratch DB; migrations never start HostComm.
+    $Smoke = Join-Path $Repo "$OutputDir/smoke"
+    New-Item -ItemType Directory (Join-Path $Smoke 'config') -Force | Out-Null
+    $env:SMD_DATA_ROOT = $Smoke
+    $Db = (Join-Path $Smoke 'smd.db').Replace('\','/')
+    @("SMD_DB_PATH=$Db",'HOSTCOMM_MOCK=true','PROTOCOL_VERSION=2.0','HOSTCOMM_DEVICE_ID=','HOSTCOMM_CONTROLLER_ID=','HOSTCOMM_CONTROLLER_EPOCH=','HOSTCOMM_PSK_FILE=','SMD_JWT_SECRET=ci-only-secret-at-least-thirty-two-bytes') | Set-Content (Join-Path $Smoke 'config/service.env') -Encoding utf8
+    try {
+        Invoke-Checked (Join-Path $Stage 'SmdService/SmdService.exe') @('--migrate')
+        Invoke-Checked (Join-Path $Stage 'SmdService/SmdService.exe') @('--self-check')
+        Invoke-Checked (Join-Path $Stage 'SmdUpdate/SmdUpdate.exe') @('--self-check')
+        Invoke-Checked (Join-Path $Stage 'SmdDesktop/SmdDesktop.exe') @('--self-check')
+        if (-not (Test-Path (Join-Path $Smoke 'smd.db'))) { throw 'Frozen migration did not create configured DB' }
+    } finally { Remove-Item Env:SMD_DATA_ROOT -ErrorAction SilentlyContinue }
+}
 Invoke-Checked 'python' @('scripts/release/metadata.py','--bundle',$Stage)
-$MakeNsis = Join-Path ${env:ProgramFiles(x86)} 'NSIS/makensis.exe'
 $PayloadBytes = [long](Get-ChildItem -LiteralPath $Stage -Recurse -File | Measure-Object -Property Length -Sum).Sum
 $NsisArguments = @('/INPUTCHARSET','UTF8','/V3',"/DVERSION=$Version","/DPAYLOAD=$Stage","/DPAYLOAD_BYTES=$PayloadBytes","/DOUTPUT=$Repo/$OutputDir/SmdHmi-$Version-windows-x64.exe",'deploy/windows/installer.nsi')
 Invoke-Checked 'python' (@('scripts/release/check_nsis_encoding.py','--makensis',$MakeNsis,'--') + $NsisArguments)

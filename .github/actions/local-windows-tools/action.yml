@@ -1,0 +1,107 @@
+name: Isolated local Windows tools
+description: Prepare portable build tools for the non-administrator Server 2019 runner
+inputs:
+  nsis:
+    description: Include the portable NSIS compiler for a non-interactive package build
+    default: 'false'
+runs:
+  using: composite
+  steps:
+    - name: Verify the service identity and prepare portable PowerShell
+      shell: powershell
+      env:
+        SMD_NEEDS_NSIS: ${{ inputs.nsis }}
+      run: |
+        $ErrorActionPreference = 'Stop'
+        Set-StrictMode -Version Latest
+        $Identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+        $Principal = [Security.Principal.WindowsPrincipal]::new($Identity)
+        $Session = [Diagnostics.Process]::GetCurrentProcess().SessionId
+        if ($Identity.User.Value -cne 'S-1-5-20' -or
+            $Principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator) -or $Session -ne 0) {
+            throw 'Local Windows build jobs require NetworkService, non-administrator, Session 0'
+        }
+        if (-not [Environment]::Is64BitOperatingSystem -or [Environment]::OSVersion.Version.Build -lt 17763) {
+            throw 'The local toolchain requires Windows Server 2019 x64 or later'
+        }
+        [ordered]@{identity=$Identity.Name; sid=$Identity.User.Value; session=$Session; windows_build=[Environment]::OSVersion.Version.Build} | ConvertTo-Json -Compress
+        $Root = [IO.Path]::GetFullPath($env:SMD_CI_WINDOWS_ROOT)
+        $Temp = [IO.Path]::GetFullPath($env:RUNNER_TEMP).TrimEnd('\')
+        $Prefix = 'smd-hmi-{0}-{1}-{2}-' -f $env:GITHUB_RUN_ID, $env:GITHUB_RUN_ATTEMPT, $env:GITHUB_JOB
+        if ([IO.Path]::GetDirectoryName($Root) -ine $Temp -or
+            -not [IO.Path]::GetFileName($Root).StartsWith($Prefix, [StringComparison]::Ordinal) -or
+            -not (Test-Path -LiteralPath $Root -PathType Container) -or
+            ((Get-Item -LiteralPath $Root).Attributes -band [IO.FileAttributes]::ReparsePoint)) {
+            throw 'Portable tools require this job''s pre-checkout temporary directory'
+        }
+        $Utf8 = [Text.UTF8Encoding]::new($false)
+        function Add-Environment([string]$Name, [string]$Value) {
+            [IO.File]::AppendAllText($env:GITHUB_ENV, "$Name=$Value`n", $Utf8)
+        }
+        function Install-Archive([string]$Name, [string]$Url, [string]$Sha256) {
+            $Archive = Join-Path $Root "$Name.zip"
+            $Destination = Join-Path $Root $Name
+            [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+            Invoke-WebRequest -UseBasicParsing -Uri $Url -OutFile $Archive -TimeoutSec 180
+            if ((Get-FileHash -LiteralPath $Archive -Algorithm SHA256).Hash.ToLowerInvariant() -cne $Sha256) {
+                throw "$Name archive SHA-256 mismatch"
+            }
+            Expand-Archive -LiteralPath $Archive -DestinationPath $Destination
+            Remove-Item -LiteralPath $Archive
+            return $Destination
+        }
+        # Official release asset digests; ZIP deployment does not install an MSI or alter the registry.
+        $Pwsh = Install-Archive 'pwsh' 'https://github.com/PowerShell/PowerShell/releases/download/v7.4.20/PowerShell-7.4.20-win-x64.zip' 'fb88cd3731847006b157978d6c0a426390d346696d91d1ed85b5e5eb88cb2d40'
+        [IO.File]::AppendAllText($env:GITHUB_PATH, "$Pwsh`n", $Utf8)
+        & (Join-Path $Pwsh 'pwsh.exe') -NoProfile -NonInteractive -Command '$PSVersionTable.PSVersion.ToString()'
+        if ($LASTEXITCODE -ne 0) { throw 'Portable PowerShell did not start' }
+        if ($env:SMD_NEEDS_NSIS -ceq 'true') {
+            # SHA-256 published by the NSIS project in the SourceForge 3.11 file metadata.
+            $Nsis = Install-Archive 'nsis' 'https://downloads.sourceforge.net/project/nsis/NSIS%203/3.11/nsis-3.11.zip' 'c7d27f780ddb6cffb4730138cd1591e841f4b7edb155856901cdf5f214394fa1'
+            $Compiler = Join-Path $Nsis 'nsis-3.11\makensis.exe'
+            $Version = (& $Compiler /VERSION).Trim()
+            if ($LASTEXITCODE -ne 0 -or $Version -cne 'v3.11') { throw 'Portable NSIS version mismatch' }
+            Write-Output "Portable NSIS: $Version"
+            Add-Environment 'SMD_MAKENSIS' $Compiler
+        }
+        Add-Environment 'UV_PYTHON_INSTALL_DIR' (Join-Path $Root 'managed-python')
+        Add-Environment 'UV_PYTHON_BIN_DIR' (Join-Path $Root 'python-bin')
+        Add-Environment 'UV_CACHE_DIR' (Join-Path $Root 'uv-cache')
+        Add-Environment 'PIP_CACHE_DIR' (Join-Path $Root 'pip-cache')
+        Add-Environment 'UV_NO_CONFIG' '1'
+        Add-Environment 'SMD_CI_VENV' (Join-Path $Root 'venv')
+    - uses: astral-sh/setup-uv@d0d8abe699bfb85fec6de9f7adb5ae17292296ff # v6
+      with:
+        version: '0.10.11'
+        checksum: '9ee74df98582f37fdd6069e1caac80d2616f9a489f5dbb2b1c152f30be69c58e'
+        enable-cache: false
+        prune-cache: false
+        tool-dir: ${{ env.SMD_CI_WINDOWS_ROOT }}\uv-tools
+        tool-bin-dir: ${{ env.SMD_CI_WINDOWS_ROOT }}\uv-bin
+    - name: Create the isolated Python environment and record evidence
+      shell: pwsh
+      env:
+        SMD_RUNNER_NAME: ${{ runner.name }}
+      run: |
+        $ErrorActionPreference = 'Stop'
+        Set-StrictMode -Version Latest
+        uv venv --managed-python --python 3.13.12 --seed $env:SMD_CI_VENV
+        if ($LASTEXITCODE -ne 0) { throw 'Managed Python environment creation failed' }
+        $Scripts = Join-Path $env:SMD_CI_VENV 'Scripts'
+        $Utf8 = [Text.UTF8Encoding]::new($false)
+        [IO.File]::AppendAllText($env:GITHUB_PATH, "$Scripts`n", $Utf8)
+        [IO.File]::AppendAllText($env:GITHUB_ENV, "VIRTUAL_ENV=$env:SMD_CI_VENV`nPYTHONNOUSERSITE=1`nPIP_REQUIRE_VIRTUALENV=true`n", $Utf8)
+        @'
+        import json, os, platform, ssl, struct, sys
+        assert sys.platform == "win32" and struct.calcsize("P") == 8
+        assert sys.version_info[:3] == (3, 13, 12)
+        assert ssl.HAS_PSK, "Windows build must support the HostComm TLS-PSK runtime"
+        evidence = {"runner": os.environ["SMD_RUNNER_NAME"], "os": platform.platform(),
+                    "arch": platform.machine(), "python": platform.python_version(),
+                    "openssl": ssl.OPENSSL_VERSION, "tls_psk": ssl.HAS_PSK,
+                    "scope": "non-interactive build; no installation or GUI acceptance"}
+        print(json.dumps(evidence))
+        with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as summary:
+            summary.write("Local Windows runtime: `" + json.dumps(evidence) + "`\n")
+        '@ | & (Join-Path $Scripts 'python.exe') -
+        if ($LASTEXITCODE -ne 0) { throw 'Local Windows Python capability check failed' }
