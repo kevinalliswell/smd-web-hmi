@@ -92,6 +92,28 @@ runs:
         Add-Environment 'SMD_CI_BASE_PYTHON' (Join-Path $Python 'python\python.exe')
         Add-Environment 'PIP_CACHE_DIR' (Join-Path $Root 'pip-cache')
         Add-Environment 'SMD_CI_VENV' (Join-Path $Root 'venv')
+        # Optional offline packages are keyed by ordered UTF-8 lock bytes after CRLF-to-LF normalization.
+        # This is stable across checkout's platform line endings. Every later pip
+        # command still uses --require-hashes; a missing or altered wheel fails the build.
+        $LockBytes = [IO.MemoryStream]::new()
+        $LockHasher = [Security.Cryptography.SHA256]::Create()
+        try {
+            foreach ($LockName in @('backend/requirements.lock', 'desktop/requirements.lock', 'tools/bench/requirements.lock')) {
+                $Text = [IO.File]::ReadAllText((Join-Path $env:GITHUB_WORKSPACE $LockName)).Replace("`r`n", "`n")
+                $Bytes = [Text.Encoding]::UTF8.GetBytes($Text)
+                $LockBytes.Write($Bytes, 0, $Bytes.Length)
+            }
+            $LockKey = ([BitConverter]::ToString($LockHasher.ComputeHash($LockBytes.ToArray()))).Replace('-', '').ToLowerInvariant()
+        } finally {
+            $LockBytes.Dispose()
+            $LockHasher.Dispose()
+        }
+        $Wheels = Join-Path (Join-Path $env:RUNNER_TOOL_CACHE 'smd-wheels') $LockKey
+        if (Test-Path -LiteralPath $Wheels -PathType Container) {
+            Add-Environment 'PIP_FIND_LINKS' $Wheels
+            Add-Environment 'PIP_NO_INDEX' '1'
+            Write-Host "Using offline wheels for exact lock SHA-256 $LockKey; pip still requires package hashes"
+        }
     - name: Create the isolated Python environment and record evidence
       shell: pwsh
       env:

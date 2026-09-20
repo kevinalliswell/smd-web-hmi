@@ -193,6 +193,7 @@ jobs:
         with:
           nsis: 'true'
       - name: Install locked compile dependencies
+        timeout-minutes: 15
         shell: pwsh
         run: pip install --require-hashes -r backend/requirements.lock -r desktop/requirements.lock
       - name: Compile frontend from the same checkout
