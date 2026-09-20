@@ -223,6 +223,8 @@ jobs:
         shell: pwsh
         run: ./scripts/release/build-windows.ps1 -CompileOnly -MakeNsis $env:SMD_MAKENSIS
       - name: Freeze independent bench without launching Chromium or installation
+        # Playwright's socket timeout does not bound the complete browser transfer.
+        timeout-minutes: 15
         shell: pwsh
         run: |
           pip install --require-hashes -r tools/bench/requirements.lock
