@@ -69,11 +69,11 @@ async function onSubmit() {
   border-radius: 12px; padding: 28px; display: flex; flex-direction: column; gap: 8px;
 }
 .change-brand { font-size: 20px; font-weight: 700; text-align: center; }
-.change-sub { text-align: center; margin-bottom: 14px; font-size: 12px; }
-label { font-size: 12px; color: var(--text-sec); margin-top: 8px; }
-.hint { font-size: 11px; }
-.field-error { color: var(--danger-text); font-size: 11px; }
-.change-error { color: var(--danger-text); background: var(--red-dim); border: 1px solid var(--red); border-radius: 5px; padding: 8px; font-size: 12px; margin-top: 8px; }
+.change-sub { text-align: center; margin-bottom: 14px; font-size: var(--fs-base); }
+label { font-size: var(--fs-base); color: var(--text-sec); margin-top: 8px; }
+.hint { font-size: var(--fs-sm); }
+.field-error { color: var(--danger-text); font-size: var(--fs-sm); }
+.change-error { color: var(--danger-text); background: var(--red-dim); border: 1px solid var(--red); border-radius: 5px; padding: 8px; font-size: var(--fs-base); margin-top: 8px; }
 button { margin-top: 14px; }
 @media (max-width: 420px) { .change-card { padding: 22px 18px; } .change-theme { top: 10px; right: 10px; } }
 </style>

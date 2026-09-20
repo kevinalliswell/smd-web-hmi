@@ -57,7 +57,7 @@ function onCancel() {
   width: 440px; max-width: 90vw; padding: 20px;
 }
 .dialog.danger { border-color: var(--red); }
-.dlg-title { font-size: 16px; font-weight: 700; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
+.dlg-title { font-size: var(--fs-xl); font-weight: 700; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
 .warn-icon { color: var(--red); }
 .dlg-body { color: var(--text-sec); line-height: 1.6; margin-bottom: 20px; }
 .dlg-actions { display: flex; justify-content: flex-end; gap: 10px; }

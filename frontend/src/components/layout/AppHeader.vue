@@ -69,7 +69,7 @@ function onLogout() {
   background: var(--bg-card); border-bottom: 1px solid var(--border);
   padding: 0 16px; gap: 12px; flex-shrink: 0;
 }
-.nav-toggle { display: none; width: 34px; height: 34px; padding: 0; font-size: 18px; }
+.nav-toggle { display: none; width: 34px; height: 34px; padding: 0; font-size: var(--fs-title); }
 .brand { font-weight: 700; font-size: 15px; }
 .hd-sep { width: 1px; height: 24px; background: var(--border); }
 .hd-badge {
@@ -77,10 +77,10 @@ function onLogout() {
   border-radius: 4px; background: var(--bg-card2); border: 1px solid var(--border);
 }
 .spacer { flex: 1; }
-.hd-bell { position: relative; width: 34px; height: 34px; padding: 0; font-size: 16px; }
+.hd-bell { position: relative; width: 34px; height: 34px; padding: 0; font-size: var(--fs-xl); }
 .alarm-count {
-  position: absolute; top: -2px; right: -2px; background: var(--red); color: #fff;
-  font-size: 10px; font-weight: 700; border-radius: 8px; padding: 1px 4px;
+  position: absolute; top: -2px; right: -2px; background: var(--red); color: var(--on-red);
+  font-size: var(--fs-xs); font-weight: 700; border-radius: var(--radius-pill); padding: 1px 4px;
 }
 .hd-user { color: var(--text-sec); }
 
@@ -102,6 +102,6 @@ function onLogout() {
 @media (max-width: 460px) {
   #header { padding: 0 8px; }
   .brand .muted { display: none; }
-  .brand { font-size: 14px; }
+  .brand { font-size: var(--fs-lg); }
 }
 </style>

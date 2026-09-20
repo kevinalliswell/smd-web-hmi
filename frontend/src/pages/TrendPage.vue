@@ -97,13 +97,10 @@ onMounted(async () => {
 </template>
 
 <style scoped>
-.page { display: flex; flex-direction: column; gap: 16px; }
-.page-title { font-size: 18px; font-weight: 700; }
 .filters { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
 .f { display: flex; align-items: center; gap: 6px; }
-.f label { color: var(--text-sec); font-size: 12px; }
+.f label { color: var(--text-sec); font-size: var(--fs-base); }
 .channels { display: flex; gap: 16px; flex-wrap: wrap; }
-.chk { display: flex; align-items: center; gap: 6px; font-size: 12px; cursor: pointer; }
-.banner { background: var(--accent-dim); border: 1px solid var(--accent); color: var(--accent); border-radius: 6px; padding: 8px 12px; font-size: 12px; }
+.chk { display: flex; align-items: center; gap: 6px; font-size: var(--fs-base); cursor: pointer; }
 @media (max-width: 560px) { .filters, .f { align-items: stretch; flex-direction: column; } .channels { gap: 10px 14px; } }
 </style>

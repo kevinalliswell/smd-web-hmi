@@ -111,19 +111,15 @@ onMounted(async () => {
 </template>
 
 <style scoped>
-.history-hint { color: var(--text-sec); font-size: 12px; line-height: 1.6; margin-bottom: 12px; }
-.history-pages { display: flex; justify-content: space-between; align-items: center; margin-top: 12px; gap: 12px; font-size: 12px; }
-.page { display: flex; flex-direction: column; gap: 16px; }
+.history-hint { color: var(--text-sec); font-size: var(--fs-base); line-height: 1.6; margin-bottom: 12px; }
+.history-pages { display: flex; justify-content: space-between; align-items: center; margin-top: 12px; gap: 12px; font-size: var(--fs-base); }
 .page-head { display: flex; align-items: center; gap: 12px; }
-.page-title { font-size: 18px; font-weight: 700; }
-.spacer { flex: 1; }
 .critical-banner {
   background: var(--red-dim); border: 1px solid var(--red); color: var(--danger-text);
   border-radius: 6px; padding: 10px 14px; font-weight: 600; animation: pulse 1.5s infinite;
 }
-.banner { background: var(--accent-dim); border: 1px solid var(--accent); color: var(--accent); border-radius: 6px; padding: 8px 12px; font-size: 12px; }
 .tabs { display: flex; gap: 8px; }
 .tabs button.active { background: var(--accent-dim); border-color: var(--accent); color: var(--accent); }
-.cnt { margin-left: 6px; background: var(--red); color: #fff; font-size: 10px; font-weight: 700; border-radius: 8px; padding: 1px 6px; }
+.cnt { margin-left: 6px; background: var(--red); color: var(--on-red); font-size: var(--fs-xs); font-weight: 700; border-radius: var(--radius-pill); padding: 1px 6px; }
 @media (max-width: 560px) { .page-head { align-items: stretch; flex-direction: column; } .tabs { overflow-x: auto; } .tabs button { white-space: nowrap; } }
 </style>

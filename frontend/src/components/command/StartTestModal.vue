@@ -233,11 +233,11 @@ async function onConfirm() {
   gap: 10px;
 }
 .dlg-title {
-  font-size: 16px;
+  font-size: var(--fs-xl);
   font-weight: 700;
 }
 label {
-  font-size: 12px;
+  font-size: var(--fs-base);
   color: var(--text-sec);
 }
 .co-warn {
@@ -246,12 +246,12 @@ label {
   color: var(--warning-text);
   border-radius: var(--radius-md);
   padding: 10px;
-  font-size: 12px;
+  font-size: var(--fs-base);
   line-height: 1.6;
 }
 .err {
   color: var(--danger-text);
-  font-size: 12px;
+  font-size: var(--fs-base);
 }
 .actions {
   display: flex;

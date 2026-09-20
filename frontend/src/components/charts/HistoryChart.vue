@@ -170,7 +170,7 @@ figure {
 figcaption {
   display: flex;
   justify-content: space-between;
-  font-size: 12px;
+  font-size: var(--fs-base);
   font-weight: 600;
   margin-bottom: 8px;
 }
@@ -184,7 +184,7 @@ figcaption {
   inset: 0;
   display: grid;
   place-items: center;
-  font-size: 12px;
+  font-size: var(--fs-base);
 }
 @media (max-width: 700px) {
   .history-plots {

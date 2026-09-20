@@ -167,7 +167,7 @@ form {
 }
 p {
   margin-top: 12px;
-  font-size: 12px;
+  font-size: var(--fs-base);
   line-height: 1.6;
   overflow-wrap: anywhere;
 }
@@ -190,7 +190,7 @@ label {
   flex-direction: column;
   gap: 6px;
   color: var(--text-sec);
-  font-size: 12px;
+  font-size: var(--fs-base);
 }
 input,
 select {

@@ -100,7 +100,7 @@ function visible(item) {
   display: flex; flex-direction: column; overflow-y: auto; flex-shrink: 0; padding-bottom: 12px;
 }
 .nav-section {
-  padding: 12px 14px 6px; font-size: 10px; letter-spacing: 1px;
+  padding: 12px 14px 6px; font-size: var(--fs-xs); letter-spacing: 1px;
   text-transform: uppercase; color: var(--text-muted);
 }
 .nav-item {
@@ -111,8 +111,8 @@ function visible(item) {
 .nav-item.active { background: var(--accent-dim); color: var(--accent); border-left-color: var(--accent); }
 .nav-icon { flex: none; }
 .nav-badge {
-  margin-left: auto; background: var(--red); color: #fff; font-size: 10px;
-  font-weight: 700; border-radius: 8px; padding: 1px 5px;
+  margin-left: auto; background: var(--red); color: var(--on-red); font-size: var(--fs-xs);
+  font-weight: 700; border-radius: var(--radius-pill); padding: 1px 5px;
 }
 
 @media (max-width: 900px) {

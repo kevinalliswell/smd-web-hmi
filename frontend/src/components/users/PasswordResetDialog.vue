@@ -86,12 +86,12 @@ watch(
   border: 1px solid var(--border-hi); background: var(--bg-card);
   display: flex; flex-direction: column; gap: 8px;
 }
-.dlg-title { font-size: 16px; font-weight: 700; }
-.security-note { color: var(--text-sec); font-size: 12px; line-height: 1.5; margin-bottom: 6px; }
-label { color: var(--text-sec); font-size: 12px; margin-top: 6px; }
-.strength { color: var(--yellow); font-size: 11px; }
+.dlg-title { font-size: var(--fs-xl); font-weight: 700; }
+.security-note { color: var(--text-sec); font-size: var(--fs-base); line-height: 1.5; margin-bottom: 6px; }
+label { color: var(--text-sec); font-size: var(--fs-base); margin-top: 6px; }
+.strength { color: var(--yellow); font-size: var(--fs-sm); }
 .strength.ok { color: var(--text-sec); }
-.field-error { color: var(--danger-text); font-size: 11px; }
-.server-error { color: var(--danger-text); background: var(--red-dim); border: 1px solid var(--red); border-radius: var(--radius-sm); padding: 8px; font-size: 12px; }
+.field-error { color: var(--danger-text); font-size: var(--fs-sm); }
+.server-error { color: var(--danger-text); background: var(--red-dim); border: 1px solid var(--red); border-radius: var(--radius-sm); padding: 8px; font-size: var(--fs-base); }
 .dlg-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 14px; }
 </style>

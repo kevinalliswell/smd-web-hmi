@@ -143,11 +143,11 @@ onBeforeUnmount(() => {
   gap: 10px;
 }
 h2 {
-  font-size: 14px;
+  font-size: var(--fs-lg);
 }
 p,
 label {
-  font-size: 12px;
+  font-size: var(--fs-base);
   line-height: 1.6;
 }
 .owner-actions {

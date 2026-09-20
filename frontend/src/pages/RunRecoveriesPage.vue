@@ -98,6 +98,6 @@ onBeforeUnmount(() => { disposed = true; clearTimeout(timer) })
 h1 { font-size:20px; } h2 { font-size:17px; } h3 { font-size:15px; }
 p { line-height:1.7; } label { display:flex; flex-direction:column; gap:8px; }
 dl { display:grid; grid-template-columns:150px minmax(0,1fr); gap:10px; } dd { margin:0; overflow-wrap:anywhere; }
-pre { white-space:pre-wrap; overflow-wrap:anywhere; font-size:12px; }.mono { overflow-wrap:anywhere; }
+pre { white-space:pre-wrap; overflow-wrap:anywhere; font-size: var(--fs-base); }.mono { overflow-wrap:anywhere; }
 @media(max-width:560px) { dl { grid-template-columns:1fr; } }
 </style>

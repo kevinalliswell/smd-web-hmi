@@ -229,22 +229,14 @@ onMounted(async () => {
 </template>
 
 <style scoped>
-.page {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-.page-title {
-  font-size: 18px;
-  font-weight: 700;
-}
+/* 本页 banner 仅用于错误提示,覆盖全局 info 基调 */
 .banner {
   background: var(--red-dim);
   border: 1px solid var(--red);
   color: var(--danger-text);
   border-radius: 6px;
   padding: 8px 12px;
-  font-size: 12px;
+  font-size: var(--fs-base);
 }
 .layout {
   display: grid;
@@ -258,10 +250,6 @@ onMounted(async () => {
   flex-direction: column;
   gap: 16px;
 }
-.card-title {
-  font-weight: 700;
-  margin-bottom: 10px;
-}
 .card-head {
   display: flex;
   align-items: center;
@@ -270,9 +258,6 @@ onMounted(async () => {
 }
 .card-head .card-title {
   margin-bottom: 0;
-}
-.spacer {
-  flex: 1;
 }
 .picker {
   display: flex;
@@ -283,7 +268,7 @@ onMounted(async () => {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 12px;
+  font-size: var(--fs-base);
   cursor: pointer;
 }
 .picker-foot {
@@ -299,7 +284,7 @@ onMounted(async () => {
 }
 .f label {
   color: var(--text-sec);
-  font-size: 12px;
+  font-size: var(--fs-base);
 }
 .height-input {
   width: 90px;
@@ -307,7 +292,7 @@ onMounted(async () => {
 .cmp {
   width: 100%;
   border-collapse: collapse;
-  font-size: 12px;
+  font-size: var(--fs-base);
 }
 .cmp th,
 .cmp td {
@@ -318,7 +303,7 @@ onMounted(async () => {
 .cmp th {
   color: var(--text-sec);
   font-weight: 600;
-  font-size: 11px;
+  font-size: var(--fs-sm);
 }
 .mlabel {
   color: var(--text-sec);

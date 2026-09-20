@@ -43,13 +43,13 @@ const emit = defineEmits(['ack'])
 </template>
 
 <style scoped>
-.source { display: block; color: var(--text-sec); overflow-wrap: anywhere; font-size: 10px; margin-top: 4px; }
-.alarm-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.source { display: block; color: var(--text-sec); overflow-wrap: anywhere; font-size: var(--fs-xs); margin-top: 4px; }
+.alarm-table { width: 100%; border-collapse: collapse; font-size: var(--fs-base); }
 .alarm-table th, .alarm-table td { text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--border); }
-.alarm-table th { color: var(--text-sec); font-weight: 600; font-size: 11px; }
+.alarm-table th { color: var(--text-sec); font-weight: 600; font-size: var(--fs-sm); }
 .alarm-table tr.critical td { background: var(--red-soft); }
-.small { font-size: 11px; color: var(--text-sec); }
+.small { font-size: var(--fs-sm); color: var(--text-sec); }
 .empty { text-align: center; padding: 20px; }
-.acked { font-size: 11px; }
-.ack-btn { padding: 3px 12px; font-size: 12px; }
+.acked { font-size: var(--fs-sm); }
+.ack-btn { padding: 3px 12px; font-size: var(--fs-base); }
 </style>
