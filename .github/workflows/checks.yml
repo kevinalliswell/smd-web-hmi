@@ -467,16 +467,19 @@ jobs:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [self-hosted, Windows, X64, local-windows]
     timeout-minutes: 45
-    env:
-      # NetworkService 档案 TEMP 基路径过长,叠加用例的 32 位 id 目录树会突破
-      # MAX_PATH(实测 sqlite 打不开);统一指到 runner 的短路径 _temp。
-      TMP: ${{ runner.temp }}
-      TEMP: ${{ runner.temp }}
     defaults:
       run:
         shell: powershell
     steps:
       - uses: actions/checkout@v4
+      # NetworkService 档案 TEMP 基路径过长,叠加用例的 32 位 id 目录树会突破
+      # MAX_PATH(实测 sqlite 打不开);统一指到 runner 的短路径 _temp。
+      # 注意 runner 上下文不允许用于 job 级 env(GitHub 会拒绝整个工作流),
+      # 故用步骤写 GITHUB_ENV,作用于后续所有步骤。
+      - name: Shorten TEMP to runner temp
+        run: |
+          Add-Content -Path $env:GITHUB_ENV -Value "TMP=$env:RUNNER_TEMP"
+          Add-Content -Path $env:GITHUB_ENV -Value "TEMP=$env:RUNNER_TEMP"
       # setup-uv/setup-python 走 GitHub release CDN、python.org 直连在本服务器网络
       # 均挂死(实测)。三级供给:①复用 runner 自有持久目录 → ②探测机器已预置的
       # 3.13(只读使用,建 venv 不改动它) → ③用系统自带 curl.exe(硬性墙钟超时;
@@ -578,15 +581,17 @@ jobs:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [self-hosted, Windows, X64, local-windows]
     timeout-minutes: 90
-    env:
-      # 与 backend-win-local 同理:避免 NetworkService 档案 TEMP 触发超长路径。
-      TMP: ${{ runner.temp }}
-      TEMP: ${{ runner.temp }}
     defaults:
       run:
         shell: powershell
     steps:
       - uses: actions/checkout@v4
+      # 与 backend-win-local 同理:避免 NetworkService 档案 TEMP 触发超长路径;
+      # runner 上下文不允许用于 job 级 env,故以步骤写 GITHUB_ENV。
+      - name: Shorten TEMP to runner temp
+        run: |
+          Add-Content -Path $env:GITHUB_ENV -Value "TMP=$env:RUNNER_TEMP"
+          Add-Content -Path $env:GITHUB_ENV -Value "TEMP=$env:RUNNER_TEMP"
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
