@@ -718,7 +718,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Bench dependency installation failed' }
           python tools/bench/freeze.py --output artifacts/bench --work artifacts/bench-work
           if ($LASTEXITCODE -ne 0) { throw 'Bench freeze failed' }
-          $Probe = python -c "import sys; sys.path[:0]=['tools/bench','tools/bench/tests']; from windows_capabilities import can_assign_administrators_owner as f; print(int(f()))"
+          $Probe = python -c "import sys; sys.path[:0]=['tools/bench','tools/bench/tests','desktop','backend']; from windows_capabilities import can_assign_administrators_owner as f; print(int(f()))"
           if ($LASTEXITCODE -ne 0) { throw 'privilege probe failed' }
           if ("$Probe".Trim() -eq '1') {
             & ./artifacts/bench/SmdBench/SmdBench.exe self-check
