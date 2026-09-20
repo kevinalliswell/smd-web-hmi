@@ -94,7 +94,7 @@ onBeforeUnmount(() => { disposed = true; clearTimeout(timer) })
 .page,.detail,.records { display:flex; flex-direction:column; gap:16px; }
 .page-head,.actions { display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
 .page-head { justify-content:space-between; }.record { display:flex; flex-direction:column; align-items:flex-start; gap:8px; text-align:left; }
-.record[aria-pressed="true"] { outline:2px solid var(--color-primary,#3975dd); }
+.record[aria-pressed="true"] { outline:2px solid var(--accent); }
 h1 { font-size:20px; } h2 { font-size:17px; } h3 { font-size:15px; }
 p { line-height:1.7; } label { display:flex; flex-direction:column; gap:8px; }
 dl { display:grid; grid-template-columns:150px minmax(0,1fr); gap:10px; } dd { margin:0; overflow-wrap:anywhere; }

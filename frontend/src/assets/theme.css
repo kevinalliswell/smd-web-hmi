@@ -1,10 +1,61 @@
 /* Industrial UI tokens. Dark remains the default; light is an equal, persisted theme. */
 :root,
 :root[data-theme='dark'] {
+  /* —— 主题无关令牌（浅色主题自动继承）—— */
+  /* 字体族：正文系统字体；等宽用于测量值/编号/时间 */
+  --font-ui: 'Segoe UI', system-ui, sans-serif;
+  --font-mono: 'Courier New', monospace;
+  /* 字号刻度（散落的 px 逐步收敛到这里） */
+  --fs-2xs: 9px;
+  --fs-xs: 10px;
+  --fs-sm: 11px;
+  --fs-base: 12px;
+  --fs-md: 13px;
+  --fs-lg: 14px;
+  --fs-xl: 16px;
+  --fs-title: 18px;
+  --fs-metric: 24px;
+  --fs-kpi: 34px;
+  --fw-semi: 600;
+  --fw-bold: 700;
+  /* 间距刻度与语义别名 */
+  --sp-1: 4px;
+  --sp-2: 6px;
+  --sp-3: 8px;
+  --sp-4: 10px;
+  --sp-5: 12px;
+  --sp-6: 14px;
+  --sp-7: 16px;
+  --sp-8: 18px;
+  --pad-card: 14px;
+  --pad-page: 18px;
+  /* 圆角：刻度 + 角色别名（组件引用角色，整体调型只改别名） */
+  --radius-xs: 3px;
+  --radius-sm: 5px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 10px;
+  --radius-2xl: 12px;
+  --radius-pill: 999px;
+  --radius-tag: var(--radius-xs);
+  --radius-ctl: var(--radius-sm);
+  --radius-card: var(--radius-lg);
+  --radius-dialog: var(--radius-xl);
+  /* 层级与动效时长 */
+  --z-raised: 1;
+  --z-backdrop: 20;
+  --z-nav: 30;
+  --z-modal: 100;
+  --z-modal-top: 110;
+  --dur-fast: 0.15s;
+  --dur-med: 0.2s;
+
+  /* —— 深色主题（默认）—— */
   --bg-base: #0e1118;
   --bg-card: #161b27;
   --bg-card2: #1b2130;
   --bg-hover: #222840;
+  --bg-chrome: #161b27; /* 顶栏/侧栏/底栏面：当前与卡片同值，后续与内容区分层 */
   --border: #2a3150;
   --border-hi: #3a4570;
   --text-pri: #e2e8f0;
@@ -12,18 +63,21 @@
   --text-muted: #76839e;
   --accent: #38bdf8;
   --accent-dim: #153b55;
+  --accent-soft: rgba(56, 189, 248, 0.08);
   --green: #22c55e;
   --green-dim: #123d24;
   --yellow: #f59e0b;
   --yellow-dim: #432307;
   --red: #ef4444;
   --red-dim: #481313;
+  --red-soft: rgba(239, 68, 68, 0.08);
   --orange: #f97316;
   --purple: #a78bfa;
   --success-text: #86efac;
   --warning-text: #fde68a;
   --danger-text: #fca5a5;
   --on-orange: #1a1208;
+  --on-red: #ffffff;
   --overlay: rgba(2, 6, 23, 0.72);
   --shadow-lg: 0 18px 45px rgba(0, 0, 0, 0.38);
   --chart-grid: #2a3150;
@@ -32,6 +86,14 @@
      否则操作员会把数据线误读为报警状态。取值经色觉安全校验（CVD ΔE 19.6 / 常视 20.9）。 */
   --series-1: #3987e5;
   --series-2: #199e70;
+  /* 3–8 号槽：为多试验叠加/多通道图预留，经色觉安全校验
+     （相邻槽 CVD ΔE ≥ 11.4，对全部状态色 CVD ΔE ≥ 8.8 / 常视 ≥ 15.3，图表底 #151a24） */
+  --series-3: #465ec4;
+  --series-4: #32a0c5;
+  --series-5: #9a5169;
+  --series-6: #a57be8;
+  --series-7: #73599e;
+  --series-8: #ca6dc3;
   --nav-w: 220px;
   --header-h: 52px;
   --footer-h: 28px;
@@ -42,6 +104,7 @@
   --bg-card: #ffffff;
   --bg-card2: #f4f7fb;
   --bg-hover: #e8eef6;
+  --bg-chrome: #ffffff;
   --border: #d5ddea;
   --border-hi: #aab8ca;
   --text-pri: #172033;
@@ -49,18 +112,21 @@
   --text-muted: #68758c;
   --accent: #0369a1;
   --accent-dim: #e0f2fe;
+  --accent-soft: rgba(3, 105, 161, 0.08);
   --green: #15803d;
   --green-dim: #dcfce7;
   --yellow: #b45309;
   --yellow-dim: #fef3c7;
   --red: #dc2626;
   --red-dim: #fee2e2;
+  --red-soft: rgba(220, 38, 38, 0.08);
   --orange: #c2410c;
   --purple: #7c3aed;
   --success-text: #166534;
   --warning-text: #92400e;
   --danger-text: #b91c1c;
   --on-orange: #ffffff;
+  --on-red: #ffffff;
   --overlay: rgba(15, 23, 42, 0.42);
   --shadow-lg: 0 18px 45px rgba(30, 41, 59, 0.22);
   --chart-grid: #d5ddea;
@@ -68,16 +134,23 @@
   /* 浅色模式为同色相重新取步，非深色值直接翻转（CVD ΔE 23.1 / 常视 24.0）。 */
   --series-1: #2a78d6;
   --series-2: #1baf7a;
+  /* 3–8 号槽浅色取步（白底；相邻 CVD ΔE ≥ 11.8，对状态色 CVD ΔE ≥ 10.5 / 常视 ≥ 15.0） */
+  --series-3: #374991;
+  --series-4: #1e8db1;
+  --series-5: #85284d;
+  --series-6: #9c72de;
+  --series-7: #6b46a0;
+  --series-8: #b761b1;
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
 html, body, #app {
   height: 100%;
-  font-family: 'Segoe UI', system-ui, sans-serif;
+  font-family: var(--font-ui);
   background: var(--bg-base);
   color: var(--text-pri);
-  font-size: 13px;
+  font-size: var(--fs-md);
 }
 
 body { min-width: 320px; }
@@ -89,10 +162,10 @@ button {
   border: 1px solid var(--border-hi);
   background: var(--bg-card2);
   color: var(--text-pri);
-  border-radius: 5px;
+  border-radius: var(--radius-ctl);
   padding: 7px 14px;
-  font-size: 13px;
-  transition: background-color .15s, border-color .15s, color .15s;
+  font-size: var(--fs-md);
+  transition: background-color var(--dur-fast), border-color var(--dur-fast), color var(--dur-fast);
 }
 button:hover:not(:disabled) { background: var(--bg-hover); border-color: var(--accent); }
 button:disabled { opacity: .45; cursor: not-allowed; }
@@ -106,9 +179,9 @@ input, select, textarea {
   background: var(--bg-base);
   border: 1px solid var(--border);
   color: var(--text-pri);
-  border-radius: 5px;
+  border-radius: var(--radius-ctl);
   padding: 8px 10px;
-  font-size: 13px;
+  font-size: var(--fs-md);
 }
 
 :focus-visible {
@@ -122,8 +195,8 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
   overflow-x: auto;
   background: var(--bg-card);
   border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 14px;
+  border-radius: var(--radius-card);
+  padding: var(--pad-card);
 }
 
 .dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
@@ -135,7 +208,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
 @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .4; } }
 
 .muted { color: var(--text-sec); }
-.mono { font-family: 'Courier New', monospace; }
+.mono { font-family: var(--font-mono); }
 .sr-only {
   position: absolute;
   width: 1px;

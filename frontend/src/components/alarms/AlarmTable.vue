@@ -47,7 +47,7 @@ const emit = defineEmits(['ack'])
 .alarm-table { width: 100%; border-collapse: collapse; font-size: 12px; }
 .alarm-table th, .alarm-table td { text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--border); }
 .alarm-table th { color: var(--text-sec); font-weight: 600; font-size: 11px; }
-.alarm-table tr.critical td { background: rgba(239, 68, 68, 0.08); }
+.alarm-table tr.critical td { background: var(--red-soft); }
 .small { font-size: 11px; color: var(--text-sec); }
 .empty { text-align: center; padding: 20px; }
 .acked { font-size: 11px; }
