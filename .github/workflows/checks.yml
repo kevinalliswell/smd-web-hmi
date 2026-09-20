@@ -702,6 +702,9 @@ jobs:
       - name: Freeze service, shell and updater; verify Fixed Runtime; compile NSIS
         run: ./scripts/release/build-windows.ps1
       - name: Build the separate offline bench and bundled Chromium
+        # 步骤级超时:Chromium 需从 Playwright 官方 CDN 下载(npmmirror 镜像未同步
+        # win64 资产),若本服务器网络对该 CDN 也挂死,让其尽早失败而非烧满全局超时。
+        timeout-minutes: 25
         run: |
           pip install --require-hashes -r tools/bench/requirements.lock
           if ($LASTEXITCODE -ne 0) { throw 'Bench dependency installation failed' }
