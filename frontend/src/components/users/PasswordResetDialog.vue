@@ -78,11 +78,11 @@ watch(
 
 <style scoped>
 .overlay {
-  position: fixed; inset: 0; background: rgba(0, 0, 0, 0.65);
-  display: flex; align-items: center; justify-content: center; z-index: 110;
+  position: fixed; inset: 0; background: var(--overlay);
+  display: flex; align-items: center; justify-content: center; z-index: var(--z-modal-top);
 }
 .dialog {
-  width: 420px; max-width: 90vw; padding: 22px; border-radius: 10px;
+  width: 420px; max-width: 90vw; padding: 22px; border-radius: var(--radius-dialog);
   border: 1px solid var(--border-hi); background: var(--bg-card);
   display: flex; flex-direction: column; gap: 8px;
 }
@@ -92,6 +92,6 @@ label { color: var(--text-sec); font-size: 12px; margin-top: 6px; }
 .strength { color: var(--yellow); font-size: 11px; }
 .strength.ok { color: var(--text-sec); }
 .field-error { color: var(--danger-text); font-size: 11px; }
-.server-error { color: var(--danger-text); background: var(--red-dim); border: 1px solid var(--red); border-radius: 5px; padding: 8px; font-size: 12px; }
+.server-error { color: var(--danger-text); background: var(--red-dim); border: 1px solid var(--red); border-radius: var(--radius-sm); padding: 8px; font-size: 12px; }
 .dlg-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 14px; }
 </style>

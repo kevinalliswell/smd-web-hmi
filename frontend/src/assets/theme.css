@@ -207,6 +207,26 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
 
 @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .4; } }
 
+/* —— 页面级公共视觉件：与各页 scoped 中的同义定义等值；
+      scoped 副本逐页删除后由这里统一承担，页面差异保留为增量覆盖 —— */
+.page { display: flex; flex-direction: column; gap: 16px; }
+.page-title { font-size: var(--fs-title); font-weight: var(--fw-bold); }
+.card-title { font-weight: var(--fw-bold); margin-bottom: 10px; }
+.spacer { flex: 1; }
+.banner {
+  background: var(--accent-dim);
+  border: 1px solid var(--accent);
+  color: var(--accent);
+  border-radius: var(--radius-md);
+  padding: 8px 12px;
+  font-size: var(--fs-base);
+}
+.banner.ok { background: var(--green-dim); border-color: var(--green); color: var(--success-text); }
+.banner.err { background: var(--red-dim); border-color: var(--red); color: var(--danger-text); }
+.data-table { width: 100%; border-collapse: collapse; font-size: var(--fs-base); }
+.data-table th, .data-table td { text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--border); }
+.data-table th { color: var(--text-sec); font-weight: var(--fw-semi); font-size: var(--fs-sm); }
+
 .muted { color: var(--text-sec); }
 .mono { font-family: var(--font-mono); }
 .sr-only {

@@ -214,16 +214,16 @@ async function onConfirm() {
 .overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.6);
+  background: var(--overlay);
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 100;
+  z-index: var(--z-modal);
 }
 .dialog {
   background: var(--bg-card);
   border: 1px solid var(--border-hi);
-  border-radius: 10px;
+  border-radius: var(--radius-dialog);
   width: min(520px, calc(100vw - 24px));
   max-height: calc(100dvh - 24px);
   overflow-y: auto;
@@ -244,7 +244,7 @@ label {
   background: var(--yellow-dim);
   border: 1px solid var(--yellow);
   color: var(--warning-text);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   padding: 10px;
   font-size: 12px;
   line-height: 1.6;
