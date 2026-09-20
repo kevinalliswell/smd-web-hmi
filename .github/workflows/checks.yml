@@ -662,13 +662,34 @@ jobs:
           Add-Content -Path $env:GITHUB_ENV -Value "VIRTUAL_ENV=$env:RUNNER_TEMP\ci-venv"
           Add-Content -Path $env:GITHUB_PATH -Value "$env:RUNNER_TEMP\ci-venv\Scripts"
       - run: pip install --require-hashes -r backend/requirements.lock -r desktop/requirements.lock
-      - name: Verify NSIS at its standard path (本工作流不做系统级安装)
+      # NSIS 便携版供给:官方 zip 随仓库下发(third_party/nsis,哈希已与官方源、
+      # Chocolatey 包载荷双源交叉核验),使用前重校 SHA256,解包到 runner 自有
+      # 目录,经 SMD_MAKENSIS 传给构建脚本——不做系统级安装。托管 runner 不走
+      # 此步骤,SMD_MAKENSIS 未设置时构建脚本回退 ProgramFiles 标准路径。
+      - name: Provision portable NSIS 3.11 (runner 自有目录)
         run: |
-          $MakeNsis = Join-Path ${env:ProgramFiles(x86)} 'NSIS/makensis.exe'
+          $ErrorActionPreference = 'Stop'
+          $WorkRoot = Split-Path (Split-Path $env:GITHUB_WORKSPACE -Parent) -Parent
+          $NsisDir = Join-Path $WorkRoot 'smd-ci-tools\nsis-3.11'
+          $MakeNsis = Join-Path $NsisDir 'makensis.exe'
           if (-not (Test-Path $MakeNsis)) {
-            throw "makensis.exe not found at $MakeNsis; pre-install NSIS 3.11 on this server. This workflow does not modify system components."
+            $Zip = Join-Path $env:GITHUB_WORKSPACE 'third_party\nsis\nsis-3.11.zip'
+            $Sha256 = 'c7d27f780ddb6cffb4730138cd1591e841f4b7edb155856901cdf5f214394fa1'
+            $Actual = (Get-FileHash -Algorithm SHA256 -Path $Zip).Hash.ToLowerInvariant()
+            if ($Actual -ne $Sha256) { throw "vendored NSIS zip sha256 mismatch: $Actual" }
+            $Extract = Join-Path $WorkRoot 'smd-ci-tools\nsis-extract'
+            if (Test-Path $Extract) { Remove-Item -Recurse -Force $Extract }
+            New-Item -ItemType Directory -Force -Path $Extract | Out-Null
+            & (Join-Path $env:SystemRoot 'System32\tar.exe') -xf $Zip -C $Extract
+            if ($LASTEXITCODE -ne 0) { throw 'NSIS zip extraction failed' }
+            if (Test-Path $NsisDir) { Remove-Item -Recurse -Force $NsisDir }
+            Move-Item (Join-Path $Extract 'nsis-3.11') $NsisDir
+            Remove-Item -Recurse -Force $Extract
+            if (-not (Test-Path $MakeNsis)) { throw 'makensis.exe missing after extraction' }
           }
-          & $MakeNsis /VERSION
+          $V = (& $MakeNsis /VERSION | Out-String).Trim()
+          if ($V -ne 'v3.11') { throw "unexpected makensis version: $V" }
+          Add-Content -Path $env:GITHUB_ENV -Value "SMD_MAKENSIS=$MakeNsis"
       - name: Freeze service, shell and updater; verify Fixed Runtime; compile NSIS
         run: ./scripts/release/build-windows.ps1
       - name: Build the separate offline bench and bundled Chromium
