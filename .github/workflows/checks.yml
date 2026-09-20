@@ -156,6 +156,7 @@ jobs:
     timeout-minutes: 90
     steps:
       - name: Bootstrap private Git before checkout
+        timeout-minutes: 10
         shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
@@ -166,7 +167,13 @@ jobs:
           [IO.File]::AppendAllText($env:GITHUB_ENV, "SMD_CI_WINDOWS_ROOT=$Root`n", $Utf8)
           try {
               $Zip = Join-Path $Root 'git.zip'
-              Invoke-WebRequest -UseBasicParsing -Uri 'https://github.com/git-for-windows/git/releases/download/v2.55.0.windows.5/MinGit-2.55.0.5-64-bit.zip' -OutFile $Zip -TimeoutSec 180
+              $Cached = Join-Path $env:RUNNER_TOOL_CACHE 'smd-archives/MinGit-2.55.0.5-64-bit.zip'
+              if (Test-Path -LiteralPath $Cached -PathType Leaf) {
+                  Copy-Item -LiteralPath $Cached -Destination $Zip
+              } else {
+                  curl.exe --fail --location --silent --show-error --connect-timeout 20 --max-time 300 --output $Zip 'https://github.com/git-for-windows/git/releases/download/v2.55.0.windows.5/MinGit-2.55.0.5-64-bit.zip'
+                  if ($LASTEXITCODE -ne 0) { throw 'Private Git download failed or exceeded its deadline' }
+              }
               if ((Get-FileHash $Zip -Algorithm SHA256).Hash.ToLowerInvariant() -ne '56d7b226b7693196cfc71fef26568f536c4a021ab6c37ff2db4287bed908e96e') { throw 'MinGit archive digest mismatch' }
               Expand-Archive -LiteralPath $Zip -DestinationPath (Join-Path $Root 'git')
               [IO.File]::AppendAllText($env:GITHUB_PATH, (Join-Path $Root 'git/cmd') + "`n", $Utf8)
@@ -182,6 +189,7 @@ jobs:
           ref: ${{ github.sha }}
           persist-credentials: false
       - uses: ./.github/actions/local-windows-tools
+        timeout-minutes: 20
         with:
           nsis: 'true'
       - uses: actions/setup-node@v4
@@ -243,8 +251,34 @@ jobs:
           Write-Output $Result
           $Result >> $env:GITHUB_STEP_SUMMARY
           'Compilation only; frozen execution, service/ACL, install, upgrade, uninstall and GUI acceptance remain unverified here. These bytes are not release candidates.' >> $env:GITHUB_STEP_SUMMARY
-      - uses: ./.github/actions/local-windows-cleanup
+      - name: Clean this Windows job's tools and generated files
         if: always()
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ($env:SMD_CI_WINDOWS_ROOT -and (Test-Path -LiteralPath $env:SMD_CI_WINDOWS_ROOT)) {
+              $Root = [IO.Path]::GetFullPath($env:SMD_CI_WINDOWS_ROOT)
+              $Parent = [IO.Path]::GetFullPath($env:RUNNER_TEMP).TrimEnd('\')
+              $Prefix = 'smd-hmi-{0}-{1}-{2}-' -f $env:GITHUB_RUN_ID, $env:GITHUB_RUN_ATTEMPT, $env:GITHUB_JOB
+              if ([IO.Path]::GetDirectoryName($Root) -ne $Parent -or
+                  [IO.Path]::GetFileName($Root) -notmatch ('^' + [regex]::Escape($Prefix) + '[0-9a-f]{32}$')) {
+                  throw 'Unexpected Windows job tools path'
+              }
+              try {
+                  # Checkout may not have completed; the tools still need cleanup.
+                  if (Test-Path -LiteralPath (Join-Path $env:GITHUB_WORKSPACE '.git')) {
+                      Set-Location $env:GITHUB_WORKSPACE
+                      $GitRoot = (& git rev-parse --show-toplevel)
+                      if ($LASTEXITCODE -ne 0 -or [IO.Path]::GetFullPath($GitRoot) -ne [IO.Path]::GetFullPath($env:GITHUB_WORKSPACE)) {
+                          throw 'Refusing cleanup outside this checkout'
+                      }
+                      git clean -ffdxq
+                      if ($LASTEXITCODE -ne 0) { throw 'Checkout cleanup failed' }
+                  }
+              } finally {
+                  Remove-Item -LiteralPath $Root -Recurse -Force
+              }
+          }
   windows-build:
     needs: [lint, backend, frontend, audit]
     runs-on: windows-latest

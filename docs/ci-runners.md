@@ -37,13 +37,13 @@ Node 继续通过 setup-node 选择 24。checkout 不保留 Git 凭据；Mac 任
 
 `windows-compile` 是额外的兼容构建，不代替原 `windows-build`、`windows-package` 或 Windows 后端矩阵。它独立编译同一 SHA 的前端，以便托管预算或跨任务产物传递被阻塞时仍能取得实际编译结果。原前端类型、测试、构建及 `frontend-dist` 上传门禁保留；原发布仍等待共享工作流全部必要任务成功。fork/Dependabot PR 不进入两个长期主机。
 
-Server 2019 使用 `NT AUTHORITY\NETWORK SERVICE`，非管理员、Session 0。工具在本任务 `RUNNER_TEMP/smd-hmi-<run>-<attempt>-<job>-<随机值>` 下准备：checkout 前下载并核验 MinGit 2.55.0.5；随后准备 PowerShell 7.4.20、NSIS 3.11、uv 0.10.11 与 Python 3.13.12，均不安装到 Program Files、不修改系统 PATH/业务 Python。ZIP 的 SHA-256 固定在工作流和[准备动作](../.github/actions/local-windows-tools/action.yml)；Node 24 通过 setup-node 使用运行器工具目录。Python 必须支持 TLS-PSK，依赖仍按现有锁文件及哈希安装。准备步骤记录实际账户、Session、OS、架构、Git、Python、OpenSSL、PowerShell、NSIS；最终记录源码 SHA 和输出文件摘要。
+Server 2019 使用 `NT AUTHORITY\NETWORK SERVICE`，非管理员、Session 0。工具在本任务 `RUNNER_TEMP/smd-hmi-<run>-<attempt>-<job>-<随机值>` 下准备：checkout 前下载并核验 MinGit 2.55.0.5；随后准备 PowerShell 7.4.20、NSIS 3.11 与可移动 Python 3.13.12（来源为 uv 0.10.11 官方元数据锁定的 python-build-standalone 包），均不安装到 Program Files、不修改系统 PATH/业务 Python。归档的 SHA-256 固定在工作流和[准备动作](../.github/actions/local-windows-tools/action.yml)；Node 24 通过 setup-node 使用运行器工具目录。Python 必须支持 TLS-PSK，依赖仍按现有锁文件及哈希安装。官方归档可预缓存在本运行器 `RUNNER_TOOL_CACHE/smd-archives`；每次使用仍重新核验固定 SHA-256，展开和运行均在本任务目录。缓存缺失时由 curl 在固定总时限内下载，下载失败使任务失败；不使用未校验镜像或修改主机代理。准备步骤记录实际账户、Session、OS、架构、Git、Python、OpenSSL、PowerShell、NSIS；最终记录源码 SHA 和输出文件摘要。
 
 编译入口显式使用 `build-windows.ps1 -CompileOnly -MakeNsis <任务内路径>`，自托管环境遗漏 `-CompileOnly` 会在下载或冻结前拒绝。该模式仅省去新增任务中的冻结程序执行；托管 `windows-build` 仍使用默认完整模式，继续运行迁移、服务/更新器/桌面 renderer 自检、冻结 Bench 的 Chromium 自检。`windows-compile` 会检查拒绝路径、PowerShell 语法并完成应用和 Bench 编译，但不会启动生成的应用、安装器或浏览器。
 
 原因包括：冻结服务迁移会使用产品全局互斥锁，Windows 后端测试会创建 LocalService 计划任务，配对/Bench 自检需要管理员所有者权限。这些行为不能在共享业务服务器上视为普通单测。安装、修复、升级、卸载及 GUI 验收继续遵守[独立环境要求](../deploy/windows/SMOKE-CI.md)，不伪造 `RUNNER_ENVIRONMENT`，不提升运行器服务权限。Server 2019 编译通过不证明 Win10/11 运行通过。
 
-新增编译任务只把构建 SHA、文件摘要和结果写入 Actions 日志与 Summary，不上传另一套候选安装包；任务结束删除本任务工具、venv 和 checkout 生成文件。正式候选仍由原托管构建产生，经实际 artifact ID、摘要和完整 Bench 文件清单交接给独立验收任务。没有候选传递或原验收证据，不能发布。清理不覆盖业务目录、其他仓库目录或服务。checkout 尚未成功或任务被强制中断时，仓库内清理动作可能无法运行，残留仅在该运行器临时/工作目录，由后续任务清理或管理员按归属处理。Windows 与另一仓库共享 NetworkService 和主机资源，目录分开不构成账户级隔离。
+新增编译任务只把构建 SHA、文件摘要和结果写入 Actions 日志与 Summary，不上传另一套候选安装包；任务结束删除本任务工具、venv 和 checkout 生成文件。正式候选仍由原托管构建产生，经实际 artifact ID、摘要和完整 Bench 文件清单交接给独立验收任务。没有候选传递或原验收证据，不能发布。清理不覆盖业务目录、其他仓库目录或服务。清理步骤内联于工作流，checkout 失败时仍可清理本任务工具；任务被强制中断时，残留可能仍需后续任务或管理员按归属处理。Windows 与另一仓库共享 NetworkService 和主机资源，目录分开不构成账户级隔离。
 
 ## 验证记录与故障处理
 
