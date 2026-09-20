@@ -472,11 +472,27 @@ jobs:
         shell: powershell
     steps:
       - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
-      - name: Provision CPython 3.13 virtualenv
+      # setup-uv/setup-python 需从 GitHub release CDN(objects.githubusercontent.com)
+      # 下载,在本服务器网络上会挂死;改从 python.org 官方源做每用户静默安装,
+      # 落在 runner 自有 smd-ci-tools 目录(持久复用,二跑免下载),不改系统组件与 PATH。
+      - name: Provision CPython 3.13 virtualenv (python.org, runner 自有目录)
+        timeout-minutes: 15
         run: |
-          uv venv --seed --python 3.13 "$env:RUNNER_TEMP\ci-venv"
-          if ($LASTEXITCODE -ne 0) { exit 1 }
+          $ErrorActionPreference = 'Stop'
+          [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+          $WorkRoot = Split-Path (Split-Path $env:GITHUB_WORKSPACE -Parent) -Parent
+          $PyDir = Join-Path $WorkRoot 'smd-ci-tools\py313'
+          $PyExe = Join-Path $PyDir 'python.exe'
+          if (-not (Test-Path $PyExe)) {
+            $Installer = Join-Path $env:RUNNER_TEMP 'python-3.13.15-amd64.exe'
+            Invoke-WebRequest -UseBasicParsing -Uri 'https://www.python.org/ftp/python/3.13.15/python-3.13.15-amd64.exe' -OutFile $Installer
+            $Proc = Start-Process -FilePath $Installer -Wait -PassThru -ArgumentList `
+              '/quiet','InstallAllUsers=0',"TargetDir=$PyDir",'PrependPath=0','Include_launcher=0','Include_test=0','Shortcuts=0','AssociateFiles=0'
+            if ($Proc.ExitCode -ne 0) { throw "Python installer exit code $($Proc.ExitCode)" }
+          }
+          & $PyExe --version
+          & $PyExe -m venv "$env:RUNNER_TEMP\ci-venv"
+          if ($LASTEXITCODE -ne 0) { throw 'venv creation failed' }
           Add-Content -Path $env:GITHUB_ENV -Value "VIRTUAL_ENV=$env:RUNNER_TEMP\ci-venv"
           Add-Content -Path $env:GITHUB_PATH -Value "$env:RUNNER_TEMP\ci-venv\Scripts"
       - run: pip install --require-hashes -r backend/requirements-dev.lock
@@ -526,11 +542,27 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           npm run build
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-      - uses: astral-sh/setup-uv@v5
-      - name: Provision CPython 3.13 virtualenv
+      # setup-uv/setup-python 需从 GitHub release CDN(objects.githubusercontent.com)
+      # 下载,在本服务器网络上会挂死;改从 python.org 官方源做每用户静默安装,
+      # 落在 runner 自有 smd-ci-tools 目录(持久复用,二跑免下载),不改系统组件与 PATH。
+      - name: Provision CPython 3.13 virtualenv (python.org, runner 自有目录)
+        timeout-minutes: 15
         run: |
-          uv venv --seed --python 3.13 "$env:RUNNER_TEMP\ci-venv"
-          if ($LASTEXITCODE -ne 0) { exit 1 }
+          $ErrorActionPreference = 'Stop'
+          [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+          $WorkRoot = Split-Path (Split-Path $env:GITHUB_WORKSPACE -Parent) -Parent
+          $PyDir = Join-Path $WorkRoot 'smd-ci-tools\py313'
+          $PyExe = Join-Path $PyDir 'python.exe'
+          if (-not (Test-Path $PyExe)) {
+            $Installer = Join-Path $env:RUNNER_TEMP 'python-3.13.15-amd64.exe'
+            Invoke-WebRequest -UseBasicParsing -Uri 'https://www.python.org/ftp/python/3.13.15/python-3.13.15-amd64.exe' -OutFile $Installer
+            $Proc = Start-Process -FilePath $Installer -Wait -PassThru -ArgumentList `
+              '/quiet','InstallAllUsers=0',"TargetDir=$PyDir",'PrependPath=0','Include_launcher=0','Include_test=0','Shortcuts=0','AssociateFiles=0'
+            if ($Proc.ExitCode -ne 0) { throw "Python installer exit code $($Proc.ExitCode)" }
+          }
+          & $PyExe --version
+          & $PyExe -m venv "$env:RUNNER_TEMP\ci-venv"
+          if ($LASTEXITCODE -ne 0) { throw 'venv creation failed' }
           Add-Content -Path $env:GITHUB_ENV -Value "VIRTUAL_ENV=$env:RUNNER_TEMP\ci-venv"
           Add-Content -Path $env:GITHUB_PATH -Value "$env:RUNNER_TEMP\ci-venv\Scripts"
       - run: pip install --require-hashes -r backend/requirements.lock -r desktop/requirements.lock
