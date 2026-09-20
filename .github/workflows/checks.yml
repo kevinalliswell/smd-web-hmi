@@ -516,10 +516,10 @@ jobs:
                 break
               } catch { Write-Output "failed: $($_.Exception.Message)" }
             }
-            if (-not $Downloaded) { throw '所有 Python 下载源均不可达；请在服务器预置 CPython 3.13（置于 PATH 或 smd-ci-tools\py313），本工作流不改系统组件' }
+            if (-not $Downloaded) { throw 'All Python download sources unreachable; pre-provision CPython 3.13 on this server (on PATH or in smd-ci-tools\py313). This workflow does not modify system components.' }
             $Sig = Get-AuthenticodeSignature $Installer
-            if ($Sig.Status -ne 'Valid') { throw "安装器 Authenticode 校验失败: $($Sig.Status)" }
-            if ($Sig.SignerCertificate.Subject -notmatch 'Python Software Foundation') { throw "安装器签名主体异常: $($Sig.SignerCertificate.Subject)" }
+            if ($Sig.Status -ne 'Valid') { throw "Installer Authenticode check failed: $($Sig.Status)" }
+            if ($Sig.SignerCertificate.Subject -notmatch 'Python Software Foundation') { throw "Unexpected installer signer subject: $($Sig.SignerCertificate.Subject)" }
             $Proc = Start-Process -FilePath $Installer -Wait -PassThru -ArgumentList `
               '/quiet','InstallAllUsers=0',"TargetDir=$PyDir",'PrependPath=0','Include_launcher=0','Include_test=0','Shortcuts=0','AssociateFiles=0'
             if ($Proc.ExitCode -ne 0) { throw "Python installer exit code $($Proc.ExitCode)" }
@@ -621,10 +621,10 @@ jobs:
                 break
               } catch { Write-Output "failed: $($_.Exception.Message)" }
             }
-            if (-not $Downloaded) { throw '所有 Python 下载源均不可达；请在服务器预置 CPython 3.13（置于 PATH 或 smd-ci-tools\py313），本工作流不改系统组件' }
+            if (-not $Downloaded) { throw 'All Python download sources unreachable; pre-provision CPython 3.13 on this server (on PATH or in smd-ci-tools\py313). This workflow does not modify system components.' }
             $Sig = Get-AuthenticodeSignature $Installer
-            if ($Sig.Status -ne 'Valid') { throw "安装器 Authenticode 校验失败: $($Sig.Status)" }
-            if ($Sig.SignerCertificate.Subject -notmatch 'Python Software Foundation') { throw "安装器签名主体异常: $($Sig.SignerCertificate.Subject)" }
+            if ($Sig.Status -ne 'Valid') { throw "Installer Authenticode check failed: $($Sig.Status)" }
+            if ($Sig.SignerCertificate.Subject -notmatch 'Python Software Foundation') { throw "Unexpected installer signer subject: $($Sig.SignerCertificate.Subject)" }
             $Proc = Start-Process -FilePath $Installer -Wait -PassThru -ArgumentList `
               '/quiet','InstallAllUsers=0',"TargetDir=$PyDir",'PrependPath=0','Include_launcher=0','Include_test=0','Shortcuts=0','AssociateFiles=0'
             if ($Proc.ExitCode -ne 0) { throw "Python installer exit code $($Proc.ExitCode)" }
@@ -640,7 +640,7 @@ jobs:
         run: |
           $MakeNsis = Join-Path ${env:ProgramFiles(x86)} 'NSIS/makensis.exe'
           if (-not (Test-Path $MakeNsis)) {
-            throw "makensis.exe 不在 $MakeNsis；请在服务器预装 NSIS 3.11，本工作流不改动系统组件"
+            throw "makensis.exe not found at $MakeNsis; pre-install NSIS 3.11 on this server. This workflow does not modify system components."
           }
           & $MakeNsis /VERSION
       - name: Freeze service, shell and updater; verify Fixed Runtime; compile NSIS
