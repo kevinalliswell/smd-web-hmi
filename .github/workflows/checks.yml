@@ -467,6 +467,11 @@ jobs:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [self-hosted, Windows, X64, local-windows]
     timeout-minutes: 45
+    env:
+      # NetworkService 档案 TEMP 基路径过长,叠加用例的 32 位 id 目录树会突破
+      # MAX_PATH(实测 sqlite 打不开);统一指到 runner 的短路径 _temp。
+      TMP: ${{ runner.temp }}
+      TEMP: ${{ runner.temp }}
     defaults:
       run:
         shell: powershell
@@ -573,6 +578,10 @@ jobs:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [self-hosted, Windows, X64, local-windows]
     timeout-minutes: 90
+    env:
+      # 与 backend-win-local 同理:避免 NetworkService 档案 TEMP 触发超长路径。
+      TMP: ${{ runner.temp }}
+      TEMP: ${{ runner.temp }}
     defaults:
       run:
         shell: powershell
