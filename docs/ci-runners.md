@@ -47,6 +47,8 @@ Server 2019 使用 `NT AUTHORITY\NETWORK SERVICE`，非管理员、Session 0。�
 
 ## 验证记录与故障处理
 
+本机 Windows 的 Bench 编译步骤具有 15 分钟总期限，包含浏览器下载、冻结和文件清单核验。Playwright 的连接/套接字超时不能代替整个传输的总期限；下载无进度或超时应使任务失败，不能省略浏览器或改用旧产物宣称本次构建通过。Windows PowerShell 5.1 清理使用经过归属验证的扩展长度路径，避免 npm 缓存超过 MAX_PATH 后留下本任务目录；不修改系统长路径策略。
+
 工作流修改前运行 `actionlint` 和 `git diff --check`，文档修改运行 `python scripts/check_docs.py`。推送本 PR 最新提交后，核对 Actions 的 head SHA、PR 合并测试 SHA、每个 job 的 runner 名称/标签及结果；以最新提交的真实 CI 结果为准，不能沿用旧提交绿灯。
 
 首次接入前，文档提交 `39263dbde97743befbc5a6b08d710c7fe81b8fc7` 的 [CI 35491754893](https://github.com/kevinalliswell/smd-web-hmi/actions/runs/35491754893) 已在原 hosted 环境完成八项检查。新的本机接入结果在 [PR #83](https://github.com/kevinalliswell/smd-web-hmi/pull/83) 最新检查及本次交付的机器记录中逐项登记；原结果不算本机执行证据。
