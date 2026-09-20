@@ -31,6 +31,9 @@ async function onSubmit() {
   <div class="login-wrap">
     <ThemeToggle class="login-theme" />
     <form class="login-card" @submit.prevent="onSubmit">
+      <span class="login-glyph" aria-hidden="true">
+        <svg width="28" height="28" viewBox="0 0 24 24"><path d="M12 3.5c3 3.6 4.9 6.3 4.9 8.9a4.9 4.9 0 0 1-9.8 0c0-2.6 1.9-5.3 4.9-8.9Z" fill="var(--bg-base)" /></svg>
+      </span>
       <h1 class="login-brand">熔滴炉 Web 上位机</h1>
       <div class="login-sub muted">GB/T 34211 · 本地工业上位机</div>
 
@@ -56,10 +59,16 @@ async function onSubmit() {
 .login-wrap { position: relative; display: flex; align-items: center; justify-content: center; min-height: 100%; padding: 20px; }
 .login-theme { position: absolute; top: 16px; right: 16px; }
 .login-card {
-  width: min(100%, 360px); background: var(--bg-card); border: 1px solid var(--border);
-  border-radius: 12px; padding: 28px; display: flex; flex-direction: column; gap: 8px;
+  width: min(100%, 400px); background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: var(--radius-dialog); padding: 32px; display: flex; flex-direction: column; gap: 8px;
+  box-shadow: var(--shadow-lg);
 }
-.login-brand { font-size: 20px; font-weight: 700; text-align: center; }
+.login-glyph {
+  width: 52px; height: 52px; border-radius: var(--radius-dialog); background: var(--accent);
+  display: grid; place-items: center; margin: 0 auto 4px;
+  box-shadow: 0 0 0 6px var(--accent-soft);
+}
+.login-brand { font-size: 21px; font-weight: 700; text-align: center; }
 .login-sub { text-align: center; margin-bottom: 16px; font-size: var(--fs-base); }
 label { font-size: var(--fs-base); color: var(--text-sec); margin-top: 8px; }
 .login-error { color: var(--danger-text); background: var(--red-dim); border: 1px solid var(--red); border-radius: 5px; padding: 8px; font-size: var(--fs-base); margin-top: 8px; }

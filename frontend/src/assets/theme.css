@@ -4,7 +4,8 @@
   /* —— 主题无关令牌（浅色主题自动继承）—— */
   /* 字体族：正文系统字体；等宽用于测量值/编号/时间 */
   --font-ui: 'Segoe UI', system-ui, sans-serif;
-  --font-mono: 'Courier New', monospace;
+  /* 等宽栈优先 Cascadia Mono/Consolas(Windows 自带),数字读数明显优于 Courier New */
+  --font-mono: 'Cascadia Mono', Consolas, 'Courier New', monospace;
   /* 字号刻度（散落的 px 逐步收敛到这里） */
   --fs-2xs: 9px;
   --fs-xs: 10px;
@@ -13,9 +14,9 @@
   --fs-md: 13px;
   --fs-lg: 14px;
   --fs-xl: 16px;
-  --fs-title: 18px;
-  --fs-metric: 24px;
-  --fs-kpi: 34px;
+  --fs-title: 20px;
+  --fs-metric: 26px;
+  --fs-kpi: 38px;
   --fw-semi: 600;
   --fw-bold: 700;
   /* 间距刻度与语义别名 */
@@ -27,8 +28,8 @@
   --sp-6: 14px;
   --sp-7: 16px;
   --sp-8: 18px;
-  --pad-card: 14px;
-  --pad-page: 18px;
+  --pad-card: var(--sp-7);
+  --pad-page: 20px;
   /* 圆角：刻度 + 角色别名（组件引用角色，整体调型只改别名） */
   --radius-xs: 3px;
   --radius-sm: 5px;
@@ -37,10 +38,10 @@
   --radius-xl: 10px;
   --radius-2xl: 12px;
   --radius-pill: 999px;
-  --radius-tag: var(--radius-xs);
-  --radius-ctl: var(--radius-sm);
-  --radius-card: var(--radius-lg);
-  --radius-dialog: var(--radius-xl);
+  --radius-tag: 4px;
+  --radius-ctl: var(--radius-lg);
+  --radius-card: var(--radius-xl);
+  --radius-dialog: 14px;
   /* 层级与动效时长 */
   --z-raised: 1;
   --z-backdrop: 20;
@@ -51,18 +52,18 @@
   --dur-med: 0.2s;
 
   /* —— 深色主题（默认）—— */
-  --bg-base: #0e1118;
-  --bg-card: #161b27;
-  --bg-card2: #1b2130;
-  --bg-hover: #222840;
-  --bg-chrome: #161b27; /* 顶栏/侧栏/底栏面：当前与卡片同值，后续与内容区分层 */
-  --border: #2a3150;
-  --border-hi: #3a4570;
-  --text-pri: #e2e8f0;
-  --text-sec: #a0aac0;
-  --text-muted: #76839e;
+  --bg-base: #0b0e15;
+  --bg-card: #151a24;
+  --bg-card2: #1b2231;
+  --bg-hover: #232c40;
+  --bg-chrome: #10141d; /* 顶栏/侧栏/底栏面：比卡片更深一档，与内容区分层 */
+  --border: #252d43;
+  --border-hi: #38445f;
+  --text-pri: #e8edf6;
+  --text-sec: #9fabc4;
+  --text-muted: #67748f;
   --accent: #38bdf8;
-  --accent-dim: #153b55;
+  --accent-dim: #123349;
   --accent-soft: rgba(56, 189, 248, 0.08);
   --green: #22c55e;
   --green-dim: #123d24;
@@ -80,36 +81,37 @@
   --on-red: #ffffff;
   --overlay: rgba(2, 6, 23, 0.72);
   --shadow-lg: 0 18px 45px rgba(0, 0, 0, 0.38);
-  --chart-grid: #2a3150;
-  --chart-tick: #a0aac0;
-  /* 数据系列色：与状态色（green/yellow/red/orange）严格分离——曲线不得与报警同色，
-     否则操作员会把数据线误读为报警状态。取值经色觉安全校验（CVD ΔE 19.6 / 常视 20.9）。 */
+  --shadow-card: 0 1px 0 rgba(255, 255, 255, 0.03) inset, 0 2px 8px rgba(0, 0, 0, 0.25);
+  --chart-grid: #232c40;
+  --chart-tick: #9fabc4;
+  /* 数据系列色（8 槽）：与状态色（green/yellow/red/orange）严格分离——曲线不得与报警同色，
+     否则操作员会把数据线误读为报警状态。全套经色觉安全校验（OKLab ΔE×100，Machado CVD 模拟，
+     图表底 #151a24）：相邻槽 CVD ΔE ≥ 11.4 / 常视 ≥ 15.8；任一槽对任一状态色 CVD ΔE ≥ 8.8 /
+     常视 ≥ 15.3。2 号槽由旧值 #199e70 调整为青色——旧值对状态绿仅 CVD 12.5 / 常视 13.3，未达标。 */
   --series-1: #3987e5;
-  --series-2: #199e70;
-  /* 3–8 号槽：为多试验叠加/多通道图预留，经色觉安全校验
-     （相邻槽 CVD ΔE ≥ 11.4，对全部状态色 CVD ΔE ≥ 8.8 / 常视 ≥ 15.3，图表底 #151a24） */
+  --series-2: #0f9b89;
   --series-3: #465ec4;
   --series-4: #32a0c5;
   --series-5: #9a5169;
   --series-6: #a57be8;
   --series-7: #73599e;
   --series-8: #ca6dc3;
-  --nav-w: 220px;
-  --header-h: 52px;
+  --nav-w: 232px;
+  --header-h: 56px;
   --footer-h: 28px;
 }
 
 :root[data-theme='light'] {
-  --bg-base: #f3f6fa;
+  --bg-base: #f2f5f9;
   --bg-card: #ffffff;
-  --bg-card2: #f4f7fb;
-  --bg-hover: #e8eef6;
+  --bg-card2: #f6f8fb;
+  --bg-hover: #e9eef5;
   --bg-chrome: #ffffff;
-  --border: #d5ddea;
-  --border-hi: #aab8ca;
-  --text-pri: #172033;
-  --text-sec: #526078;
-  --text-muted: #68758c;
+  --border: #dbe2ec;
+  --border-hi: #b6c2d4;
+  --text-pri: #18202f;
+  --text-sec: #4d5b73;
+  --text-muted: #697790;
   --accent: #0369a1;
   --accent-dim: #e0f2fe;
   --accent-soft: rgba(3, 105, 161, 0.08);
@@ -129,12 +131,14 @@
   --on-red: #ffffff;
   --overlay: rgba(15, 23, 42, 0.42);
   --shadow-lg: 0 18px 45px rgba(30, 41, 59, 0.22);
-  --chart-grid: #d5ddea;
-  --chart-tick: #526078;
-  /* 浅色模式为同色相重新取步，非深色值直接翻转（CVD ΔE 23.1 / 常视 24.0）。 */
+  --shadow-card: 0 1px 2px rgba(30, 41, 59, 0.05), 0 4px 14px rgba(30, 41, 59, 0.06);
+  --chart-grid: #e4eaf2;
+  --chart-tick: #4d5b73;
+  /* 浅色模式为同色相重新取步，非深色值直接翻转（白底；相邻槽 CVD ΔE ≥ 11.8 / 常视 ≥ 16.0；
+     任一槽对任一状态色 CVD ΔE ≥ 10.5 / 常视 ≥ 15.0。2 号槽 #00aa95 对白底 2.92:1，
+     图表须保留图例/通道标注兜底）。 */
   --series-1: #2a78d6;
-  --series-2: #1baf7a;
-  /* 3–8 号槽浅色取步（白底；相邻 CVD ΔE ≥ 11.8，对状态色 CVD ΔE ≥ 10.5 / 常视 ≥ 15.0） */
+  --series-2: #00aa95;
   --series-3: #374991;
   --series-4: #1e8db1;
   --series-5: #85284d;
@@ -163,8 +167,9 @@ button {
   background: var(--bg-card2);
   color: var(--text-pri);
   border-radius: var(--radius-ctl);
-  padding: 7px 14px;
+  padding: 8px 15px;
   font-size: var(--fs-md);
+  font-weight: var(--fw-semi);
   transition: background-color var(--dur-fast), border-color var(--dur-fast), color var(--dur-fast);
 }
 button:hover:not(:disabled) { background: var(--bg-hover); border-color: var(--accent); }
@@ -197,12 +202,17 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
   border: 1px solid var(--border);
   border-radius: var(--radius-card);
   padding: var(--pad-card);
+  box-shadow: var(--shadow-card);
 }
 
 .dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+/* 状态灯：先写基础辉光,支持 color-mix 的引擎再叠加柔和光环(不支持时回退上一条声明) */
 .dot-green { background: var(--green); box-shadow: 0 0 6px var(--green); animation: pulse 2s infinite; }
+.dot-green { box-shadow: 0 0 0 3px color-mix(in srgb, var(--green) 16%, transparent), 0 0 8px color-mix(in srgb, var(--green) 55%, transparent); }
 .dot-red { background: var(--red); box-shadow: 0 0 6px var(--red); animation: pulse 1s infinite; }
+.dot-red { box-shadow: 0 0 0 3px color-mix(in srgb, var(--red) 16%, transparent), 0 0 8px color-mix(in srgb, var(--red) 55%, transparent); }
 .dot-yellow { background: var(--yellow); box-shadow: 0 0 6px var(--yellow); }
+.dot-yellow { box-shadow: 0 0 0 3px color-mix(in srgb, var(--yellow) 16%, transparent), 0 0 8px color-mix(in srgb, var(--yellow) 55%, transparent); }
 .dot-gray { background: var(--text-muted); }
 
 @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .4; } }

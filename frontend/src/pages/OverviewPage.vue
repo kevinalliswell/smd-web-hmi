@@ -230,11 +230,12 @@ onMounted(async () => {
   gap: 12px;
 }
 .state-badge {
-  padding: 4px 12px;
-  border-radius: 6px;
+  padding: 4px 14px;
+  border-radius: var(--radius-pill);
   background: var(--bg-card2);
   border: 1px solid var(--border);
   font-weight: 600;
+  font-size: var(--fs-base);
 }
 .state-badge.running {
   color: var(--green);
@@ -261,12 +262,14 @@ onMounted(async () => {
 }
 .kpi-val {
   font-size: var(--fs-metric);
-  font-weight: 700;
+  font-weight: var(--fw-semi);
   font-family: var(--font-mono);
+  letter-spacing: -0.02em;
   line-height: 1;
 }
 .kpi-primary {
   border-color: var(--border-hi);
+  background: var(--bg-card2);
 }
 .kpi-primary .kpi-val {
   font-size: var(--fs-kpi);

@@ -25,8 +25,8 @@ const { backendConnected, commQuality, lastUpdate, dataStale } = storeToRefs(dev
 
 <style scoped>
 #footer {
-  display: flex; align-items: center; gap: 8px; height: var(--footer-h); padding: 0 16px;
-  background: var(--bg-card); border-top: 1px solid var(--border);
+  display: flex; align-items: center; gap: 8px; height: var(--footer-h); padding: 0 20px;
+  background: var(--bg-chrome); border-top: 1px solid var(--border);
   font-size: var(--fs-sm); color: var(--text-sec); flex-shrink: 0;
 }
 .freshness-warning { color: var(--warning-text); }

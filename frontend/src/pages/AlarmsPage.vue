@@ -116,10 +116,17 @@ onMounted(async () => {
 .page-head { display: flex; align-items: center; gap: 12px; }
 .critical-banner {
   background: var(--red-dim); border: 1px solid var(--red); color: var(--danger-text);
-  border-radius: 6px; padding: 10px 14px; font-weight: 600; animation: pulse 1.5s infinite;
+  border-radius: var(--radius-lg); padding: 10px 14px; font-weight: 600; animation: pulse 1.5s infinite;
+  box-shadow: 0 0 0 4px var(--red-soft);
 }
-.tabs { display: flex; gap: 8px; }
-.tabs button.active { background: var(--accent-dim); border-color: var(--accent); color: var(--accent); }
+/* 分段式 tab:容器为浅面圆角槽,活跃项高亮块 */
+.tabs {
+  display: flex; gap: 4px; padding: 3px; width: fit-content;
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: 9px;
+}
+.tabs button { border: none; background: transparent; color: var(--text-sec); }
+.tabs button:hover:not(:disabled) { background: var(--bg-hover); color: var(--text-pri); }
+.tabs button.active { background: var(--accent-dim); color: var(--accent); }
 .cnt { margin-left: 6px; background: var(--red); color: var(--on-red); font-size: var(--fs-xs); font-weight: 700; border-radius: var(--radius-pill); padding: 1px 6px; }
 @media (max-width: 560px) { .page-head { align-items: stretch; flex-direction: column; } .tabs { overflow-x: auto; } .tabs button { white-space: nowrap; } }
 </style>

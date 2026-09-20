@@ -65,8 +65,9 @@ async function onSubmit() {
 .change-wrap { position: relative; display: flex; align-items: center; justify-content: center; min-height: 100%; padding: 20px; }
 .change-theme { position: absolute; top: 16px; right: 16px; }
 .change-card {
-  width: min(100%, 380px); background: var(--bg-card); border: 1px solid var(--border);
-  border-radius: 12px; padding: 28px; display: flex; flex-direction: column; gap: 8px;
+  width: min(100%, 400px); background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: var(--radius-dialog); padding: 32px; display: flex; flex-direction: column; gap: 8px;
+  box-shadow: var(--shadow-lg);
 }
 .change-brand { font-size: 20px; font-weight: 700; text-align: center; }
 .change-sub { text-align: center; margin-bottom: 14px; font-size: var(--fs-base); }

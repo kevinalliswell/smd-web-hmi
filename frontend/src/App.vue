@@ -79,7 +79,7 @@ onUnmounted(() => {
 <style scoped>
 .layout { display: flex; flex-direction: column; height: 100%; min-width: 0; }
 .body { position: relative; display: flex; flex: 1; min-width: 0; min-height: 0; }
-.content { flex: 1; min-width: 0; overflow: auto; padding: 18px; }
+.content { flex: 1; min-width: 0; overflow: auto; padding: var(--pad-page); }
 .content-inner { width: min(100%, 1600px); min-width: 0; margin: 0 auto; }
 .nav-backdrop { display: none; }
 

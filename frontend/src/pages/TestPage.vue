@@ -202,7 +202,7 @@ onBeforeUnmount(() => clearInterval(timer))
 .v2-evidence dt { color: var(--text-sec); }
 .v2-evidence dd { margin: 0; }
 .page-head { display: flex; align-items: center; gap: 12px; }
-.state-badge { padding: 4px 12px; border-radius: 6px; background: var(--bg-card2); border: 1px solid var(--border); font-weight: 600; }
+.state-badge { padding: 4px 14px; border-radius: var(--radius-pill); background: var(--bg-card2); border: 1px solid var(--border); font-weight: 600; font-size: var(--fs-base); }
 .state-badge.running { color: var(--green); border-color: var(--green); animation: pulse 2s infinite; }
 .test-id { color: var(--accent); }
 .elapsed { color: var(--text-sec); font-size: var(--fs-lg); }

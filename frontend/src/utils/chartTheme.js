@@ -1,10 +1,10 @@
 // 图表取色管道：所有图表颜色在渲染时从 CSS 令牌解析,换肤经 smd-theme-change 全自动刷新。
 // 兜底值与 theme.css 深色令牌同步维护。
 const FALLBACK = {
-  grid: '#2a3150',
-  tick: '#a0aac0',
+  grid: '#232c40',
+  tick: '#9fabc4',
   accent: '#38bdf8',
-  series: ['#3987e5', '#199e70', '#465ec4', '#32a0c5', '#9a5169', '#a57be8', '#73599e', '#ca6dc3'],
+  series: ['#3987e5', '#0f9b89', '#465ec4', '#32a0c5', '#9a5169', '#a57be8', '#73599e', '#ca6dc3'],
   co: '#f97316',
   accentSoft: 'rgba(56, 189, 248, 0.08)',
 }
