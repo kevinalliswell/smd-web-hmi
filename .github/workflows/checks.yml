@@ -257,7 +257,8 @@ jobs:
               $Parent = [IO.Path]::GetFullPath($env:RUNNER_TEMP).TrimEnd('\')
               $Prefix = 'smd-hmi-{0}-{1}-{2}-' -f $env:GITHUB_RUN_ID, $env:GITHUB_RUN_ATTEMPT, $env:GITHUB_JOB
               if ([IO.Path]::GetDirectoryName($Root) -ne $Parent -or
-                  [IO.Path]::GetFileName($Root) -notmatch ('^' + [regex]::Escape($Prefix) + '[0-9a-f]{32}$')) {
+                  [IO.Path]::GetFileName($Root) -notmatch ('^' + [regex]::Escape($Prefix) + '[0-9a-f]{32}$') -or
+                  ((Get-Item -LiteralPath $Root).Attributes -band [IO.FileAttributes]::ReparsePoint)) {
                   throw 'Unexpected Windows job tools path'
               }
               try {
@@ -272,7 +273,16 @@ jobs:
                       if ($LASTEXITCODE -ne 0) { throw 'Checkout cleanup failed' }
                   }
               } finally {
-                  Remove-Item -LiteralPath $Root -Recurse -Force
+                  # Windows PowerShell 5.1 cannot recursively remove npm cache paths
+                  # beyond MAX_PATH. Use the system command with an extended path;
+                  # no process from the tools directory may remove its own runtime.
+                  Set-Location $Parent
+                  $LongRoot = '\\?\' + $Root
+                  & $env:ComSpec /d /c "rd /s /q `"$LongRoot`""
+                  if ($LASTEXITCODE -ne 0 -or (Test-Path -LiteralPath $Root)) {
+                      throw 'Windows job tools cleanup failed'
+                  }
+                  Write-Output 'Removed this job tools directory, including long cache paths'
               }
           }
   windows-build:
