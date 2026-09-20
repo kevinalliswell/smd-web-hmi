@@ -32,6 +32,7 @@
 | [发布与维护指南](发布与维护指南.md) / [发布证据契约](release-acceptance.md) | 如何覆盖安装保留数据、恢复并验证软件正式版？ | 发布负责人 |
 | [无设备测试机备份与重装](../deploy/windows/TEST-REINSTALL.md) | 旧1.0离线维护被拒绝时，如何完整保留旧资料并用rc.4建立空库？ | Windows/维护负责人 |
 | [验收证据基线](verification.md) | 已实现到哪里，怎样证明一项能力完成？ | 测试负责人 |
+| [CI 运行器与平台检查](ci-runners.md) | Mac 自托管任务如何隔离，哪些 Windows/Linux 检查必须保留？ | 维护/测试负责人 |
 | [路线图](../tasks/plan.md) / [任务清单](../tasks/todo.md) | 下一步做什么，依赖和退出条件是什么？ | 项目负责人 |
 | [决策索引](decisions/README.md) | 为什么采用当前设计，哪些旧决策已被替代？ | 软件负责人 |
 | [历史档案](archive/dev-855c84d/README.md) | 旧 D3/D4、原型和旧规格如何追溯？ | 项目维护者 |

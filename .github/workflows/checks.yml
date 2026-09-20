@@ -1,43 +1,63 @@
 name: Shared checks
 on:
   workflow_call:
+    inputs:
+      local_mac:
+        description: Use the repository's trusted persistent Mac runner
+        type: boolean
+        default: false
 permissions:
   contents: read
 jobs:
   lint:
-    runs-on: ubuntu-latest
+    runs-on: ${{ inputs.local_mac && fromJSON('["self-hosted", "macOS", "ARM64", "local-mac"]') || 'ubuntu-latest' }}
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-python@v5
+        if: runner.os != 'macOS'
         with:
           python-version: '3.13'
           cache: pip
           cache-dependency-path: backend/requirements-dev.lock
+      - uses: ./.github/actions/local-mac-python
+        if: runner.os == 'macOS'
       - run: pip install --require-hashes -r backend/requirements-dev.lock
       - run: python scripts/release/metadata.py && python scripts/release/check_locks.py
       - run: python scripts/check_docs.py
       - run: python scripts/check_hostcomm_contract.py
       - run: black --config backend/pyproject.toml --check backend/app backend/tests desktop tools/bench scripts/release contracts scripts/check_hostcomm_contract.py
       - run: isort --settings-path backend/pyproject.toml --check-only backend/app backend/tests desktop tools/bench scripts/release contracts scripts/check_hostcomm_contract.py
+      - uses: ./.github/actions/local-mac-cleanup
+        if: ${{ always() && runner.os == 'macOS' }}
   backend:
     strategy:
       fail-fast: false
       matrix:
+        os: [ubuntu-latest, windows-latest, local-mac]
+        python: ['3.13']
+        exclude:
+          # Keep all original hosted checks for untrusted PRs; Mac is additive.
+          - os: ${{ inputs.local_mac && 'not-selected' || 'local-mac' }}
         include:
           - os: ubuntu-latest
-            python: '3.13'
-          - os: windows-latest
-            python: '3.13'
-          - os: ubuntu-latest
-            python: '3.11' 
-    runs-on: ${{ matrix.os }}
+            python: '3.11'
+    runs-on: ${{ matrix.os == 'local-mac' && fromJSON('["self-hosted", "macOS", "ARM64", "local-mac"]') || matrix.os }}
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-python@v5
+        if: runner.os != 'macOS'
         with:
           python-version: ${{ matrix.python }}
           cache: pip
           cache-dependency-path: backend/requirements-dev.lock
+      - uses: ./.github/actions/local-mac-python
+        if: runner.os == 'macOS'
       - run: pip install --require-hashes -r backend/requirements-dev.lock
       - name: Native Windows service and ACL test dependencies
         if: runner.os == 'Windows'
@@ -69,13 +89,18 @@ jobs:
             [void][System.Management.Automation.Language.Parser]::ParseFile($_.FullName, [ref]$Tokens, [ref]$ParseErrors)
             if ($ParseErrors.Count) { throw ($ParseErrors | Out-String) }
           }
+      - uses: ./.github/actions/local-mac-cleanup
+        if: ${{ always() && runner.os == 'macOS' }}
   frontend:
-    runs-on: ubuntu-latest
+    runs-on: ${{ inputs.local_mac && fromJSON('["self-hosted", "macOS", "ARM64", "local-mac"]') || 'ubuntu-latest' }}
+    timeout-minutes: 25
     defaults:
       run:
         working-directory: frontend
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
@@ -85,8 +110,11 @@ jobs:
         working-directory: .
         run: node contracts/hostcomm/v2/verify-js.mjs
       - uses: actions/setup-python@v5
+        if: runner.os != 'macOS'
         with:
           python-version: '3.13'
+      - uses: ./.github/actions/local-mac-python
+        if: runner.os == 'macOS'
       - run: pip install --require-hashes -r backend/requirements-dev.lock
         working-directory: .
       - run: npm ci
@@ -100,6 +128,8 @@ jobs:
           name: frontend-dist
           path: frontend/dist
           retention-days: 7
+      - uses: ./.github/actions/local-mac-cleanup
+        if: ${{ always() && runner.os == 'macOS' }}
   audit:
     runs-on: ubuntu-latest
     steps:

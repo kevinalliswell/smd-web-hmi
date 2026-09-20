@@ -1,0 +1,18 @@
+name: Clean local Mac job files
+description: Remove only this job's environment and generated checkout files
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      run: |
+        set -euo pipefail
+        if [[ -n "${SMD_CI_VENV:-}" ]]; then
+          case "$SMD_CI_VENV" in
+            "$RUNNER_TEMP"/smd-hmi-"$GITHUB_RUN_ID"-"$GITHUB_RUN_ATTEMPT"-"$GITHUB_JOB"-*) rm -rf -- "$SMD_CI_VENV" ;;
+            *) printf 'Unexpected job environment path\n' >&2; exit 1 ;;
+          esac
+        fi
+        cd "$GITHUB_WORKSPACE"
+        test "$(git rev-parse --show-toplevel)" = "$GITHUB_WORKSPACE"
+        # Artifacts are uploaded before cleanup. Tracked sources and caches remain.
+        git clean -ffdxq
