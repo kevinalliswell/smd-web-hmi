@@ -26,33 +26,34 @@ Chart.register(
 )
 
 const props = defineProps({ points: { type: Array, default: () => [] } })
+// slot 与 TREND_CHANNELS 对齐:同一通道跨页同槽同色,且槽位色与报警状态色分离
 const groups = [
   {
     key: 'temperature',
     title: '温度',
     unit: '℃',
     channels: [
-      { key: 'furnace_pv', label: '炉温', color: '#38bdf8' },
-      { key: 'burden_temp', label: '料层温度', color: '#a78bfa' },
+      { key: 'furnace_pv', label: '炉温', slot: 0 },
+      { key: 'burden_temp', label: '料层温度', slot: 1 },
     ],
   },
   {
     key: 'pressure',
     title: '压差',
     unit: 'Pa',
-    channels: [{ key: 'delta_p', label: '压差', color: '#f59e0b' }],
+    channels: [{ key: 'delta_p', label: '压差', slot: 2 }],
   },
   {
     key: 'displacement',
     title: '位移',
     unit: 'mm',
-    channels: [{ key: 'displacement', label: '位移', color: '#22c55e' }],
+    channels: [{ key: 'displacement', label: '位移', slot: 3 }],
   },
   {
     key: 'weight',
     title: '滴落重量',
     unit: 'g',
-    channels: [{ key: 'drip_weight', label: '滴落重量', color: '#ef4444' }],
+    channels: [{ key: 'drip_weight', label: '滴落重量', slot: 4 }],
   },
 ]
 const canvases = {}
@@ -65,13 +66,14 @@ function hasData(group) {
   )
 }
 
-function buildData(group) {
+function buildData(group, colors) {
   return {
     labels: props.points.map((point) => formatTime(point.ts)),
     datasets: group.channels.map((channel) => ({
       label: `${channel.label} (${group.unit})`,
       data: props.points.map((point) => finiteValue(point[channel.key])),
-      borderColor: channel.color,
+      borderColor: colors.series[channel.slot % colors.series.length],
+      seriesSlot: channel.slot,
       borderWidth: 1.5,
       pointRadius: 0,
       tension: 0,
@@ -85,13 +87,13 @@ function render() {
   for (const group of groups) {
     const existing = charts.get(group.key)
     if (existing) {
-      existing.data = buildData(group)
+      existing.data = buildData(group, colors)
       existing.update('none')
       continue
     }
     const chart = new Chart(canvases[group.key], {
       type: 'line',
-      data: buildData(group),
+      data: buildData(group, colors),
       options: {
         responsive: true,
         maintainAspectRatio: false,

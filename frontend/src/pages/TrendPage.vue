@@ -84,7 +84,7 @@ onMounted(async () => {
     <div class="card channels">
       <label v-for="ch in TREND_CHANNELS" :key="ch.key" class="chk">
         <input v-model="visible[ch.key]" type="checkbox" />
-        <span :style="{ color: ch.color }">{{ ch.label }}</span>
+        <span :style="{ color: ch.semantic === 'co' ? 'var(--orange)' : `var(--series-${ch.slot + 1})` }">{{ ch.label }}</span>
       </label>
     </div>
 

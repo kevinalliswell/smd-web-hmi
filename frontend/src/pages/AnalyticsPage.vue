@@ -14,16 +14,6 @@ const channel = ref('furnace_pv')
 const loading = ref(false)
 const banner = ref('')
 
-const COLORS = [
-  '#38bdf8',
-  '#f59e0b',
-  '#22c55e',
-  '#ef4444',
-  '#a78bfa',
-  '#fb923c',
-  '#60a5fa',
-  '#e879f9',
-]
 const CHANNELS = [
   { key: 'furnace_pv', label: '炉温 (℃)' },
   { key: 'burden_temp', label: '料层温度 (℃)' },
@@ -77,7 +67,8 @@ async function loadSeries(ids) {
     const s = await fetchTestSamples(ids[i], 600)
     out.push({
       label: ids[i],
-      color: COLORS[i % COLORS.length],
+      // 按系列槽位着色(最多 8 试验恰好 8 槽),换主题由 OverlayChart 自动重着色
+      slot: i,
       values: (s.points || []).map((p) => p[channel.value]),
     })
   }
