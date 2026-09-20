@@ -472,10 +472,12 @@ jobs:
         shell: powershell
     steps:
       - uses: actions/checkout@v4
-      # setup-uv/setup-python 需从 GitHub release CDN(objects.githubusercontent.com)
-      # 下载,在本服务器网络上会挂死;改从 python.org 官方源做每用户静默安装,
-      # 落在 runner 自有 smd-ci-tools 目录(持久复用,二跑免下载),不改系统组件与 PATH。
-      - name: Provision CPython 3.13 virtualenv (python.org, runner 自有目录)
+      # setup-uv/setup-python 走 GitHub release CDN、python.org 直连在本服务器网络
+      # 均挂死(实测)。三级供给:①复用 runner 自有持久目录 → ②探测机器已预置的
+      # 3.13(只读使用,建 venv 不改动它) → ③逐镜像短超时下载官方安装器并用
+      # PSF Authenticode 签名校验后,每用户静默安装到 runner 自有目录。
+      # 全程不改系统组件、系统 PATH 与业务目录。
+      - name: Provision CPython 3.13 virtualenv (runner 自有目录)
         timeout-minutes: 15
         run: |
           $ErrorActionPreference = 'Stop'
@@ -484,11 +486,44 @@ jobs:
           $PyDir = Join-Path $WorkRoot 'smd-ci-tools\py313'
           $PyExe = Join-Path $PyDir 'python.exe'
           if (-not (Test-Path $PyExe)) {
+            $Candidates = @()
+            foreach ($Name in @('python3.13', 'python')) {
+              $Cmd = Get-Command $Name -ErrorAction SilentlyContinue
+              if ($Cmd) { $Candidates += $Cmd.Source }
+            }
+            $Candidates += @("$env:LOCALAPPDATA\Programs\Python\Python313\python.exe", 'D:\CodexCI\tools\python313\python.exe', 'C:\Python313\python.exe')
+            foreach ($Cand in $Candidates) {
+              if ($Cand -and (Test-Path $Cand)) {
+                $V = ''
+                try { $V = (& $Cand -c "import sys;print('%d.%d' % sys.version_info[:2])" 2>&1 | Out-String).Trim() } catch {}
+                if ($V -eq '3.13') { $PyExe = $Cand; Write-Output "reusing machine CPython: $Cand"; break }
+              }
+            }
+          }
+          if (-not (Test-Path $PyExe)) {
             $Installer = Join-Path $env:RUNNER_TEMP 'python-3.13.15-amd64.exe'
-            Invoke-WebRequest -UseBasicParsing -Uri 'https://www.python.org/ftp/python/3.13.15/python-3.13.15-amd64.exe' -OutFile $Installer
+            $Urls = @(
+              'https://www.python.org/ftp/python/3.13.15/python-3.13.15-amd64.exe',
+              'https://registry.npmmirror.com/-/binary/python/3.13.15/python-3.13.15-amd64.exe',
+              'https://mirrors.huaweicloud.com/python/3.13.15/python-3.13.15-amd64.exe'
+            )
+            $Downloaded = $false
+            foreach ($Url in $Urls) {
+              try {
+                Write-Output "downloading: $Url"
+                Invoke-WebRequest -UseBasicParsing -TimeoutSec 120 -Uri $Url -OutFile $Installer
+                $Downloaded = $true
+                break
+              } catch { Write-Output "failed: $($_.Exception.Message)" }
+            }
+            if (-not $Downloaded) { throw '所有 Python 下载源均不可达；请在服务器预置 CPython 3.13（置于 PATH 或 smd-ci-tools\py313），本工作流不改系统组件' }
+            $Sig = Get-AuthenticodeSignature $Installer
+            if ($Sig.Status -ne 'Valid') { throw "安装器 Authenticode 校验失败: $($Sig.Status)" }
+            if ($Sig.SignerCertificate.Subject -notmatch 'Python Software Foundation') { throw "安装器签名主体异常: $($Sig.SignerCertificate.Subject)" }
             $Proc = Start-Process -FilePath $Installer -Wait -PassThru -ArgumentList `
               '/quiet','InstallAllUsers=0',"TargetDir=$PyDir",'PrependPath=0','Include_launcher=0','Include_test=0','Shortcuts=0','AssociateFiles=0'
             if ($Proc.ExitCode -ne 0) { throw "Python installer exit code $($Proc.ExitCode)" }
+            $PyExe = Join-Path $PyDir 'python.exe'
           }
           & $PyExe --version
           & $PyExe -m venv "$env:RUNNER_TEMP\ci-venv"
@@ -542,10 +577,12 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           npm run build
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-      # setup-uv/setup-python 需从 GitHub release CDN(objects.githubusercontent.com)
-      # 下载,在本服务器网络上会挂死;改从 python.org 官方源做每用户静默安装,
-      # 落在 runner 自有 smd-ci-tools 目录(持久复用,二跑免下载),不改系统组件与 PATH。
-      - name: Provision CPython 3.13 virtualenv (python.org, runner 自有目录)
+      # setup-uv/setup-python 走 GitHub release CDN、python.org 直连在本服务器网络
+      # 均挂死(实测)。三级供给:①复用 runner 自有持久目录 → ②探测机器已预置的
+      # 3.13(只读使用,建 venv 不改动它) → ③逐镜像短超时下载官方安装器并用
+      # PSF Authenticode 签名校验后,每用户静默安装到 runner 自有目录。
+      # 全程不改系统组件、系统 PATH 与业务目录。
+      - name: Provision CPython 3.13 virtualenv (runner 自有目录)
         timeout-minutes: 15
         run: |
           $ErrorActionPreference = 'Stop'
@@ -554,11 +591,44 @@ jobs:
           $PyDir = Join-Path $WorkRoot 'smd-ci-tools\py313'
           $PyExe = Join-Path $PyDir 'python.exe'
           if (-not (Test-Path $PyExe)) {
+            $Candidates = @()
+            foreach ($Name in @('python3.13', 'python')) {
+              $Cmd = Get-Command $Name -ErrorAction SilentlyContinue
+              if ($Cmd) { $Candidates += $Cmd.Source }
+            }
+            $Candidates += @("$env:LOCALAPPDATA\Programs\Python\Python313\python.exe", 'D:\CodexCI\tools\python313\python.exe', 'C:\Python313\python.exe')
+            foreach ($Cand in $Candidates) {
+              if ($Cand -and (Test-Path $Cand)) {
+                $V = ''
+                try { $V = (& $Cand -c "import sys;print('%d.%d' % sys.version_info[:2])" 2>&1 | Out-String).Trim() } catch {}
+                if ($V -eq '3.13') { $PyExe = $Cand; Write-Output "reusing machine CPython: $Cand"; break }
+              }
+            }
+          }
+          if (-not (Test-Path $PyExe)) {
             $Installer = Join-Path $env:RUNNER_TEMP 'python-3.13.15-amd64.exe'
-            Invoke-WebRequest -UseBasicParsing -Uri 'https://www.python.org/ftp/python/3.13.15/python-3.13.15-amd64.exe' -OutFile $Installer
+            $Urls = @(
+              'https://www.python.org/ftp/python/3.13.15/python-3.13.15-amd64.exe',
+              'https://registry.npmmirror.com/-/binary/python/3.13.15/python-3.13.15-amd64.exe',
+              'https://mirrors.huaweicloud.com/python/3.13.15/python-3.13.15-amd64.exe'
+            )
+            $Downloaded = $false
+            foreach ($Url in $Urls) {
+              try {
+                Write-Output "downloading: $Url"
+                Invoke-WebRequest -UseBasicParsing -TimeoutSec 120 -Uri $Url -OutFile $Installer
+                $Downloaded = $true
+                break
+              } catch { Write-Output "failed: $($_.Exception.Message)" }
+            }
+            if (-not $Downloaded) { throw '所有 Python 下载源均不可达；请在服务器预置 CPython 3.13（置于 PATH 或 smd-ci-tools\py313），本工作流不改系统组件' }
+            $Sig = Get-AuthenticodeSignature $Installer
+            if ($Sig.Status -ne 'Valid') { throw "安装器 Authenticode 校验失败: $($Sig.Status)" }
+            if ($Sig.SignerCertificate.Subject -notmatch 'Python Software Foundation') { throw "安装器签名主体异常: $($Sig.SignerCertificate.Subject)" }
             $Proc = Start-Process -FilePath $Installer -Wait -PassThru -ArgumentList `
               '/quiet','InstallAllUsers=0',"TargetDir=$PyDir",'PrependPath=0','Include_launcher=0','Include_test=0','Shortcuts=0','AssociateFiles=0'
             if ($Proc.ExitCode -ne 0) { throw "Python installer exit code $($Proc.ExitCode)" }
+            $PyExe = Join-Path $PyDir 'python.exe'
           }
           & $PyExe --version
           & $PyExe -m venv "$env:RUNNER_TEMP\ci-venv"
