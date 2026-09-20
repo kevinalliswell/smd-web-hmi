@@ -474,10 +474,12 @@ jobs:
       - uses: actions/checkout@v4
       # setup-uv/setup-python 走 GitHub release CDN、python.org 直连在本服务器网络
       # 均挂死(实测)。三级供给:①复用 runner 自有持久目录 → ②探测机器已预置的
-      # 3.13(只读使用,建 venv 不改动它) → ③镜像优先逐源下载官方安装器,用系统
-      # 自带 curl.exe 施加硬性墙钟超时(实测 IWR -TimeoutSec 不覆盖响应体挂死,
-      # python.org 建连后身体流卡死会烧满步骤超时),PSF Authenticode 签名校验
-      # 后,每用户静默安装到 runner 自有目录。
+      # 3.13(只读使用,建 venv 不改动它) → ③用系统自带 curl.exe(硬性墙钟超时;
+      # 实测 IWR -TimeoutSec 不覆盖响应体挂死)镜像优先下载 python-build-standalone
+      # 的 install_only 免安装归档(与 mac 通道 uv 托管 CPython 同族构建),SHA256
+      # 与提交内固定值一致后 tar 解包到 runner 自有目录——不运行任何安装器
+      # (实测官方安装器在 NetworkService 服务会话报 0x80070005,MSI 每用户
+      # 安装不适用于服务账户)。固定哈希已在两个独立源交叉核验。
       # 全程不改系统组件、系统 PATH 与业务目录。
       - name: Provision CPython 3.13 virtualenv (runner 自有目录)
         timeout-minutes: 15
@@ -503,11 +505,11 @@ jobs:
             }
           }
           if (-not (Test-Path $PyExe)) {
-            $Installer = Join-Path $env:RUNNER_TEMP 'python-3.13.15-amd64.exe'
+            $Archive = Join-Path $env:RUNNER_TEMP 'cpython-3.13.15-win-x64.tar.gz'
+            $Sha256 = '63d263ab0162f34a241a56dc5b283c22d6e131f5516117e6a921350c69ba7d4f'
             $Urls = @(
-              'https://registry.npmmirror.com/-/binary/python/3.13.15/python-3.13.15-amd64.exe',
-              'https://mirrors.huaweicloud.com/python/3.13.15/python-3.13.15-amd64.exe',
-              'https://www.python.org/ftp/python/3.13.15/python-3.13.15-amd64.exe'
+              'https://registry.npmmirror.com/-/binary/python-build-standalone/20260901/cpython-3.13.15%2B20260901-x86_64-pc-windows-msvc-install_only_stripped.tar.gz',
+              'https://github.com/astral-sh/python-build-standalone/releases/download/20260901/cpython-3.13.15%2B20260901-x86_64-pc-windows-msvc-install_only_stripped.tar.gz'
             )
             $Curl = Join-Path $env:SystemRoot 'System32\curl.exe'
             $UseCurl = Test-Path $Curl
@@ -515,25 +517,26 @@ jobs:
             foreach ($Url in $Urls) {
               Write-Output "downloading: $Url"
               if ($UseCurl) {
-                & $Curl -sSfL --connect-timeout 20 --max-time 180 -o $Installer $Url
-                if ($LASTEXITCODE -eq 0) { $Downloaded = $true; break }
-                Write-Output "failed: curl exit $LASTEXITCODE"
+                & $Curl -sSfL --connect-timeout 20 --max-time 180 -o $Archive $Url
+                if ($LASTEXITCODE -ne 0) { Write-Output "failed: curl exit $LASTEXITCODE"; continue }
               } else {
-                try {
-                  Invoke-WebRequest -UseBasicParsing -TimeoutSec 120 -Uri $Url -OutFile $Installer
-                  $Downloaded = $true
-                  break
-                } catch { Write-Output "failed: $($_.Exception.Message)" }
+                try { Invoke-WebRequest -UseBasicParsing -TimeoutSec 120 -Uri $Url -OutFile $Archive } catch { Write-Output "failed: $($_.Exception.Message)"; continue }
               }
+              $Actual = (Get-FileHash -Algorithm SHA256 -Path $Archive).Hash.ToLowerInvariant()
+              if ($Actual -eq $Sha256) { $Downloaded = $true; break }
+              Write-Output "failed: sha256 mismatch $Actual"
             }
-            if (-not $Downloaded) { throw 'All Python download sources unreachable; pre-provision CPython 3.13 on this server (on PATH or in smd-ci-tools\py313). This workflow does not modify system components.' }
-            $Sig = Get-AuthenticodeSignature $Installer
-            if ($Sig.Status -ne 'Valid') { throw "Installer Authenticode check failed: $($Sig.Status)" }
-            if ($Sig.SignerCertificate.Subject -notmatch 'Python Software Foundation') { throw "Unexpected installer signer subject: $($Sig.SignerCertificate.Subject)" }
-            $Proc = Start-Process -FilePath $Installer -Wait -PassThru -ArgumentList `
-              '/quiet','InstallAllUsers=0',"TargetDir=$PyDir",'PrependPath=0','Include_launcher=0','Include_test=0','Shortcuts=0','AssociateFiles=0'
-            if ($Proc.ExitCode -ne 0) { throw "Python installer exit code $($Proc.ExitCode)" }
+            if (-not $Downloaded) { throw 'No Python source passed download + SHA256 pin; pre-provision CPython 3.13 on this server (on PATH or in smd-ci-tools\py313). This workflow does not modify system components.' }
+            $Extract = Join-Path $WorkRoot 'smd-ci-tools\py313-extract'
+            if (Test-Path $Extract) { Remove-Item -Recurse -Force $Extract }
+            New-Item -ItemType Directory -Force -Path $Extract | Out-Null
+            & (Join-Path $env:SystemRoot 'System32\tar.exe') -xzf $Archive -C $Extract
+            if ($LASTEXITCODE -ne 0) { throw 'archive extraction failed' }
+            if (Test-Path $PyDir) { Remove-Item -Recurse -Force $PyDir }
+            Move-Item (Join-Path $Extract 'python') $PyDir
+            Remove-Item -Recurse -Force $Extract
             $PyExe = Join-Path $PyDir 'python.exe'
+            if (-not (Test-Path $PyExe)) { throw 'python.exe missing after extraction' }
           }
           & $PyExe --version
           & $PyExe -m venv "$env:RUNNER_TEMP\ci-venv"
@@ -589,10 +592,12 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       # setup-uv/setup-python 走 GitHub release CDN、python.org 直连在本服务器网络
       # 均挂死(实测)。三级供给:①复用 runner 自有持久目录 → ②探测机器已预置的
-      # 3.13(只读使用,建 venv 不改动它) → ③镜像优先逐源下载官方安装器,用系统
-      # 自带 curl.exe 施加硬性墙钟超时(实测 IWR -TimeoutSec 不覆盖响应体挂死,
-      # python.org 建连后身体流卡死会烧满步骤超时),PSF Authenticode 签名校验
-      # 后,每用户静默安装到 runner 自有目录。
+      # 3.13(只读使用,建 venv 不改动它) → ③用系统自带 curl.exe(硬性墙钟超时;
+      # 实测 IWR -TimeoutSec 不覆盖响应体挂死)镜像优先下载 python-build-standalone
+      # 的 install_only 免安装归档(与 mac 通道 uv 托管 CPython 同族构建),SHA256
+      # 与提交内固定值一致后 tar 解包到 runner 自有目录——不运行任何安装器
+      # (实测官方安装器在 NetworkService 服务会话报 0x80070005,MSI 每用户
+      # 安装不适用于服务账户)。固定哈希已在两个独立源交叉核验。
       # 全程不改系统组件、系统 PATH 与业务目录。
       - name: Provision CPython 3.13 virtualenv (runner 自有目录)
         timeout-minutes: 15
@@ -618,11 +623,11 @@ jobs:
             }
           }
           if (-not (Test-Path $PyExe)) {
-            $Installer = Join-Path $env:RUNNER_TEMP 'python-3.13.15-amd64.exe'
+            $Archive = Join-Path $env:RUNNER_TEMP 'cpython-3.13.15-win-x64.tar.gz'
+            $Sha256 = '63d263ab0162f34a241a56dc5b283c22d6e131f5516117e6a921350c69ba7d4f'
             $Urls = @(
-              'https://registry.npmmirror.com/-/binary/python/3.13.15/python-3.13.15-amd64.exe',
-              'https://mirrors.huaweicloud.com/python/3.13.15/python-3.13.15-amd64.exe',
-              'https://www.python.org/ftp/python/3.13.15/python-3.13.15-amd64.exe'
+              'https://registry.npmmirror.com/-/binary/python-build-standalone/20260901/cpython-3.13.15%2B20260901-x86_64-pc-windows-msvc-install_only_stripped.tar.gz',
+              'https://github.com/astral-sh/python-build-standalone/releases/download/20260901/cpython-3.13.15%2B20260901-x86_64-pc-windows-msvc-install_only_stripped.tar.gz'
             )
             $Curl = Join-Path $env:SystemRoot 'System32\curl.exe'
             $UseCurl = Test-Path $Curl
@@ -630,25 +635,26 @@ jobs:
             foreach ($Url in $Urls) {
               Write-Output "downloading: $Url"
               if ($UseCurl) {
-                & $Curl -sSfL --connect-timeout 20 --max-time 180 -o $Installer $Url
-                if ($LASTEXITCODE -eq 0) { $Downloaded = $true; break }
-                Write-Output "failed: curl exit $LASTEXITCODE"
+                & $Curl -sSfL --connect-timeout 20 --max-time 180 -o $Archive $Url
+                if ($LASTEXITCODE -ne 0) { Write-Output "failed: curl exit $LASTEXITCODE"; continue }
               } else {
-                try {
-                  Invoke-WebRequest -UseBasicParsing -TimeoutSec 120 -Uri $Url -OutFile $Installer
-                  $Downloaded = $true
-                  break
-                } catch { Write-Output "failed: $($_.Exception.Message)" }
+                try { Invoke-WebRequest -UseBasicParsing -TimeoutSec 120 -Uri $Url -OutFile $Archive } catch { Write-Output "failed: $($_.Exception.Message)"; continue }
               }
+              $Actual = (Get-FileHash -Algorithm SHA256 -Path $Archive).Hash.ToLowerInvariant()
+              if ($Actual -eq $Sha256) { $Downloaded = $true; break }
+              Write-Output "failed: sha256 mismatch $Actual"
             }
-            if (-not $Downloaded) { throw 'All Python download sources unreachable; pre-provision CPython 3.13 on this server (on PATH or in smd-ci-tools\py313). This workflow does not modify system components.' }
-            $Sig = Get-AuthenticodeSignature $Installer
-            if ($Sig.Status -ne 'Valid') { throw "Installer Authenticode check failed: $($Sig.Status)" }
-            if ($Sig.SignerCertificate.Subject -notmatch 'Python Software Foundation') { throw "Unexpected installer signer subject: $($Sig.SignerCertificate.Subject)" }
-            $Proc = Start-Process -FilePath $Installer -Wait -PassThru -ArgumentList `
-              '/quiet','InstallAllUsers=0',"TargetDir=$PyDir",'PrependPath=0','Include_launcher=0','Include_test=0','Shortcuts=0','AssociateFiles=0'
-            if ($Proc.ExitCode -ne 0) { throw "Python installer exit code $($Proc.ExitCode)" }
+            if (-not $Downloaded) { throw 'No Python source passed download + SHA256 pin; pre-provision CPython 3.13 on this server (on PATH or in smd-ci-tools\py313). This workflow does not modify system components.' }
+            $Extract = Join-Path $WorkRoot 'smd-ci-tools\py313-extract'
+            if (Test-Path $Extract) { Remove-Item -Recurse -Force $Extract }
+            New-Item -ItemType Directory -Force -Path $Extract | Out-Null
+            & (Join-Path $env:SystemRoot 'System32\tar.exe') -xzf $Archive -C $Extract
+            if ($LASTEXITCODE -ne 0) { throw 'archive extraction failed' }
+            if (Test-Path $PyDir) { Remove-Item -Recurse -Force $PyDir }
+            Move-Item (Join-Path $Extract 'python') $PyDir
+            Remove-Item -Recurse -Force $Extract
             $PyExe = Join-Path $PyDir 'python.exe'
+            if (-not (Test-Path $PyExe)) { throw 'python.exe missing after extraction' }
           }
           & $PyExe --version
           & $PyExe -m venv "$env:RUNNER_TEMP\ci-venv"
