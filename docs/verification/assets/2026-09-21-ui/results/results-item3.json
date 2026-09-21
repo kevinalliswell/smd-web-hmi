@@ -1,0 +1,169 @@
+{
+  "targets": {
+    "100%": {
+      "overview": {
+        "scrollWidth": 1416,
+        "clientWidth": 1416,
+        "innerWidth": 1416,
+        "innerHeight": 861,
+        "dpr": 1,
+        "visualScale": 1,
+        "bodyScrollWidth": 1416,
+        "bodyClientWidth": 1416,
+        "no_horizontal_overflow": true,
+        "zoom_readback": 1
+      },
+      "history": {
+        "scrollWidth": 1416,
+        "clientWidth": 1416,
+        "innerWidth": 1416,
+        "innerHeight": 861,
+        "dpr": 1,
+        "visualScale": 1,
+        "bodyScrollWidth": 1416,
+        "bodyClientWidth": 1416,
+        "no_horizontal_overflow": true,
+        "zoom_readback": 1
+      },
+      "parameters": {
+        "scrollWidth": 1416,
+        "clientWidth": 1416,
+        "innerWidth": 1416,
+        "innerHeight": 861,
+        "dpr": 1,
+        "visualScale": 1,
+        "bodyScrollWidth": 1416,
+        "bodyClientWidth": 1416,
+        "no_horizontal_overflow": true,
+        "zoom_readback": 1
+      }
+    },
+    "125%": {
+      "overview": {
+        "scrollWidth": 1133,
+        "clientWidth": 1133,
+        "innerWidth": 1133,
+        "innerHeight": 689,
+        "dpr": 1.25,
+        "visualScale": 1,
+        "bodyScrollWidth": 1133,
+        "bodyClientWidth": 1133,
+        "no_horizontal_overflow": true,
+        "zoom_readback": 1.25
+      },
+      "history": {
+        "scrollWidth": 1133,
+        "clientWidth": 1133,
+        "innerWidth": 1133,
+        "innerHeight": 689,
+        "dpr": 1.25,
+        "visualScale": 1,
+        "bodyScrollWidth": 1133,
+        "bodyClientWidth": 1133,
+        "no_horizontal_overflow": true,
+        "zoom_readback": 1.25
+      },
+      "parameters": {
+        "scrollWidth": 1133,
+        "clientWidth": 1133,
+        "innerWidth": 1133,
+        "innerHeight": 689,
+        "dpr": 1.25,
+        "visualScale": 1,
+        "bodyScrollWidth": 1133,
+        "bodyClientWidth": 1133,
+        "no_horizontal_overflow": true,
+        "zoom_readback": 1.25
+      }
+    },
+    "150%": {
+      "overview": {
+        "scrollWidth": 944,
+        "clientWidth": 944,
+        "innerWidth": 944,
+        "innerHeight": 574,
+        "dpr": 1.5,
+        "visualScale": 1,
+        "bodyScrollWidth": 944,
+        "bodyClientWidth": 944,
+        "no_horizontal_overflow": true,
+        "zoom_readback": 1.5
+      },
+      "history": {
+        "scrollWidth": 944,
+        "clientWidth": 944,
+        "innerWidth": 944,
+        "innerHeight": 574,
+        "dpr": 1.5,
+        "visualScale": 1,
+        "bodyScrollWidth": 944,
+        "bodyClientWidth": 944,
+        "no_horizontal_overflow": true,
+        "zoom_readback": 1.5
+      },
+      "parameters": {
+        "scrollWidth": 944,
+        "clientWidth": 944,
+        "innerWidth": 944,
+        "innerHeight": 574,
+        "dpr": 1.5,
+        "visualScale": 1,
+        "bodyScrollWidth": 944,
+        "bodyClientWidth": 944,
+        "no_horizontal_overflow": true,
+        "zoom_readback": 1.5
+      }
+    },
+    "200%": {
+      "overview": {
+        "scrollWidth": 708,
+        "clientWidth": 708,
+        "innerWidth": 708,
+        "innerHeight": 430,
+        "dpr": 2,
+        "visualScale": 1,
+        "bodyScrollWidth": 708,
+        "bodyClientWidth": 708,
+        "no_horizontal_overflow": true,
+        "zoom_readback": 2
+      },
+      "history": {
+        "scrollWidth": 708,
+        "clientWidth": 708,
+        "innerWidth": 708,
+        "innerHeight": 430,
+        "dpr": 2,
+        "visualScale": 1,
+        "bodyScrollWidth": 708,
+        "bodyClientWidth": 708,
+        "no_horizontal_overflow": true,
+        "zoom_readback": 2
+      },
+      "parameters": {
+        "scrollWidth": 708,
+        "clientWidth": 708,
+        "innerWidth": 708,
+        "innerHeight": 430,
+        "dpr": 2,
+        "visualScale": 1,
+        "bodyScrollWidth": 708,
+        "bodyClientWidth": 708,
+        "no_horizontal_overflow": true,
+        "zoom_readback": 2
+      }
+    }
+  },
+  "_env": {
+    "browser_version": "153.0.4234.32",
+    "channel": "msedge",
+    "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36 Edg/153.0.0.0",
+    "viewport": [
+      1416,
+      861,
+      1,
+      2880,
+      1800
+    ]
+  },
+  "_elapsed_s": 23.2
+}

@@ -1,0 +1,95 @@
+{
+  "no-preference": {
+    "overview": {
+      "matchesReduce": false,
+      "dotGreen": {
+        "selector": ".dot-green",
+        "animationName": "pulse",
+        "animationDuration": "2s",
+        "animationIterationCount": "infinite",
+        "transitionDuration": "0s"
+      },
+      "dotRed": null,
+      "dotAny": {
+        "selector": ".dot",
+        "animationName": "pulse",
+        "animationDuration": "2s",
+        "animationIterationCount": "infinite",
+        "transitionDuration": "0s"
+      },
+      "criticalBanner": null
+    },
+    "alarms": {
+      "matchesReduce": false,
+      "dotGreen": {
+        "selector": ".dot-green",
+        "animationName": "pulse",
+        "animationDuration": "2s",
+        "animationIterationCount": "infinite",
+        "transitionDuration": "0s"
+      },
+      "dotRed": null,
+      "dotAny": {
+        "selector": ".dot",
+        "animationName": "pulse",
+        "animationDuration": "2s",
+        "animationIterationCount": "infinite",
+        "transitionDuration": "0s"
+      },
+      "criticalBanner": {
+        "selector": ".critical-banner",
+        "animationName": "pulse",
+        "animationDuration": "1.5s",
+        "animationIterationCount": "infinite",
+        "transitionDuration": "0s"
+      }
+    }
+  },
+  "reduce": {
+    "overview": {
+      "matchesReduce": true,
+      "dotGreen": {
+        "selector": ".dot-green",
+        "animationName": "pulse",
+        "animationDuration": "1e-05s",
+        "animationIterationCount": "1",
+        "transitionDuration": "1e-05s"
+      },
+      "dotRed": null,
+      "dotAny": {
+        "selector": ".dot",
+        "animationName": "pulse",
+        "animationDuration": "1e-05s",
+        "animationIterationCount": "1",
+        "transitionDuration": "1e-05s"
+      },
+      "criticalBanner": null
+    },
+    "alarms": {
+      "matchesReduce": true,
+      "dotGreen": {
+        "selector": ".dot-green",
+        "animationName": "pulse",
+        "animationDuration": "1e-05s",
+        "animationIterationCount": "1",
+        "transitionDuration": "1e-05s"
+      },
+      "dotRed": null,
+      "dotAny": {
+        "selector": ".dot",
+        "animationName": "pulse",
+        "animationDuration": "1e-05s",
+        "animationIterationCount": "1",
+        "transitionDuration": "1e-05s"
+      },
+      "criticalBanner": {
+        "selector": ".critical-banner",
+        "animationName": "pulse",
+        "animationDuration": "1e-05s",
+        "animationIterationCount": "1",
+        "transitionDuration": "1e-05s"
+      }
+    }
+  },
+  "_elapsed_s": 10.4
+}

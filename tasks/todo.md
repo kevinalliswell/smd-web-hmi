@@ -38,6 +38,7 @@ M0实现提交与验证：[91c1623 文档基线记录](../docs/verification/2026
 | M1-03 / P1 | 工具链和PR/tag统一门禁 | 发布负责人 | M0-03 | Node24/Python3.13及3.11后端兼容、共享检查与RC误发保护的软件结果见[最终软件验证](../docs/verification/2026-09-06-software.md#最终集成软件验证)；未代表正式发布资格 | done |
 | M1-04 / P1 | API类型与前端契约 | 前后端负责人 | M0-03、M2-01 | 同一实现HEAD的接口漂移、生成类型、类型检查及契约回归通过；见[最终软件验证](../docs/verification/2026-09-06-software.md#最终集成软件验证) | done |
 | M1-05 / P2 | UI独有改动质量检查 | 前端负责人 | M1-01 | 小多图单位、空态、权限/响应式及History中文状态已验证；四组键盘/焦点回归见[软件验证](../docs/verification/2026-09-06-software.md#最终集成软件验证)；125%/150%/200%实际浏览器[缩放回归](../docs/verification/2026-09-06-browser-zoom.md)通过 | done |
+| M1-06 / P2 | PR#84视觉升级真机UI验收 | 前端/测试负责人 | M1-05、PR#84合入 | 绑定`0515727`与CI `frontend-dist`字节：深浅主题×16页面目检、换肤无旧色残留（含数据分析8色叠加图）、125%/150%/200%无页面级横向溢出、四组键盘/焦点、reduced-motion降级、等宽栈实际命中Cascadia Mono共6项通过，见[真机UI验收](../docs/verification/2026-09-21-ui-real-machine.md)；第7项WebView2桌面壳仅完成零安装隔离对比，真实安装/卸载、安装器中文目录与断网离线**受阻未验收**；另留缺陷F-1 | doing |
 
 ## M2 控制与数据可靠性
 
