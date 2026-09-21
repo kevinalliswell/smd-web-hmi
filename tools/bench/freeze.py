@@ -85,6 +85,11 @@ def main() -> None:
     environment = os.environ.copy()
     environment["PYTHONPATH"] = os.pathsep.join(str(ROOT / name) for name in ("backend", "desktop", "tools/bench"))
     environment["PLAYWRIGHT_BROWSERS_PATH"] = str(work / "browsers")
+    cache = os.environ.get("SMD_PW_BROWSERS_CACHE")
+    if cache and Path(cache).is_dir():
+        # 自托管 CI 的持久浏览器缓存(见 checks.yml);playwright install 校验安装
+        # 完整标记,缓存完整则跳过下载,缺损则照常重新下载,托管环境不设该变量。
+        shutil.copytree(cache, work / "browsers")
     subprocess.run([sys.executable, "-m", "playwright", "install", "chromium"], env=environment, check=True)
     subprocess.run([sys.executable, "-m", "PyInstaller", *arguments(output, work)], env=environment, check=True)
     bundle = output / "SmdBench"

@@ -718,6 +718,20 @@ jobs:
           Add-Content -Path $env:GITHUB_ENV -Value "SMD_MAKENSIS=$MakeNsis"
       - name: Freeze service, shell and updater; verify Fixed Runtime; compile NSIS
         run: ./scripts/release/build-windows.ps1
+      # Chromium 持久缓存:cdn.playwright.dev 实测偶发响应体停滞(下载行后整段
+      # 无输出直至超时)。先以独立限时把浏览器装进 runner 自有目录(完整标记
+      # 存在时秒级跳过,即二跑起零下载),bench 步骤经 SMD_PW_BROWSERS_CACHE
+      # 交给 freeze 复制使用;缓存缺损时 playwright 会照常重新下载,自愈。
+      - name: Provision Playwright Chromium cache (runner 自有目录)
+        timeout-minutes: 12
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $WorkRoot = Split-Path (Split-Path $env:GITHUB_WORKSPACE -Parent) -Parent
+          pip install --require-hashes -r tools/bench/requirements.lock
+          if ($LASTEXITCODE -ne 0) { throw 'Bench dependency installation failed' }
+          $env:PLAYWRIGHT_BROWSERS_PATH = Join-Path $WorkRoot 'smd-ci-tools\pw-browsers'
+          python -m playwright install chromium
+          if ($LASTEXITCODE -ne 0) { throw 'Playwright chromium provisioning failed' }
       - name: Build the separate offline bench and bundled Chromium
         # 步骤级超时:Chromium 走 Playwright 官方 CDN(实测本服务器可达);挂死时尽早失败。
         # SmdBench 自检按设计为私有证据目录设 Administrators 所有者(现场隐私保证),
@@ -726,8 +740,9 @@ jobs:
         # 托管 windows-build(管理员)照常完整自检,验收口径不变。
         timeout-minutes: 25
         run: |
-          pip install --require-hashes -r tools/bench/requirements.lock
-          if ($LASTEXITCODE -ne 0) { throw 'Bench dependency installation failed' }
+          $ErrorActionPreference = 'Stop'
+          $WorkRoot = Split-Path (Split-Path $env:GITHUB_WORKSPACE -Parent) -Parent
+          $env:SMD_PW_BROWSERS_CACHE = Join-Path $WorkRoot 'smd-ci-tools\pw-browsers'
           python tools/bench/freeze.py --output artifacts/bench --work artifacts/bench-work
           if ($LASTEXITCODE -ne 0) { throw 'Bench freeze failed' }
           $Probe = python -c "import sys; sys.path[:0]=['tools/bench','tools/bench/tests','desktop','backend']; from windows_capabilities import can_assign_administrators_owner as f; print(int(f()))"
