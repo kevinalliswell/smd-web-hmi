@@ -112,7 +112,7 @@ async function close() {
   gap: 12px;
 }
 p {
-  font-size: 12px;
+  font-size: var(--fs-base);
   line-height: 1.6;
 }
 button {

@@ -27,12 +27,15 @@ const canvas = ref(null)
 let chart = null
 let unsubscribeTheme = null
 
-function datasets() {
+function datasets(colors) {
   return TREND_CHANNELS.filter((ch) => props.visible[ch.key]).map((ch) => ({
     label: ch.label,
     yAxisID: ch.axis,
     data: props.points.map((p) => p[ch.key]),
-    borderColor: ch.color,
+    // CO 用语义橙并标记 seriesSemantic(换肤时按 --orange 刷新);其余按槽位取系列色
+    borderColor: ch.semantic === 'co' ? colors.co : colors.series[ch.slot % colors.series.length],
+    seriesSlot: ch.semantic === 'co' ? undefined : ch.slot,
+    seriesSemantic: ch.semantic,
     borderWidth: 1.5,
     pointRadius: 0,
     tension: 0.2,
@@ -41,7 +44,7 @@ function datasets() {
 
 function render() {
   const colors = getChartTheme()
-  const data = { labels: props.points.map((p) => formatMonthDayTime(p.ts)), datasets: datasets() }
+  const data = { labels: props.points.map((p) => formatMonthDayTime(p.ts)), datasets: datasets(colors) }
   if (chart) {
     chart.data = data
     chart.update('none')

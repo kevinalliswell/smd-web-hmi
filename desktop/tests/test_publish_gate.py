@@ -7,6 +7,7 @@ import zipfile
 from pathlib import Path
 
 import pytest
+from windows_capabilities import requires_git_head
 
 ROOT = Path(__file__).resolve().parents[2]
 SPEC = importlib.util.spec_from_file_location("publish_gate", ROOT / "scripts/release/publish_gate.py")
@@ -101,6 +102,7 @@ def test_invalid_manifest_stops_cli_with_nonzero_exit(tmp_path):
     assert "Traceback" not in result.stderr
 
 
+@requires_git_head
 def test_cli_checks_current_source_and_requires_stable_acceptance(tmp_path):
     version = gate.source_version()
     commit = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()

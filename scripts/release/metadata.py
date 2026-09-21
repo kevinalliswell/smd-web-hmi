@@ -26,6 +26,17 @@ def source_version():
     return verify_version(backend, frontend, tag)
 
 
+def build_commit() -> str:
+    """构建树对应的提交:优先 git;REST 归档检出(无 .git)时回退 CI 注入的 GITHUB_SHA(同一棵树)。"""
+    try:
+        return subprocess.check_output(["git", "rev-parse", "HEAD"], text=True, cwd=ROOT).strip()
+    except (OSError, subprocess.CalledProcessError):
+        commit = os.environ.get("GITHUB_SHA", "")
+        if re.fullmatch(r"[0-9a-f]{40}", commit):
+            return commit
+        raise
+
+
 def sbom(root: Path, version: str, runtime: dict):
     components = []
     for dist in sorted(importlib.metadata.distributions(), key=lambda item: item.metadata["Name"].lower()):
@@ -88,7 +99,7 @@ def main():
         build_manifest(
             args.bundle,
             version=version,
-            commit=subprocess.check_output(["git", "rev-parse", "HEAD"], text=True, cwd=ROOT).strip(),
+            commit=build_commit(),
             webview2_version=runtime["version"],
             compatibility={
                 "database_revision": get_expected_schema_head(),

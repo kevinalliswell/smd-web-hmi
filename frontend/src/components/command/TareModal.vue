@@ -75,6 +75,6 @@ async function onConfirm() {
 <style scoped>
 .err {
   color: var(--danger-text);
-  font-size: 12px;
+  font-size: var(--fs-base);
 }
 </style>

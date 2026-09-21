@@ -96,23 +96,24 @@ function visible(item) {
 
 <style scoped>
 #primary-navigation {
-  width: var(--nav-w); background: var(--bg-card); border-right: 1px solid var(--border);
-  display: flex; flex-direction: column; overflow-y: auto; flex-shrink: 0; padding-bottom: 12px;
+  width: var(--nav-w); background: var(--bg-chrome); border-right: 1px solid var(--border);
+  display: flex; flex-direction: column; overflow-y: auto; flex-shrink: 0; padding: 4px 10px 12px;
 }
 .nav-section {
-  padding: 12px 14px 6px; font-size: 10px; letter-spacing: 1px;
-  text-transform: uppercase; color: var(--text-muted);
+  padding: 14px 8px 6px; font-size: var(--fs-sm); letter-spacing: 0.08em;
+  text-transform: uppercase; color: var(--text-muted); font-weight: var(--fw-semi);
 }
 .nav-item {
-  display: flex; align-items: center; gap: 10px; padding: 9px 14px; cursor: pointer;
-  color: var(--text-sec); border-left: 3px solid transparent; transition: all .15s;
+  display: flex; align-items: center; gap: 10px; padding: 8px 11px; cursor: pointer;
+  border-radius: var(--radius-lg);
+  color: var(--text-sec); border-left: 3px solid transparent; transition: all var(--dur-fast);
 }
 .nav-item:hover { background: var(--bg-hover); color: var(--text-pri); }
-.nav-item.active { background: var(--accent-dim); color: var(--accent); border-left-color: var(--accent); }
+.nav-item.active { background: var(--accent-dim); color: var(--accent); border-left-color: var(--accent); font-weight: var(--fw-semi); }
 .nav-icon { flex: none; }
 .nav-badge {
-  margin-left: auto; background: var(--red); color: #fff; font-size: 10px;
-  font-weight: 700; border-radius: 8px; padding: 1px 5px;
+  margin-left: auto; background: var(--red); color: var(--on-red); font-size: var(--fs-xs);
+  font-weight: 700; border-radius: var(--radius-pill); padding: 1px 5px;
 }
 
 @media (max-width: 900px) {

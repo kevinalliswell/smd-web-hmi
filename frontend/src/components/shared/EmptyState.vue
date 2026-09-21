@@ -49,7 +49,7 @@ defineProps({
 }
 .ok .mark { color: var(--green); background: var(--green-dim); }
 .neutral .mark { color: var(--text-muted); background: var(--bg-card2); }
-.title { font-size: 13px; font-weight: 600; color: var(--text-pri); }
+.title { font-size: var(--fs-md); font-weight: 600; color: var(--text-pri); }
 .ok .title { color: var(--success-text); }
-.hint { font-size: 12px; color: var(--text-muted); max-width: 42ch; }
+.hint { font-size: var(--fs-base); color: var(--text-muted); max-width: 42ch; }
 </style>

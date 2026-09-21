@@ -16,7 +16,8 @@ import { getChartTheme, subscribeChartTheme } from '@/utils/chartTheme'
 Chart.register(LineController, LineElement, PointElement, LinearScale, CategoryScale, Tooltip, Legend)
 
 const props = defineProps({
-  // series: [{ label, color, values: number[] }]
+  // series: [{ label, slot, values: number[] }]；slot 指向全局系列槽位色,
+  // 显式 color 仅用于语义色豁免(不参与换肤重着色)
   series: { type: Array, default: () => [] },
   yLabel: { type: String, default: '' },
 })
@@ -25,13 +26,14 @@ const canvas = ref(null)
 let chart = null
 let unsubscribeTheme = null
 
-function build() {
+function build(colors) {
   const maxLen = props.series.reduce((m, s) => Math.max(m, s.values.length), 0)
   const labels = Array.from({ length: maxLen }, (_, i) => i)
-  const datasets = props.series.map((s) => ({
+  const datasets = props.series.map((s, i) => ({
     label: s.label,
     data: s.values,
-    borderColor: s.color,
+    borderColor: s.color || colors.series[(s.slot ?? i) % colors.series.length],
+    seriesSlot: s.color ? undefined : (s.slot ?? i),
     borderWidth: 1.5,
     pointRadius: 0,
     tension: 0.2,
@@ -42,14 +44,14 @@ function build() {
 function render() {
   const colors = getChartTheme()
   if (chart) {
-    chart.data = build()
+    chart.data = build(colors)
     chart.options.scales.y.title.text = props.yLabel
     chart.update('none')
     return
   }
   chart = new Chart(canvas.value, {
     type: 'line',
-    data: build(),
+    data: build(colors),
     options: {
       responsive: true,
       maintainAspectRatio: false,

@@ -12,6 +12,7 @@ from dotenv import dotenv_values
 from smd_desktop.pairing import PairingTransaction
 from smd_desktop.single_instance import AlreadyRunning, single_instance
 from sqlalchemy import create_engine
+from windows_capabilities import requires_admin_owner
 
 from app.db.models import Base
 from app.db.operation_models import Operation  # noqa: F401 — register the actual HTTP operation table.
@@ -220,6 +221,7 @@ def rejected_reservation(installation):
 
 
 @pytest.mark.parametrize("status", ["applied", "rejected", "interrupted"])
+@requires_admin_owner
 def test_applied_wire_receipt_allows_repairing_an_accepted_http_operation(installation, status):
     first = prepare(installation)
     evidence = operation_evidence(installation, status=status)
@@ -232,6 +234,7 @@ def test_applied_wire_receipt_allows_repairing_an_accepted_http_operation(instal
         ).fetchone() == ("accepted",)
 
 
+@requires_admin_owner
 def test_rejected_unstarted_reservation_allows_repairing_without_fake_safe_completion(
     installation,
 ):
@@ -242,6 +245,7 @@ def test_rejected_unstarted_reservation_allows_repairing_without_fake_safe_compl
         assert db.execute("SELECT phase,safety_completed_at FROM test_session").fetchone() == ("start_rejected", None)
 
 
+@requires_admin_owner
 def test_new_pairing_keeps_key_private_and_returns_only_material_paths(installation, capsys):
     result = prepare(installation)
     data, database, _ = installation
@@ -279,6 +283,7 @@ def test_private_write_refuses_before_any_secret_bytes_if_file_security_cannot_b
 
 
 @pytest.mark.skipif(os.name != "nt", reason="Requires actual Windows ownership and DACL enforcement")
+@requires_admin_owner
 def test_pairing_files_have_administrators_owner_before_service_use(installation):
     from smd_desktop import windows_powershell
 
@@ -301,6 +306,7 @@ def test_pairing_files_have_administrators_owner_before_service_use(installation
     assert len(load_psk(key)) == 32
 
 
+@requires_admin_owner
 def test_replacement_requires_explicit_flag_and_preserves_epoch_watermark(installation):
     first = prepare(installation)
     data, database, _ = installation
@@ -347,6 +353,7 @@ def test_backend_mutex_prevents_offline_pairing(installation):
             prepare(installation)
 
 
+@requires_admin_owner
 def test_interrupted_pairing_recovers_fixed_identity_and_secret(installation, monkeypatch):
     data, _, platform = installation
     transaction = PairingTransaction(data, platform)
@@ -367,6 +374,7 @@ def test_interrupted_pairing_recovers_fixed_identity_and_secret(installation, mo
     assert not (data / "maintenance.json").exists()
 
 
+@requires_admin_owner
 def test_explicit_new_epoch_retains_old_database_and_key(installation):
     first = prepare(installation)
     _, database, _ = installation
@@ -383,6 +391,7 @@ def test_explicit_new_epoch_retains_old_database_and_key(installation):
     assert Path(first["psk_file"]).exists()
 
 
+@requires_admin_owner
 def test_import_uses_private_file_without_exposing_key(installation, tmp_path):
     imported = tmp_path / "import.hex"
     imported.write_text("12" * 32 + "\n", encoding="ascii")
@@ -392,6 +401,7 @@ def test_import_uses_private_file_without_exposing_key(installation, tmp_path):
     assert "12" * 32 not in json.dumps(result)
 
 
+@requires_admin_owner
 def test_tampered_staged_key_keeps_recovery_locked(installation, monkeypatch):
     data, _, platform = installation
     transaction = PairingTransaction(data, platform)
@@ -412,6 +422,7 @@ def test_tampered_staged_key_keeps_recovery_locked(installation, monkeypatch):
     assert (data / "maintenance.json").exists()
 
 
+@requires_admin_owner
 def test_windows_crlf_configuration_is_preserved_byte_for_byte_in_backup(installation):
     data, _, _ = installation
     config = data / "config/service.env"
@@ -422,6 +433,7 @@ def test_windows_crlf_configuration_is_preserved_byte_for_byte_in_backup(install
     assert dotenv_values(config, interpolate=False)["SMD_JWT_SECRET"] == "keep-me"
 
 
+@requires_admin_owner
 def test_pairing_and_recovery_read_unicode_journals_under_legacy_windows_locale(installation, monkeypatch):
     data, database, platform = installation
     renamed = database.with_name("配对数据库.sqlite")
@@ -447,6 +459,7 @@ def test_pairing_and_recovery_read_unicode_journals_under_legacy_windows_locale(
     assert not (data / "maintenance.json").exists()
 
 
+@requires_admin_owner
 def test_terminal_history_remains_verifiable_after_explicit_epoch_rotation(
     installation,
 ):

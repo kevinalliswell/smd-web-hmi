@@ -111,19 +111,22 @@ onMounted(async () => {
 </template>
 
 <style scoped>
-.history-hint { color: var(--text-sec); font-size: 12px; line-height: 1.6; margin-bottom: 12px; }
-.history-pages { display: flex; justify-content: space-between; align-items: center; margin-top: 12px; gap: 12px; font-size: 12px; }
-.page { display: flex; flex-direction: column; gap: 16px; }
+.history-hint { color: var(--text-sec); font-size: var(--fs-base); line-height: 1.6; margin-bottom: 12px; }
+.history-pages { display: flex; justify-content: space-between; align-items: center; margin-top: 12px; gap: 12px; font-size: var(--fs-base); }
 .page-head { display: flex; align-items: center; gap: 12px; }
-.page-title { font-size: 18px; font-weight: 700; }
-.spacer { flex: 1; }
 .critical-banner {
   background: var(--red-dim); border: 1px solid var(--red); color: var(--danger-text);
-  border-radius: 6px; padding: 10px 14px; font-weight: 600; animation: pulse 1.5s infinite;
+  border-radius: var(--radius-lg); padding: 10px 14px; font-weight: 600; animation: pulse 1.5s infinite;
+  box-shadow: 0 0 0 4px var(--red-soft);
 }
-.banner { background: var(--accent-dim); border: 1px solid var(--accent); color: var(--accent); border-radius: 6px; padding: 8px 12px; font-size: 12px; }
-.tabs { display: flex; gap: 8px; }
-.tabs button.active { background: var(--accent-dim); border-color: var(--accent); color: var(--accent); }
-.cnt { margin-left: 6px; background: var(--red); color: #fff; font-size: 10px; font-weight: 700; border-radius: 8px; padding: 1px 6px; }
+/* 分段式 tab:容器为浅面圆角槽,活跃项高亮块 */
+.tabs {
+  display: flex; gap: 4px; padding: 3px; width: fit-content;
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: 9px;
+}
+.tabs button { border: none; background: transparent; color: var(--text-sec); }
+.tabs button:hover:not(:disabled) { background: var(--bg-hover); color: var(--text-pri); }
+.tabs button.active { background: var(--accent-dim); color: var(--accent); }
+.cnt { margin-left: 6px; background: var(--red); color: var(--on-red); font-size: var(--fs-xs); font-weight: 700; border-radius: var(--radius-pill); padding: 1px 6px; }
 @media (max-width: 560px) { .page-head { align-items: stretch; flex-direction: column; } .tabs { overflow-x: auto; } .tabs button { white-space: nowrap; } }
 </style>

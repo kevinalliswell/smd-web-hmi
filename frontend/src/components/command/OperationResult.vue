@@ -60,7 +60,7 @@ async function refresh(action = 'local') {
 </template>
 <style scoped>
 .operation-result { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
-p, label { font-size: 12px; overflow-wrap: anywhere; }
+p, label { font-size: var(--fs-base); overflow-wrap: anywhere; }
 .actions { display: flex; gap: 8px; flex-wrap: wrap; }
 label { display: flex; flex-direction: column; gap: 6px; }
 textarea { width: 100%; min-height: 64px; resize: vertical; }

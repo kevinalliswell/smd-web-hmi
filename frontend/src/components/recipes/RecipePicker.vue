@@ -144,14 +144,14 @@ select {
 }
 label {
   color: var(--text-sec);
-  font-size: 12px;
+  font-size: var(--fs-base);
 }
 .pager {
   display: flex;
   gap: 8px;
   align-items: center;
   flex-wrap: wrap;
-  font-size: 12px;
+  font-size: var(--fs-base);
 }
 p[role='alert'] {
   color: var(--danger-text);

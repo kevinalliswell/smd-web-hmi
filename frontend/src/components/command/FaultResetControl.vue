@@ -42,6 +42,6 @@ async function reset() {
 </template>
 <style scoped>
 .fault-reset, label { display: flex; flex-direction: column; gap: 8px; }
-p, label { font-size: 12px; line-height: 1.6; }
+p, label { font-size: var(--fs-base); line-height: 1.6; }
 textarea { width: 100%; resize: vertical; }
 </style>

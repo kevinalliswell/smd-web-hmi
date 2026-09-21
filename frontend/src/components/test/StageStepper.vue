@@ -66,14 +66,14 @@ function statusOf(i) {
   border: 2px solid var(--border); background: var(--bg-card2); color: var(--text-sec);
   font-weight: 700; z-index: 1;
 }
-.label { font-size: 11px; color: var(--text-sec); line-height: 1.3; }
+.label { font-size: var(--fs-sm); color: var(--text-sec); line-height: 1.3; }
 .co-tag {
-  display: inline-block; margin-left: 3px; font-size: 9px; font-weight: 700;
+  display: inline-block; margin-left: 3px; font-size: var(--fs-2xs); font-weight: 700;
   background: var(--orange); color: var(--on-orange); border-radius: 3px; padding: 0 3px;
 }
 .step.done .node { border-color: var(--green); color: var(--green); }
 .step.active .node { border-color: var(--accent); background: var(--accent-dim); color: var(--accent); box-shadow: 0 0 8px var(--accent); }
 .step.active .label { color: var(--text-pri); font-weight: 600; }
 .step.active.co .node { border-color: var(--orange); color: var(--orange); box-shadow: 0 0 8px var(--orange); }
-.stage-desc { font-size: 12px; line-height: 1.6; }
+.stage-desc { font-size: var(--fs-base); line-height: 1.6; }
 </style>
