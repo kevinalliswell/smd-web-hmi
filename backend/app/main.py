@@ -471,6 +471,8 @@ def create_app() -> FastAPI:
 
     @app.exception_handler(RequestValidationError)
     async def _validation_exc_handler(request: Request, exc: RequestValidationError):
+        # message 是面向操作员的一句话；结构化条目放在 detail 里供前端按字段渲染。
+        # 不要把条目列表 str() 进 message——那会把 Python 字面量（含内部字段名与正则）直接显示到界面。
         safe_errors = [
             {
                 "location": ".".join(str(part) for part in item.get("loc", ())),
@@ -479,7 +481,9 @@ def create_app() -> FastAPI:
             }
             for item in exc.errors()
         ]
-        return JSONResponse(status_code=422, content=err("validation_error", str(safe_errors)))
+        body = err("validation_error", "请求参数不符合接口要求，请检查后重试")
+        body["detail"] = safe_errors
+        return JSONResponse(status_code=422, content=body)
 
     @app.exception_handler(HostCommTimeoutError)
     async def _hostcomm_timeout_handler(request: Request, exc: HostCommTimeoutError):

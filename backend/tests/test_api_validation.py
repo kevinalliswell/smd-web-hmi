@@ -114,3 +114,34 @@ async def test_validation_response_never_echoes_password_input() -> None:
     assert response.status_code == 422
     assert response.json()["error_code"] == "validation_error"
     assert secret not in response.text
+
+
+async def test_validation_response_keeps_message_human_readable_and_details_structured() -> None:
+    """422 的 message 必须是面向操作员的一句话，结构化条目走 detail。
+
+    回归：曾经把条目列表 str() 进 message，而登录页直接渲染 message，
+    操作员会在界面上看到 Python 字面量（含内部字段名与校验正则）。
+    """
+    app = create_app()
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            "/api/auth/login",
+            json={"username": "面条", "password": "not-the-secret"},
+        )
+
+    assert response.status_code == 422
+    body = response.json()
+    assert body["error_code"] == "validation_error"
+
+    message = body["message"]
+    assert isinstance(message, str)
+    assert "{" not in message and "[" not in message
+    assert "location" not in message
+    assert "^[A-Za-z0-9_]+$" not in message
+
+    detail = body["detail"]
+    assert isinstance(detail, list) and detail
+    assert detail[0]["location"] == "body.username"
+    assert detail[0]["message"]
+    assert detail[0]["type"]
