@@ -593,6 +593,11 @@ jobs:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [self-hosted, Windows, X64, local-windows]
     timeout-minutes: 90
+    env:
+      # Chromium 下载改走 npmmirror 的 playwright 全量镜像(cft 树含 win64,与官方
+      # cdn.playwright.dev 已双源逐字节核验一致),规避官方 CDN 对本服务器的时段性
+      # 响应体停滞。仅影响本 job;托管 windows-build 仍走官方默认源。
+      PLAYWRIGHT_DOWNLOAD_HOST: https://cdn.npmmirror.com/binaries/playwright
     defaults:
       run:
         shell: powershell
