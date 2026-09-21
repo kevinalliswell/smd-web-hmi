@@ -7,10 +7,11 @@ jobs:
   # 成本策略:托管 runner 消耗计费额度(Windows 2 倍),PR 迭代期由 7 条自托管
   # 通道承载同等检查(kevin-mac-smd 四项与托管 lint/backend/frontend/audit 同命令,
   # ustb-win-smd 两项覆盖 Windows 单测与真实构建);托管六项仅在 push(合入 main)
-  # 与标签流水线执行,其中管理员特权用例与安装/覆盖验收(windows-package 隔离
-  # 硬门禁)只有托管通道能跑,验收口径在合并线与发布线上保持不变。
+  # 与标签流水线执行;fork 来源的 PR 例外——自托管按安全惯例不跑外部代码,
+  # 此时托管六项照常执行,保证外部贡献仍有完整验证。管理员特权用例与安装/
+  # 覆盖验收(windows-package 隔离硬门禁)只有托管通道能跑,验收口径不变。
   lint:
-    if: github.event_name != 'pull_request'
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -26,7 +27,7 @@ jobs:
       - run: black --config backend/pyproject.toml --check backend/app backend/tests desktop tools/bench scripts/release contracts scripts/check_hostcomm_contract.py
       - run: isort --settings-path backend/pyproject.toml --check-only backend/app backend/tests desktop tools/bench scripts/release contracts scripts/check_hostcomm_contract.py
   backend:
-    if: github.event_name != 'pull_request'
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository
     strategy:
       fail-fast: false
       matrix:
@@ -77,7 +78,7 @@ jobs:
             if ($ParseErrors.Count) { throw ($ParseErrors | Out-String) }
           }
   frontend:
-    if: github.event_name != 'pull_request'
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -109,7 +110,7 @@ jobs:
           path: frontend/dist
           retention-days: 7
   audit:
-    if: github.event_name != 'pull_request'
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -126,7 +127,7 @@ jobs:
         run: npm audit --audit-level=high
   windows-build:
     needs: [lint, backend, frontend, audit]
-    if: github.event_name != 'pull_request'
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository
     runs-on: windows-latest
     timeout-minutes: 90
     outputs:
@@ -210,7 +211,7 @@ jobs:
   windows-package:
     needs: [windows-build]
     # always() 保留其"构建失败也要显式报告"的语义,叠加 PR 事件下整体跳过。
-    if: ${{ github.event_name != 'pull_request' && always() }}
+    if: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository) && always() }}
     runs-on: windows-latest
     timeout-minutes: 90
     steps:
