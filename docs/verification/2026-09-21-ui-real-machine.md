@@ -1,8 +1,9 @@
 # PR #84 前端视觉体系升级 · 真机 UI 验收
 
-本记录只覆盖已合并 PR #84 描述里列出的 7 项人工 UI 验收。第 1—6 项为浏览器侧，已在下述
-Windows 11 实机执行并留证；第 7 项（WebView2 桌面壳）**未整体通过**，按用户批准的替代方案
-只完成了零安装隔离验证，真实安装/卸载与断网离线仍未验收，逐项边界见[第 7 项](#7-webview2-桌面壳与浏览器双入口)。
+本记录覆盖已合并 PR #84 描述里列出的 7 项人工 UI 验收，全部在下述 Windows 11 实机执行并留证。
+第 7 项（WebView2 桌面壳）先做过一轮不改动系统的零安装隔离验证；用户随后卸载了机上既有的
+0.3.0 并删除其数据目录，于是补做了**真实安装 → 桌面壳验收 → 断网离线 → 卸载清理**的完整流程，
+本记录只写这一轮真实结果，零安装那轮已被取代（保留在本分支提交历史里）。
 
 ## 绑定信息
 
@@ -15,18 +16,20 @@ Windows 11 实机执行并留证；第 7 项（WebView2 桌面壳）**未整体�
 | 显示 | 2880×1800 物理像素，系统缩放 200% |
 | 浏览器 | Microsoft Edge `153.0.4234.32`（Chromium 153），Playwright 1.62.0 驱动 |
 | 机器常驻 WebView2 Runtime | `153.0.4234.48`（仅供参考；桌面壳用的是随包 Fixed `152.0.4191.62`） |
-| 后端 | 同提交 `backend/`，`__version__ = 0.3.0`，`HOSTCOMM_MOCK=true`，监听 `127.0.0.1:8100`，托管上述 CI `frontend-dist` |
-| 设备 | 仓内 `app.hostcomm.mock_server`（`127.0.0.1:34299`，`--demo-alarms --extended-contract --time-scale 20`），**全程未接真实控制板** |
+| 后端（第 1—6 项）| 同提交 `backend/` 源码运行，`__version__ = 0.3.0`，`HOSTCOMM_MOCK=true`，监听 `127.0.0.1:8100`，托管上述 CI `frontend-dist` |
+| 后端（第 7 项）| 上述安装器装出的生产后台，`SmdHmi` 服务以 `NT AUTHORITY\LocalService` 运行，监听 `127.0.0.1:8000`，未配对、`hostcomm offline` |
+| 设备 | 第 1—6 项用仓内 `app.hostcomm.mock_server`（`127.0.0.1:34299`，`--demo-alarms --extended-contract --time-scale 20`）；第 7 项无设备。**全程未接真实控制板** |
 | 执行日期 | 2026-09-21 |
 
 被测前端刻意使用 CI 产出的字节而不是本机重建产物：本机 `core.autocrlf=true`，重建后所有
 文本资源的字节与内容哈希都会变（已实测 `favicon.svg` 去掉 CR 后与 CI 完全一致），用 CI 字节
 才能把结论绑定到该提交的实际发行物。
 
-本机隔离：本机另有一套**已安装**的 SmdHmi 0.3.0（`manifest.commit = 404ecb50…`，即已发布的
-v0.3.0，非被测提交），服务以 `NT AUTHORITY\LocalService` 运行在 8000 端口。验收用后端另起在
-8100 端口、独立 SQLite（`%LOCALAPPDATA%\..\.cache\smd-pr84\data\smd.db`）、Mock 另用 34299 端口，
-全程未停止、未修改、未读写该既有安装。
+本机隔离与时序：执行第 1—6 项时，本机另有一套**在用的**已安装 SmdHmi 0.3.0
+（`manifest.commit = 404ecb50…`，即已发布的 v0.3.0，非被测提交），服务运行在 8000 端口；
+验收用后端因此另起在 8100 端口、用独立 SQLite、Mock 另用 34299 端口，**全程未停止、未修改、
+未读写该既有安装**。第 1—6 项完成后，用户自行卸载了那套 0.3.0 并删除其数据目录；机器回到
+无既有安装的状态后，才执行第 7 项的真实安装（见该节）。两段工作互不重叠。
 
 ## 结论一览
 
@@ -38,9 +41,9 @@ v0.3.0，非被测提交），服务以 `NT AUTHORITY\LocalService` 运行在 80
 | 4 | 键盘/焦点回归（M1-05 基线四组） | 已通过（第四组"准备离线升级"入口已随 ADR-011 从产品移除，改测同类受控写入确认，差异见下） |
 | 5 | `prefers-reduced-motion: reduce` 动画降级 | 已通过 |
 | 6 | Cascadia Mono/Consolas 实际渲染 | 已通过 |
-| 7 | WebView2 桌面壳与浏览器双入口 | **受阻**（仅完成零安装隔离对比；真实安装/卸载、安装器中文目录、断网离线未执行） |
+| 7 | WebView2 桌面壳与浏览器双入口 | 已通过（中文安装目录真实首次安装、双入口同页同主题一致、断网离线可用、卸载清理；未覆盖范围见该节） |
 
-另发现 1 个与本次视觉改动无关、但在被测提交上真实可见的界面缺陷，见[发现的问题](#发现的问题)。
+另发现 2 个与本次视觉改动无关、但在被测提交上真实可见的问题，见[发现的问题](#发现的问题)。
 
 ## 复现环境与夹具
 
@@ -51,9 +54,15 @@ v0.3.0，非被测提交），服务以 `NT AUTHORITY\LocalService` 运行在 80
 | `seed_ui_fixture.py` | 向验收专用 SQLite **追加**合成历史试验（两批共 16 个，每个 180 采样点），供历史页与数据分析页有内容可看。纯合成夹具，只 INSERT，不删改既有记录 |
 | `prepare_device_fixture.py` | 在 Mock 控制板上保存/校验/下发一份标准候选配方（`start_test` 要求绑定已回读一致的配方版本；Mock 重启会丢该绑定） |
 | `ui_acceptance.py` | 第 1—6 项的浏览器侧夹具：真实 Edge 有头窗口、真实渲染、逐项断言并输出 JSON |
-| `capture_webview2_shell.ps1` | 第 7 项：运行解包出的 `SmdDesktop.exe` 并抓窗口图 |
+| `item7_install.ps1` | 第 7 项：提权前置检查 → 静默安装到中文目录 → 采集安装后事实 → 一次性初始口令换成验收口令（口令不进任何输出） |
+| `item7_offline_probe.ps1` | 第 7 项：开壳并登录后按固定间隔记录网络状态/健康检查/静态资源/窗口截图，供断网窗口取证 |
+| `item7_uninstall.ps1` | 第 7 项：提权静默卸载并核查残留，`-RemoveDataDir` 时一并删除本轮空库数据目录 |
+| `capture_webview2_shell.ps1` | 第 7 项：启动 `SmdDesktop.exe`、壳内登录、切主题并抓窗口图 |
 | `capture_window_by_title.ps1` | 第 7 项：用与桌面壳相同的 DPI 感知 GDI 路径抓浏览器窗口，使取色比对同口径 |
 | `compare_shell_vs_browser.py` | 第 7 项：对两侧截图做主题令牌取色统计 |
+
+第 7 项的两个提权脚本必须存成 **UTF-8 with BOM**：本机 ANSI 代码页是 gb2312，无 BOM 的 UTF-8
+会被 PowerShell 5.1 按 GBK 误读，脚本里的中文安装路径会变成乱码。
 
 逐项断言原始输出在 [assets/2026-09-21-ui/results/](assets/2026-09-21-ui/results/)，截图在
 [assets/2026-09-21-ui/shots/](assets/2026-09-21-ui/shots/)，全部文件的 SHA-256 见
@@ -294,64 +303,121 @@ M1-05 基线（`docs/verification/2026-09-06-software.md`）第四组是"准备�
 
 ## 7. WebView2 桌面壳与浏览器双入口
 
-**受阻。** 本项要求的真实安装/卸载、安装器写入中文安装目录、断网离线三项均未执行，原因与缺口
-见下。用户批准后只完成了**零安装隔离验证**，结论不得当作本项通过。
+**已通过。** 用户先卸载了机上既有的 0.3.0（`manifest.commit = 404ecb50…`，与被测提交不同）并删除
+其数据目录，机器回到无既有安装的状态，本项随后按真实安装流程执行。逐项原始输出见
+`results-item7-install.json` / `results-item7-compare.json` / `results-item7-colorprofile.json` /
+`results-item7-offline-probe.ndjson` / `results-item7-uninstall.json`。
 
-### 7.1 为什么没做真实安装
+### 7.1 中文安装目录下的真实首次安装
 
-- 手头唯一的 Win10/11 机器就是本验收机 `KEVIN-X1`，其上**已有一套在用的 SmdHmi 0.3.0**
-  （`manifest.commit = 404ecb50…`，与被测提交不同，不能顶替），服务在跑；清单明确要求不碰业务环境。
-- 本次会话**不是管理员**，无法驱动 NSIS 安装器所需的 UAC 提权。
-- 本机 C 盘仅剩约 3 GB 可用，解包后约 1.03 GB 的版本目录加上保留旧版本，安装存在空间不足风险。
-- 断网离线一项会切断本会话网络。
+安装前复核机器干净：无 `SmdHmi` 服务、无 `HKLM\SOFTWARE\SmdHmi`、无 `SmdHmi*` 计划任务、
+无 `C:\ProgramData\SmdHmi`、8000 端口无监听、目标安装目录不存在（脚本把这些做成硬前置，
+不满足就拒绝安装）。
 
-**缺什么**：一台可牺牲的 Win10/11 测试机（或对本机的管理员授权 + 可接受覆盖现有安装），以及一个
-可断网的时间窗口。补齐后应按 [deploy/windows/TEST-REINSTALL.md](../../deploy/windows/TEST-REINSTALL.md)
-走完整备份、空库重装、中文目录安装、断网核验与卸载清理。
+静默安装到中文目录（NSIS 的 `/D` 放最后且不加引号）：
 
-### 7.2 已完成的零安装隔离验证
+```text
+SmdHmi-0.3.0-windows-x64.exe /S /D=C:\Program Files\熔滴炉上位机
+```
 
-用 7-Zip 解包被测安装器（不运行 NSIS），把版本目录放到**中文路径** `D:\熔滴炉UI验收-临时\版本\0.3.0\`，
-用 `SMD_DATA_ROOT` 显式指向隔离数据目录（绕过注册表里已登记的安装路径），`LOCALAPPDATA` 重定向到
-隔离目录，直接运行随包的 `SmdDesktop.exe`：
+| 检查项 | 实际 |
+|---|---|
+| 安装器退出码 / 耗时 | `0` / 60.0 s |
+| 服务 | `SmdHmi`，`Running`，账户 `NT AUTHORITY\LocalService` |
+| 服务可执行文件 | `C:\Program Files\熔滴炉上位机\versions\0.3.0\SmdService\SmdService.exe`（在中文安装目录内）|
+| 注册表登记 | `InstallDir = C:\Program Files\熔滴炉上位机`、`DataDir = C:\ProgramData\SmdHmi`、`Version = 0.3.0` |
+| 安装后清单 | `version 0.3.0`、`commit 0515727be58fec05ba02fa7129b65406d8264917`、`prerelease false`、`webview2_version 152.0.4191.62` |
+| 版本目录 | 974.2 MB，含 `frontend,SmdDesktop,SmdService,SmdUpdate,webview2,manifest.json,sbom.cdx.json,…` |
+| 开始菜单 | `SMD HMI.lnk` |
+| 健康检查 | `status ready`、`version 0.3.0`、`database/schema/storage/backup` 均 `ok`、`hostcomm offline` |
+| 静态页与实际 JS 资源 | `/login` 200；`/assets/index-CunTPT79.js` 200、`Content-Type` 为 JavaScript、180 291 字节 |
+| 初始口令 | 安装器在 `C:\ProgramData\SmdHmi\config\bootstrap-admin-password.txt` 生成；首登 `must_change_password=true`，改密后重登 `false` |
+| 新库为空 | 试验数 0，用户只有 `admin` —— 走的是首次安装路径，没有沿用任何旧数据 |
 
-- `SmdDesktop.exe --self-check` 退出码 **0**：冻结壳实际加载 `webview.platforms.edgechromium`
-  与随包 Fixed WebView2 `152.0.4191.62` 成功（中文程序路径下可用）。
-- 壳内完成 `maint1` 登录并打开实时总览，深浅两主题各截一张；主题切换用壳内顶栏按钮点击。
-- 安装器内 `frontend/index.html` 的 SHA-256 为 `10a6839f…84b`，**与后端托管给浏览器的 CI
-  `frontend-dist` 字节完全一致**——两个入口渲染的是同一套前端资源。
+`hostcomm offline` 是预期状态：新安装默认 HostComm 2.0、未配对，**全程没有真实控制板**。
+安装器生成的一次性口令只在提权脚本进程内使用，未写入任何证据文件或日志。
 
-对比截图（均为 2880×1800 物理像素、同一后端、同一页面、同一主题）：
+`/assets/index-CunTPT79.js` 与第 1—6 项里后端托管的 CI `frontend-dist` 工件是同一个文件名和字节，
+即桌面壳、浏览器与前六项测的是同一套前端资源。
 
-| 入口 | 深色 | 浅色 |
+### 7.2 桌面壳与浏览器双入口同页同主题
+
+桌面壳直接运行已安装的 `versions\0.3.0\SmdDesktop\SmdDesktop.exe`（不注入任何环境变量，
+由程序自己读注册表登记的 `DataDir`），窗口 1440×900 逻辑像素、本机 200% 缩放即 2880×1800 物理像素。
+浏览器侧用同尺寸窗口，并经**与桌面壳完全相同**的 DPI 感知 GDI 屏幕采集，保证取色同口径。
+
+| 入口 | 登录页 | 总览·深色 | 总览·浅色 |
+|---|---|---|---|
+| WebView2 桌面壳 | `item7-installed-shell-login.png` | `item7-installed-shell-overview-dark.png` | `item7-installed-shell-overview-light.png` |
+| 浏览器（GDI 采集） | — | `item7-installed-browser-gdi-overview-dark.png` | `item7-installed-browser-gdi-overview-light.png` |
+| 浏览器（去掉强制 sRGB） | — | `item7-installed-browser-nosrgb-overview-dark.png` | `item7-installed-browser-nosrgb-overview-light.png` |
+
+目检：两个入口的版面、间距、字体、语义配色一致——KPI 卡、CO 橙色角标、侧栏分组、图表与
+“未知 / 数据过期”离线态在两侧表现相同。
+
+**取色差异的归因做了对照实验。** 初次比对时，桌面壳截图里高饱和令牌色与 Playwright 驱动的
+Edge 有 3–6/255 的偏移。怀疑来自色彩管理而非样式，于是只改一个变量复测：用
+`ignore_default_args=["--force-color-profile=srgb"]` 去掉 Playwright 默认注入的 sRGB 强制，
+其余（同一后端、同一页面、同一主题、同一窗口尺寸、同一 GDI 采集）不变：
+
+| 令牌 | 桌面壳观测 | 浏览器·强制 sRGB | 逐通道差 | 浏览器·去掉强制 | 逐通道差 |
+|---|---|---|---|---|---|
+| `--bg-base` | `12,14,20` | `11,14,21` | 1 | `12,14,20` | **0** |
+| `--bg-chrome` | `18,20,28` | `16,20,29` | 2 | `18,20,28` | **0** |
+| `--text-pri` | `234,237,245` | `232,237,246` | 2 | `234,237,245` | **0** |
+| `--accent` | `56,192,245` | `56,189,248` | 3 | `56,192,245` | **0** |
+
+去掉强制 sRGB 后逐通道差全部归零，**偏差来自色彩管理配置而不是样式差异**，这一点已实测坐实，
+不再是推测。另外两侧加载的 CSS 字节由 7.1 的资源一致性保证完全相同，样式层面不存在差异空间。
+
+### 7.3 断网离线
+
+探针脚本打开桌面壳并登录后，每 10 秒记录一次：物理网卡状态与连接配置文件、后台健康检查、
+静态页与其引用的 JS 资源、桌面壳进程存活与窗口截图。操作员在运行期间关闭 Wi-Fi 再恢复。
+
+| 阶段 | 采样点 | 物理网卡 Up | Internet 连通性 | 健康检查 | `/login` | `/assets/*.js` | 桌面壳 |
+|---|---|---|---|---|---|---|---|
+| 断网前 | tick 0–8（9 点，约 90 s） | 1 | 有（`USTB_Wi-Fi=Internet`）| `ready` / db `ok` / storage `ok` | 200 | 200 | 存活 |
+| **断网中** | **tick 9–27（19 点，约 190 s）** | **0** | **无（仅剩 `LocalNetwork` 虚拟适配器）** | **`ready` / db `ok` / storage `ok`** | **200** | **200** | **存活** |
+| 恢复后 | tick 28–29 | 1 | 有 | `ready` | 200 | 200 | 存活 |
+
+离线 19 个采样点全部通过，无一次降级或报错。截图对照：
+`item7-offline-t005-online-before.png`（断网前）、`item7-offline-t018-offline.png`（断网中，
+任务栏网络图标已变为无网络状态、页面仍完整渲染且保持登录）、
+`item7-offline-t029-online-after.png`（恢复后）。完整逐点日志见 `results-item7-offline-probe.ndjson`。
+
+口径说明：这里的“断网”是关闭本机物理网卡（Wi-Fi），验证的是**已安装实例在无外网时照常可用**；
+不等于“从未联网的全新机器上安装”，安装过程本身是在有网环境完成的。
+
+### 7.4 卸载与清理
+
+静默卸载 `C:\Program Files\熔滴炉上位机\Uninstall.exe /S`，退出码 `0`：
+
+| 对象 | 卸载前 | 卸载后 |
 |---|---|---|
-| WebView2 桌面壳 | `item7-shell-overview-dark.png` | `item7-shell-overview-light.png` |
-| 浏览器（Playwright 直出） | `item7-browser-overview-dark.png` | `item7-browser-overview-light.png` |
-| 浏览器（与壳同一 GDI 采集路径） | `item7-browser-gdi-overview-dark.png` | `item7-browser-gdi-overview-light.png` |
+| `SmdHmi` 服务 | 有 | 无 |
+| `HKLM\SOFTWARE\SmdHmi` | 有 | 无 |
+| `SmdHmi*` 计划任务 | 1 | 0 |
+| 开始菜单项 | 1 | 0 |
+| 8000 端口监听 | 1 | 0 |
+| 版本目录（974 MB） | 有 | 无 |
+| 安装目录本身 | 有 | **仍在，只剩空的 `.staging`**（见 F-2）|
+| `C:\ProgramData\SmdHmi` | 有 | 已随 `-RemoveDataDir` 一并删除 |
 
-另有壳的登录页截图 `item7-shell-login.png` 与浏览器对照 `item7-browser-login-{dark,light}.png`。
+数据目录是本轮空库首次安装产生的，里面只有验收过程的内容，故一并删除，删除前的条目清单记在
+`results-item7-uninstall.json`。C 盘可用空间回到 3.5 GB。
 
-**目检结论：两个入口的版面、间距、字体、语义配色一致**，KPI 卡、CO 橙色角标、绿色状态灯、
-侧栏分组与图表在两侧表现相同。
+卸载器进程 0.3 秒即返回（NSIS 惯例：把自身复制到临时目录后由副本执行），因此上表“卸载后”是
+返回后再等 5 秒采集的结果，不是靠进程退出时刻判定的。
 
-**取色数据及其口径说明（`results-item7-compare.json`）**：在同为 GDI 屏幕采集的两张图上，
-背景/卡片/顶栏/正文色的最接近观测值逐通道差 ≤ 5（深色）/ ≤ 9（浅色）；但桌面壳截图里
-`--green` / `--orange` / `--red` / `--series-1` 等高饱和色在 6/255 容差内找不到精确匹配，浏览器侧
-则精确命中（如 `--orange` 观测值正好是 `rgb(249,115,22)`）。这是**色彩管理配置差异**，不是样式差异：
-Playwright 启动 Edge 时固定加 `--force-color-profile=srgb`，桌面壳没有该开关，走显示器 ICC 配置；
-而两侧加载的 CSS 与令牌取值由上面的字节一致性保证完全相同。该解释未通过"直接启动无该开关的 Edge
-再对比"独立坐实（尝试时未能拿到该窗口），按未验证项记录。
+### 7.5 本项未覆盖
 
-### 7.3 隔离与清理
-
-- 未安装/卸载任何程序，未创建或修改 `SmdHmi` 服务与 `SmdHmi-Recover` 任务，未写注册表、开始菜单、
-  防火墙规则。
-- 未读写既有 `C:\ProgramData\SmdHmi` 与 `C:\Program Files\SmdHmi`；验收后复核两者最后写入时间仍为
-  2026-09-20，服务仍以原路径运行。
-- `%LOCALAPPDATA%\SmdHmi` 为既有安装于 2026-09-06 创建，非本次产生。
-- 临时根目录 `D:\熔滴炉UI验收-临时`（解包产物、隔离数据目录、WebView2 用户资料）已整体删除。
-- 壳内登录用剪贴板粘贴（本机中文 IME 会把逐字符 `SendKeys` 转成中文，实测 `maint1` 变成"面条"），
-  脚本在结束前恢复了原剪贴板文本。
+- **升级与回滚**：本轮是首次安装路径，没有验证覆盖升级、维护事务或失败回退。
+- **真实设备**：`hostcomm` 全程 `offline`、未配对，不代表 HostComm 联调或安全联锁验收。
+- **TEST-REINSTALL 备份流程**：机上已无既有安装可备份（注册登记已被先前的卸载清除，
+  `reset-test-installation.ps1` 需要从注册表读取已登记安装，此时不适用）。
+- **代码签名与现场信任**：未验证（对应 M4-05b，仍 blocked）。
+- **断网安装**：只验证了已安装实例的离线可用性，见 7.3 口径说明。
 
 ## 发现的问题
 
@@ -362,7 +428,8 @@ Playwright 启动 Edge 时固定加 `--force-color-profile=srgb`，桌面壳没�
 - **现象**：错误条显示
   `[{'location': 'body.username', 'message': "String should match pattern '^[A-Za-z0-9_]+$'", 'type': 'string_pattern_mismatch'}]`
   ——Python `repr` 出来的列表，含内部字段名与正则。截图 `finding-login-raw-validation-error.png`。
-  桌面壳里同样可见（见 7.2 的登录过程），两个入口一致。
+  最初是在 WebView2 桌面壳里撞到的：本机中文输入法把自动输入的 `maint1` 转成了"面条"，
+  壳内当场显示出同一段字面量。两个入口渲染同一套前端资源，表现一致。
 - **成因**：`backend/app/main.py:482` 用 `err("validation_error", str(safe_errors))` 把结构化错误列表
   `str()` 成一个字符串塞进 `message`；`frontend/src/pages/LoginPage.vue:23` 直接取
   `e.response?.data?.message` 渲染。前端已有的 `apiErrorMessage()` 能把 `detail` 数组拼成中文提示，
@@ -370,10 +437,25 @@ Playwright 启动 Edge 时固定加 `--force-color-profile=srgb`，桌面壳没�
 - **修复建议（未实施）**：后端把结构化列表放到可解析字段（如 `detail`）并让 `message` 保持一句
   面向操作员的中文；或前端登录页改用 `apiErrorMessage()`。本分支是验收分支，未改主线代码。
 
+### F-2 卸载后残留空的安装目录与 `.staging` 子目录
+
+- **严重度**：低（清理不彻底，不影响功能与重装）。
+- **复现**：安装 0.3.0 后以 `Uninstall.exe /S` 静默卸载，退出码 `0`。
+- **现象**：服务、注册表登记、计划任务、开始菜单项、版本目录都清理干净了，但安装目录本身留下，
+  里面剩一个空的 `.staging` 子目录。本轮在 `C:\Program Files\熔滴炉上位机` 复现；用户此前卸载
+  上一套安装后，`C:\Program Files\SmdHmi\.staging` 也以同样形态留着——同一现象出现过两次，
+  与安装目录名无关。
+- **影响**：残留目录为空，不阻止再次安装（本轮的前置检查只看服务/注册表/数据目录/端口，
+  已实测可以在 `SmdHmi\.staging` 存在的情况下正常装到另一个目录）。仅是卸载后现场不干净。
+- **修复建议（未实施）**：卸载器在删除版本目录后，若 `.staging` 为空则一并删除，并在安装目录
+  为空时移除该目录。本分支未改主线代码。
+
 ## 本次验收不代表什么
 
-- 不代表第 7 项通过：真实安装/卸载、安装器中文安装目录、断网离线均未执行。
-- 不代表真实 STM32、硬接线联锁、工艺安全或 GB/T 符合性通过：全程只连仓内 Mock 控制板。
+- 不代表真实 STM32、硬接线联锁、工艺安全或 GB/T 符合性通过：第 1—6 项只连仓内 Mock 控制板，
+  第 7 项的安装实例未配对、`hostcomm` 全程 `offline`。
+- 第 7 项只覆盖首次安装路径，不代表覆盖升级、维护事务、失败回退或代码签名/现场信任验收
+  （逐条见 7.5）。
 - 历史试验与数据分析页的内容来自**合成夹具**，不是真实试验记录；相关指标数值无工艺含义。
 - 不代表屏幕阅读器、完整 WCAG 或操作系统级"动画效果"开关的验收。
 - 浏览器侧只覆盖 Edge 153；仓内锁定的 Playwright Chromium 151 在本机无法启动，未在该版本上复核。

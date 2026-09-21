@@ -13,7 +13,10 @@ from pathlib import Path
 
 from PIL import Image
 
-SHOTS = Path(r"C:\Users\kevin\.cache\smd-pr84\out\shots")
+import os
+SHOTS = Path(os.environ.get("SMD_SHOTS", 'C:\\Users\\kevin\\.cache\\smd-pr84\\out\\shots'))
+# SMD_PAIRS: JSON 列表 [{"key","shell","browser-gdi","browser","theme"}]，省略则用默认命名
+PAIRS_JSON = os.environ.get("SMD_PAIRS")
 
 # 取自 frontend/src/assets/theme.css（0515727）
 TOKENS = {
@@ -92,10 +95,17 @@ def report(path: Path, theme: str) -> dict:
 
 def main() -> None:
     out = {}
-    for page, theme in PAIRS:
+    if PAIRS_JSON:
+        specs = [(p["key"], p["theme"], {k: p[k] for k in ("shell", "browser-gdi", "browser") if k in p})
+                 for p in json.loads(PAIRS_JSON)]
+    else:
+        specs = [(f"{page}-{theme}", theme,
+                  {side: f"item7-{side}-{page}-{theme}.png" for side in ("shell", "browser-gdi", "browser")})
+                 for page, theme in PAIRS]
+    for key, theme, files in specs:
         entry = {}
-        for side in ("shell", "browser-gdi", "browser"):
-            path = SHOTS / f"item7-{side}-{page}-{theme}.png"
+        for side, name in files.items():
+            path = SHOTS / name
             entry[side] = report(path, theme) if path.is_file() else {"missing": str(path)}
         # 同口径判定只比较两张都经 GDI 屏幕采集的图；Playwright 直出图另列作参考。
         a, b = entry.get("shell"), entry.get("browser-gdi")
@@ -108,7 +118,7 @@ def main() -> None:
             entry["gdi_channel_delta"] = deltas
             entry["gdi_max_delta"] = max([d for d in deltas.values() if d is not None] or [None])
             entry["gdi_all_tokens_found"] = all(d is not None for d in deltas.values())
-        out[f"{page}-{theme}"] = entry
+        out[key] = entry
     print(json.dumps(out, ensure_ascii=False, indent=2))
 
 

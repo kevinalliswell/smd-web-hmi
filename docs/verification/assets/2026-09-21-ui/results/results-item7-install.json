@@ -1,0 +1,88 @@
+﻿{
+    "precheck":  {
+                     "service":  false,
+                     "program_data":  false,
+                     "registry":  false,
+                     "scheduled_task":  0,
+                     "port_8000":  0,
+                     "install_dir":  false,
+                     "legacy_dir":  true
+                 },
+    "installer":  {
+                      "path":  "C:\\Users\\kevin\\AppData\\Local\\Temp\\smd-pr84-artifact\\windows-local-build\\SmdHmi-0.3.0-windows-x64.exe",
+                      "bytes":  339521916,
+                      "sha256":  "ea6f60840f57e3890f5183062856d516a71f51d18da8207582e8e57e1f5df4c5"
+                  },
+    "install_dir":  "C:\\Program Files\\熔滴炉上位机",
+    "install":  {
+                    "exit_code":  0,
+                    "seconds":  60
+                },
+    "service":  {
+                    "name":  "SmdHmi",
+                    "state":  "Running",
+                    "start_name":  "NT AUTHORITY\\LocalService",
+                    "path":  "\"C:\\Program Files\\熔滴炉上位机\\versions\\0.3.0\\SmdService\\SmdService.exe\"",
+                    "path_under_install_dir":  true
+                },
+    "registry":  {
+                     "present":  true,
+                     "install_dir":  "C:\\Program Files\\熔滴炉上位机",
+                     "data_dir":  "C:\\ProgramData\\SmdHmi",
+                     "version":  "0.3.0"
+                 },
+    "manifest":  {
+                     "version":  "0.3.0",
+                     "commit":  "0515727be58fec05ba02fa7129b65406d8264917",
+                     "prerelease":  false,
+                     "webview2_version":  "152.0.4191.62",
+                     "file_count":  null
+                 },
+    "version_dir":  {
+                        "path":  "C:\\Program Files\\熔滴炉上位机\\versions\\0.3.0",
+                        "entries":  "frontend,SmdDesktop,SmdService,SmdUpdate,webview2,CHANGELOG.md,configure-acl.ps1,configure-recovery.ps1,HOSTCOMM-2-RUNTIME.md,manifest.json,sbom.cdx.json,UPGRADE.md",
+                        "size_mb":  974.2
+                    },
+    "start_menu":  [
+                       "SMD HMI.lnk"
+                   ],
+    "client_url":  "http://127.0.0.1:8000",
+    "health":  {
+                   "status":  "ready",
+                   "version":  "0.3.0",
+                   "database":  "ok",
+                   "schema":  "ok",
+                   "storage":  "ok",
+                   "backup":  "ok",
+                   "hostcomm":  "offline",
+                   "storage_free_bytes":  2850643968
+               },
+    "static":  {
+                   "login_status":  200,
+                   "asset_path":  "/assets/index-CunTPT79.js",
+                   "asset_status":  200,
+                   "asset_is_js":  true,
+                   "asset_bytes":  180291
+               },
+    "bootstrap_password_file":  {
+                                    "path":  "C:\\ProgramData\\SmdHmi\\config\\bootstrap-admin-password.txt",
+                                    "present":  true
+                                },
+    "first_login":  {
+                        "ok":  true,
+                        "role":  "admin",
+                        "must_change_password":  true
+                    },
+    "password_changed":  {
+                             "ok":  true,
+                             "must_change_password":  false
+                         },
+    "fresh_database":  {
+                           "test_count":  0,
+                           "user_names":  [
+                                              "admin"
+                                          ]
+                       },
+    "stage":  "completed",
+    "timestamp":  "2026-09-21T09:06:52.5085273Z"
+}

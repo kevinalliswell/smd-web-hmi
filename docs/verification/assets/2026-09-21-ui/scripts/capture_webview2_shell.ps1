@@ -6,8 +6,9 @@
 [CmdletBinding()]
 param(
   [Parameter(Mandatory = $true)][string]$ShellExe,
-  [Parameter(Mandatory = $true)][string]$DataRoot,
-  [Parameter(Mandatory = $true)][string]$LocalAppData,
+  # 留空表示按已安装形态运行：不注入环境变量，由程序自己读注册表登记的 DataDir
+  [string]$DataRoot = '',
+  [string]$LocalAppData = '',
   [Parameter(Mandatory = $true)][string]$OutDir,
   [string]$Tag = 'shell',
   [int]$WaitSeconds = 25,
@@ -51,8 +52,8 @@ New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
 $psi = New-Object System.Diagnostics.ProcessStartInfo
 $psi.FileName = $ShellExe
 $psi.UseShellExecute = $false
-$psi.EnvironmentVariables['SMD_DATA_ROOT'] = $DataRoot
-$psi.EnvironmentVariables['LOCALAPPDATA'] = $LocalAppData
+if ($DataRoot) { $psi.EnvironmentVariables['SMD_DATA_ROOT'] = $DataRoot }
+if ($LocalAppData) { $psi.EnvironmentVariables['LOCALAPPDATA'] = $LocalAppData }
 $proc = [System.Diagnostics.Process]::Start($psi)
 
 try {
