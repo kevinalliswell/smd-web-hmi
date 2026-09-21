@@ -1,8 +1,14 @@
-# PR #84 第 7 项：零安装隔离验证——运行被测安装器解包出的 SmdDesktop.exe（随包 Fixed
-# WebView2 152.0.4191.62），窗口截图供与浏览器入口对比。
+# PR #84 第 7 项：启动 WebView2 桌面壳（随包 Fixed WebView2 152.0.4191.62）、可选壳内登录与
+# 切换主题，然后抓窗口图供与浏览器入口对比。
 #
-# 不安装服务、不写注册表、不读取已注册安装路径（显式 SMD_DATA_ROOT 绕过 registered_paths），
-# WebView2 用户资料写到隔离目录（覆盖 LOCALAPPDATA）。用完整个临时根目录可直接删除。
+# 两种用法：
+#   1. 已安装形态（本轮最终采用）：只传 -ShellExe 指向已安装的 versions\<ver>\SmdDesktop\SmdDesktop.exe，
+#      不传 -DataRoot/-LocalAppData，由程序自己读注册表登记的 DataDir，即普通用户双击的路径。
+#   2. 零安装隔离形态（本轮前期用过，后被真实安装取代）：把安装器解包后传 -ShellExe，并显式给
+#      -DataRoot 绕过 registered_paths、给 -LocalAppData 把 WebView2 用户资料写到隔离目录；
+#      这样不装服务、不写注册表、不碰既有安装，用完删掉整个临时根目录即可。
+#
+# 脚本自身不安装、不卸载、不修改服务与注册表。
 [CmdletBinding()]
 param(
   [Parameter(Mandatory = $true)][string]$ShellExe,
