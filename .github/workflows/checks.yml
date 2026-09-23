@@ -4,14 +4,7 @@ on:
 permissions:
   contents: read
 jobs:
-  # 成本策略:托管 runner 消耗计费额度(Windows 2 倍),PR 迭代期由 7 条自托管
-  # 通道承载同等检查(kevin-mac-smd 四项与托管 lint/backend/frontend/audit 同命令,
-  # ustb-win-smd 两项覆盖 Windows 单测与真实构建);托管六项仅在 push(合入 main)
-  # 与标签流水线执行;fork 来源的 PR 例外——自托管按安全惯例不跑外部代码,
-  # 此时托管六项照常执行,保证外部贡献仍有完整验证。管理员特权用例与安装/
-  # 覆盖验收(windows-package 隔离硬门禁)只有托管通道能跑,验收口径不变。
   lint:
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -27,7 +20,6 @@ jobs:
       - run: black --config backend/pyproject.toml --check backend/app backend/tests desktop tools/bench scripts/release contracts scripts/check_hostcomm_contract.py
       - run: isort --settings-path backend/pyproject.toml --check-only backend/app backend/tests desktop tools/bench scripts/release contracts scripts/check_hostcomm_contract.py
   backend:
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository
     strategy:
       fail-fast: false
       matrix:
@@ -78,7 +70,6 @@ jobs:
             if ($ParseErrors.Count) { throw ($ParseErrors | Out-String) }
           }
   frontend:
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -110,7 +101,6 @@ jobs:
           path: frontend/dist
           retention-days: 7
   audit:
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -127,7 +117,6 @@ jobs:
         run: npm audit --audit-level=high
   windows-build:
     needs: [lint, backend, frontend, audit]
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository
     runs-on: windows-latest
     timeout-minutes: 90
     outputs:
@@ -210,8 +199,7 @@ jobs:
           retention-days: 14
   windows-package:
     needs: [windows-build]
-    # always() 保留其"构建失败也要显式报告"的语义,叠加 PR 事件下整体跳过。
-    if: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository) && always() }}
+    if: ${{ always() }}
     runs-on: windows-latest
     timeout-minutes: 90
     steps:
@@ -738,7 +726,7 @@ jobs:
           python -m playwright install chromium
           if ($LASTEXITCODE -ne 0) { throw 'Playwright chromium provisioning failed' }
       - name: Build the separate offline bench and bundled Chromium
-        # 步骤级超时:Chromium 走 Playwright 官方 CDN(实测本服务器可达);挂死时尽早失败。
+        # 步骤级超时:Chromium 取自上一步的持久缓存(完整时 playwright 不再下载);挂死时尽早失败。
         # SmdBench 自检按设计为私有证据目录设 Administrators 所有者(现场隐私保证),
         # 非管理员 runner 无法执行:按能力实探,有特权则完整自检(与托管一致),
         # 无特权则在 step summary 显式记录"未执行",仍执行非特权的 bundle 清单校验;
