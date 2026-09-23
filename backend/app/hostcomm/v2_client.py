@@ -79,6 +79,7 @@ class V2Client:
         self._refresh_pending = self._refresh_needs_status = False
         self._closed = False
         self._ready = False
+        self._connection_generation = 0
         self._recovery_failures = 0
         self._next_recovery_at = 0.0
         self.alarms = {"revision": "0", "items": []}
@@ -204,6 +205,7 @@ class V2Client:
     async def _on_connection(self, event):
         if self._closed:
             return
+        self._connection_generation += 1
         self._ready = False
         self._status_frame = self._telemetry_frame = self._profile_frame = self.profile = None
         tasks = [task for task in (self._recovery_task, self._refresh_task) if task]
@@ -251,7 +253,7 @@ class V2Client:
                         and (self._recovery_task is None or self._recovery_task.done())
                     ):
                         self._recovery_task = asyncio.create_task(self._recover())
-                    run = self._status_frame["payload"]["run"]
+                    run = self._status_or_offline()["payload"]["run"]
                     if (
                         self._ready
                         and (run["measurement_complete"] or run["safe_complete"] or self._source_recovery_pending)
@@ -473,13 +475,32 @@ class V2Client:
     async def has_business_intent(self, msg_id):
         return bool(self.operations and await self.operations.get(self.wire_operation_id(msg_id)))
 
+    def _session_marker(self):
+        if not self._ready:
+            fail("device_recovery_pending", "设备会话或日志恢复尚未完成")
+        return self._connection_generation
+
+    def _current_status(self, marker):
+        # Any await may cross a disconnect or reconnect, and _on_connection clears the
+        # session state. Control paths re-check before using a status frame so that checks
+        # made on one session never authorize a command on the next.
+        frame = self._status_frame
+        if not self._ready or marker != self._connection_generation or frame is None:
+            fail("device_recovery_pending", "设备会话或日志恢复尚未完成")
+        return frame
+
+    def _status_or_offline(self):
+        frame = self._status_frame
+        if frame is None:
+            raise HostCommNotConnectedError("HostComm 2 会话已断开")
+        return frame
+
     async def preflight(self, command):
         if command == "stop_test":
             return
         if command not in {"start_test", "set_parameters", "ack_run", "ack_alarm", "reset_fault"}:
             fail("unsupported_v2_command", "该操作不在 HostComm 2 设备契约中", 422)
-        if not self._ready:
-            fail("device_recovery_pending", "设备会话或日志恢复尚未完成")
+        marker = self._session_marker()
         await self.refresh_operations()
         unresolved = await self._operation_ids(
             ["pending", "sent", "accepted", "unknown", "result_expired", "not_found"], exclude_stop=True, limit=1
@@ -487,9 +508,11 @@ class V2Client:
         if unresolved:
             fail("operation_unresolved", "必须先查询并核查上一条设备操作")
         snapshot = await self.get_status()
-        if self._status_frame["payload"]["lease_id"] and not self.transport.lease_id:
-            if await self.operations.confirm_owned_lease(self._status_frame):
+        frame = self._current_status(marker)
+        if frame["payload"]["lease_id"] and not self.transport.lease_id:
+            if await self.operations.confirm_owned_lease(frame):
                 snapshot = await self._publish()
+        self._current_status(marker)
         permission = {
             "start_test": "can_start_test",
             "set_parameters": "can_activate_recipe",
@@ -501,18 +524,18 @@ class V2Client:
             fail("state_not_allowed", "当前设备状态、租约或安全条件不允许该操作")
 
     async def _ensure_lease(self, actor, role, parent_id):
-        if not self._ready:
-            fail("device_recovery_pending", "设备会话或日志恢复尚未完成")
+        marker = self._session_marker()
         await self.refresh_operations()
         await self.get_status()
-        status = self._status_frame["payload"]
+        frame = self._current_status(marker)
+        status = frame["payload"]
         if status["lease_id"]:
             if (
                 status["lease_owner_controller_id"] != self.controller_id
                 or status["lease_owner_session_id"] != self.transport.session_id
             ):
                 fail("device_control_owned", "设备控制租约属于其他会话")
-            if not await self.operations.confirm_owned_lease(self._status_frame):
+            if not await self.operations.confirm_owned_lease(frame):
                 fail("lease_unconfirmed", "设备租约缺少当前持久结果和有效回读证据")
         else:
             row = await self.operations.acquire_lease(
@@ -522,8 +545,10 @@ class V2Client:
             if not self.transport.lease_id:
                 fail("lease_unconfirmed", "设备控制租约尚未回读确认")
         await self.get_status()
+        self._current_status(marker)
         if not self.transport.lease_evidence()["valid"]:
             fail("lease_unconfirmed", "设备控制租约已失效，必须重新核查")
+        return marker
 
     @staticmethod
     def _result(row):
@@ -562,7 +587,7 @@ class V2Client:
                     or frame["boot_id"] != self.transport.boot_id
                 ):
                     await self.get_status()
-                    frame = self._status_frame
+                    frame = self._status_or_offline()
                 run_id = frame["payload"]["run"]["run_id"]
                 if run_id is None:
                     fail("no_active_run", "设备没有可停止的运行身份")
@@ -578,15 +603,15 @@ class V2Client:
                 existing = await self.operations.get(operation_id)
                 if existing:
                     return self._result(existing)
-                await self._ensure_lease(operator_id, role, operation_id)
+                marker = await self._ensure_lease(operator_id, role, operation_id)
                 params = params or {}
                 if command == "set_parameters":
-                    return await self._activate(params, operator_id, role, operation_id)
-                run = self._status_frame["payload"]["run"]
+                    return await self._activate(params, operator_id, role, operation_id, marker)
+                run = self._current_status(marker)["payload"]["run"]
                 if command == "start_test":
-                    wire_params = await self._start_binding(params)
+                    wire_params = await self._start_binding(params, marker)
                     wire_command = "start_run"
-                    run = self._status_frame["payload"]["run"]
+                    run = self._current_status(marker)["payload"]["run"]
                 elif command == "ack_run":
                     wire_command, wire_params = "ack_run", {"run_id": run["run_id"]}
                 elif command == "reset_fault":
@@ -612,22 +637,24 @@ class V2Client:
         except V2OperationError as exc:
             fail(exc.code, str(exc))
 
-    async def _start_binding(self, params):
-        status = self._status_frame["payload"]
+    async def _start_binding(self, params, marker):
+        status = self._current_status(marker)["payload"]
         if status["run"]["state"] != "idle" or status["run"]["run_id"] is not None:
             fail("device_not_idle", "设备尚未结束并确认上一实验")
         snapshot = await self.get_parameters()
+        self._current_status(marker)
+        profile = snapshot["safety_profile"]
         bundle = snapshot["params"].get("recipe")
         expected = params.get("expected_recipe") or {}
         if not bundle or any(bundle.get(key) != expected.get(key) for key in ("recipe_id", "version", "digest")):
             fail("active_recipe_mismatch", "设备可执行配方与启动快照不一致")
-        compiled = compile_recipe(bundle, self.profile)
+        compiled = compile_recipe(bundle, profile)
         if compiled.digest != status["active_recipe_digest"]:
             fail("active_recipe_mismatch", "设备配方摘要与本地编译版本不一致")
-        return await self._persist_run_binding(params, compiled)
+        return await self._persist_run_binding(params, compiled, profile["profile_digest"])
 
     @finish_db_work
-    async def _persist_run_binding(self, params, compiled):
+    async def _persist_run_binding(self, params, compiled, profile_digest):
         async with self._write_lock, self.factory() as db, db.begin():
             row = await db.scalar(select(V2RunBinding).where(V2RunBinding.test_id == params["test_id"]))
             if row is None:
@@ -636,7 +663,7 @@ class V2Client:
                     run_id=uuid.uuid4().hex,
                     test_id=params["test_id"],
                     recipe_digest=compiled.digest,
-                    profile_digest=self.profile["profile_digest"],
+                    profile_digest=profile_digest,
                     created_at=now_iso(),
                 )
                 db.add(row)
@@ -648,13 +675,13 @@ class V2Client:
                 "safety_profile_digest": row.profile_digest,
             }
 
-    async def _activate(self, params, actor, role, operation_id):
+    async def _activate(self, params, actor, role, operation_id, marker):
         if role not in {"admin", "maintainer"}:
             fail("permission_denied", "配方激活需要维护权限", 403)
         values = params.get("values")
         if not isinstance(values, dict) or set(values) != {"recipe"}:
             fail("v2_parameters_read_only", "HostComm 2 仅允许校验并激活完整配方；工程配置只读", 422)
-        status = self._status_frame["payload"]
+        status = self._current_status(marker)["payload"]
         if status["run"]["state"] != "idle" or status["run"]["run_id"] is not None:
             fail("device_not_idle", "设备须在无运行身份的待机状态激活配方")
         bundle = values["recipe"]
@@ -702,7 +729,7 @@ class V2Client:
             role=role,
             operation_id=operation_id,
             lease_id=self.transport.lease_id,
-            state_revision=self._status_frame["payload"]["run"]["state_revision"],
+            state_revision=self._current_status(marker)["payload"]["run"]["state_revision"],
         )
         result = self._result(row)
         if result["result"] == "accepted":
@@ -710,7 +737,12 @@ class V2Client:
             if canonical_bytes(readback) != compiled.data:
                 raise HostCommProtocolError("配方回读内容不一致")
             await self.get_status()
-            if self._status_frame["payload"]["active_recipe_digest"] != compiled.digest:
+            frame = self._status_frame
+            if (
+                frame is None
+                or marker != self._connection_generation
+                or frame["payload"]["active_recipe_digest"] != compiled.digest
+            ):
                 fail("recipe_activation_unconfirmed", "配方已受理，但尚未确认激活")
         return result
 
@@ -772,14 +804,14 @@ class V2Client:
         from app.services.command_service import compute_param_crc
 
         await self.get_status()
-        await self.get_profile()
-        active = self._status_frame["payload"]["active_recipe_digest"]
+        profile = await self.get_profile()
+        active = self._status_or_offline()["payload"]["active_recipe_digest"]
         wire = await self._read_recipe(active) if active else None
         values = await self._bound_recipe(active, wire) if wire else {}
         return {
             "params": values,
             "parameter_crc": compute_param_crc(values),
-            "safety_profile": self.profile,
+            "safety_profile": profile,
             "wire_recipe": wire,
             "active_recipe_digest": active,
             "protocol_version": "2.0",
@@ -813,8 +845,9 @@ class V2Client:
     async def recover_logs(self, *, first_record_seq=None):
         async with self._log_lock:
             await self.get_status()
-            session_id, boot_id = self._status_frame["session_id"], self._status_frame["boot_id"]
-            catalog = self._status_frame["payload"]["log"]
+            frame = self._status_or_offline()
+            session_id, boot_id = frame["session_id"], frame["boot_id"]
+            catalog = frame["payload"]["log"]
             if catalog["newest_record_seq"] is None:
                 return
             first = await self._log_start(catalog["log_id"])
