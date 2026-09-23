@@ -62,6 +62,18 @@ async def wait_health(base="http://127.0.0.1:8000", *, online=False):
     return health
 
 
+def check_browser_observations(ui, result):
+    result["browser_errors"] = len(ui.page_errors)
+    result["unexpected_api_errors"] = len(ui.api_failures)
+    result["unexpected_console_errors"] = len(ui.console_errors)
+    result["expected_fault_console_errors"] = len(ui.expected_console_errors)
+    result["expected_stopped_service_poll_disconnects"] = len(ui.expected_poll_disconnects)
+    if ui.page_errors or ui.api_failures or ui.console_errors:
+        # Rows hold only stage, kind, path, HTTP status and a network or HTTP code, never message text.
+        result["unexpected_browser_observations"] = ui.unexpected_observations()
+        raise AssertionError("unexpected browser or API errors were observed")
+
+
 async def run_scenarios(installation, result, scenario):
     from .browser import Browser, eventually
     from .scenarios import Scenarios
@@ -110,14 +122,10 @@ async def run_scenarios(installation, result, scenario):
         from .maintenance import offline_confirmation
 
         await offline_confirmation(scenes)
-        if ui.page_errors or ui.api_failures or ui.console_errors:
-            raise AssertionError("unexpected browser or API errors were observed")
-        result["browser_errors"] = len(ui.page_errors)
-        result["unexpected_api_errors"] = len(ui.api_failures)
-        result["unexpected_console_errors"] = len(ui.console_errors)
-        result["expected_fault_console_errors"] = len(ui.expected_console_errors)
-        result["expected_stopped_service_poll_disconnects"] = len(ui.expected_poll_disconnects)
+        check_browser_observations(ui, result)
     finally:
+        if ui.page_errors or ui.api_failures or ui.console_errors:
+            result.setdefault("unexpected_browser_observations", ui.unexpected_observations())
         try:
             if worker:
                 await worker.close()
