@@ -347,116 +347,6 @@ jobs:
           if-no-files-found: error
           retention-days: 90
 
-  # —— macOS ARM64 自托管验证通道（标签 local-mac）——
-  # 镜像上方平台无关的验收门禁，作为托管 runner 之外的补充实证；
-  # 原有 ubuntu/windows 检查全部保留不变，Windows 打包/验收仍只在 windows-latest。
-  # fork PR 不在自托管机上执行代码。
-  lint-mac:
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: [self-hosted, macOS, ARM64, local-mac]
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@v4
-      # setup-python 的 darwin 构建硬绑定 /Users/runner 前缀(不可重定位),自托管机无法创建;
-      # 改用 uv 托管的可重定位 CPython 建 venv(--seed 含标准 pip),锁哈希安装命令与托管通道一致
-      - uses: astral-sh/setup-uv@v5
-      - name: Provision CPython 3.13 virtualenv
-        run: |
-          uv venv --seed --python 3.13 "$RUNNER_TEMP/ci-venv"
-          echo "VIRTUAL_ENV=$RUNNER_TEMP/ci-venv" >> "$GITHUB_ENV"
-          echo "$RUNNER_TEMP/ci-venv/bin" >> "$GITHUB_PATH"
-      - run: pip install --require-hashes -r backend/requirements-dev.lock
-      - run: python scripts/release/metadata.py && python scripts/release/check_locks.py
-      - run: python scripts/check_docs.py
-      - run: python scripts/check_hostcomm_contract.py
-      - run: black --config backend/pyproject.toml --check backend/app backend/tests desktop tools/bench scripts/release contracts scripts/check_hostcomm_contract.py
-      - run: isort --settings-path backend/pyproject.toml --check-only backend/app backend/tests desktop tools/bench scripts/release contracts scripts/check_hostcomm_contract.py
-  backend-mac:
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: [self-hosted, macOS, ARM64, local-mac]
-    timeout-minutes: 40
-    steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
-      - name: Provision CPython 3.13 virtualenv
-        run: |
-          uv venv --seed --python 3.13 "$RUNNER_TEMP/ci-venv"
-          echo "VIRTUAL_ENV=$RUNNER_TEMP/ci-venv" >> "$GITHUB_ENV"
-          echo "$RUNNER_TEMP/ci-venv/bin" >> "$GITHUB_PATH"
-      - run: pip install --require-hashes -r backend/requirements-dev.lock
-      - name: Safety red lines first
-        working-directory: backend
-        run: pytest tests/test_safety.py -v
-      - name: Empty database migration
-        working-directory: backend
-        run: alembic upgrade head
-      - name: Desktop transaction and process tests
-        run: pytest -c backend/pytest.ini desktop/tests -q
-      - name: Independent bench behavior tests
-        run: |
-          pip install --require-hashes -r tools/bench/requirements.lock
-          pytest -c backend/pytest.ini tools/bench/tests -q
-      - name: Backend tests and coverage gate
-        timeout-minutes: 15
-        working-directory: backend
-        run: pytest -v --maxfail=1 -o faulthandler_timeout=60 --durations=10 --cov=app --cov-report=term --cov-fail-under=80
-  frontend-mac:
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: [self-hosted, macOS, ARM64, local-mac]
-    timeout-minutes: 25
-    defaults:
-      run:
-        working-directory: frontend
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '24'
-          cache: npm
-          cache-dependency-path: frontend/package-lock.json
-      - name: Cross-language HostComm canonical bytes
-        working-directory: .
-        run: node contracts/hostcomm/v2/verify-js.mjs
-      - uses: astral-sh/setup-uv@v5
-      - name: Provision CPython 3.13 virtualenv
-        run: |
-          uv venv --seed --python 3.13 "$RUNNER_TEMP/ci-venv"
-          echo "VIRTUAL_ENV=$RUNNER_TEMP/ci-venv" >> "$GITHUB_ENV"
-          echo "$RUNNER_TEMP/ci-venv/bin" >> "$GITHUB_PATH"
-      - run: pip install --require-hashes -r backend/requirements-dev.lock
-        working-directory: .
-      - run: npm ci
-      - run: npm run api:schema && git diff --exit-code -- src/api/generated/openapi.json
-      - run: npm run types:check && npm run typecheck
-      - run: npm run lint
-      - run: npm run test
-      # 构建产物不上传:windows-build 仍消费 ubuntu frontend 的 frontend-dist 工件
-      - run: npm run build
-  audit-mac:
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: [self-hosted, macOS, ARM64, local-mac]
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
-      - name: Provision CPython 3.13 virtualenv
-        run: |
-          uv venv --seed --python 3.13 "$RUNNER_TEMP/ci-venv"
-          echo "VIRTUAL_ENV=$RUNNER_TEMP/ci-venv" >> "$GITHUB_ENV"
-          echo "$RUNNER_TEMP/ci-venv/bin" >> "$GITHUB_PATH"
-      # pipx 在自托管机上不保证存在:装入 venv,同工具同参数执行
-      - name: pip-audit over locked requirement sets
-        run: |
-          pip install pip-audit
-          pip-audit -r backend/requirements.lock --no-deps --disable-pip
-          pip-audit -r desktop/requirements.lock --no-deps --disable-pip
-          pip-audit -r tools/bench/requirements.lock --no-deps --disable-pip
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '24'
-      - working-directory: frontend
-        run: npm audit --audit-level=high
-
   # —— Windows x64 自托管验证通道（标签 local-windows，runner: ustb-win-smd）——
   # 只承接单元测试与非交互构建。安装/升级/卸载/服务/防火墙类验收固定在一次性
   # github-hosted runner：scripts/release 下相应脚本的 RUNNER_ENVIRONMENT 门控为
@@ -484,7 +374,7 @@ jobs:
       # 均挂死(实测)。三级供给:①复用 runner 自有持久目录 → ②探测机器已预置的
       # 3.13(只读使用,建 venv 不改动它) → ③用系统自带 curl.exe(硬性墙钟超时;
       # 实测 IWR -TimeoutSec 不覆盖响应体挂死)镜像优先下载 python-build-standalone
-      # 的 install_only 免安装归档(与 mac 通道 uv 托管 CPython 同族构建),SHA256
+      # 的 install_only 免安装归档(即 uv 托管 CPython 的同族构建),SHA256
       # 与提交内固定值一致后 tar 解包到 runner 自有目录——不运行任何安装器
       # (实测官方安装器在 NetworkService 服务会话报 0x80070005,MSI 每用户
       # 安装不适用于服务账户)。固定哈希已在两个独立源交叉核验。
@@ -613,7 +503,7 @@ jobs:
       # 均挂死(实测)。三级供给:①复用 runner 自有持久目录 → ②探测机器已预置的
       # 3.13(只读使用,建 venv 不改动它) → ③用系统自带 curl.exe(硬性墙钟超时;
       # 实测 IWR -TimeoutSec 不覆盖响应体挂死)镜像优先下载 python-build-standalone
-      # 的 install_only 免安装归档(与 mac 通道 uv 托管 CPython 同族构建),SHA256
+      # 的 install_only 免安装归档(即 uv 托管 CPython 的同族构建),SHA256
       # 与提交内固定值一致后 tar 解包到 runner 自有目录——不运行任何安装器
       # (实测官方安装器在 NetworkService 服务会话报 0x80070005,MSI 每用户
       # 安装不适用于服务账户)。固定哈希已在两个独立源交叉核验。
