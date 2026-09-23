@@ -32,8 +32,8 @@ it('输入校验失败时给出面向操作员的提示，不回显后端校验�
         message: '请求参数不符合接口要求，请检查后重试',
         detail: [
           {
-            location: 'body.username',
-            message: "String should match pattern '^[A-Za-z0-9_]+$'",
+            loc: ['body', 'username'],
+            msg: "String should match pattern '^[A-Za-z0-9_]+$'",
             type: 'string_pattern_mismatch',
           },
         ],
@@ -46,7 +46,7 @@ it('输入校验失败时给出面向操作员的提示，不回显后端校验�
 
   const text = wrapper.get('.login-error').text()
   expect(text).toBe('用户名或密码格式不正确')
-  expect(text).not.toContain('location')
+  expect(text).not.toContain('username')
   expect(text).not.toContain('^[A-Za-z0-9_]+$')
   expect(text).not.toContain('{')
   wrapper.unmount()

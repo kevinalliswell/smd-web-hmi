@@ -137,11 +137,12 @@ async def test_validation_response_keeps_message_human_readable_and_details_stru
     message = body["message"]
     assert isinstance(message, str)
     assert "{" not in message and "[" not in message
-    assert "location" not in message
+    assert "username" not in message
     assert "^[A-Za-z0-9_]+$" not in message
 
     detail = body["detail"]
     assert isinstance(detail, list) and detail
-    assert detail[0]["location"] == "body.username"
-    assert detail[0]["message"]
+    assert set(detail[0]) == {"loc", "msg", "type"}
+    assert detail[0]["loc"] == ["body", "username"]
+    assert detail[0]["msg"]
     assert detail[0]["type"]

@@ -473,10 +473,11 @@ def create_app() -> FastAPI:
     async def _validation_exc_handler(request: Request, exc: RequestValidationError):
         # message 是面向操作员的一句话；结构化条目放在 detail 里供前端按字段渲染。
         # 不要把条目列表 str() 进 message——那会把 Python 字面量（含内部字段名与正则）直接显示到界面。
+        # 条目沿用 OpenAPI 已声明的 ValidationError 形状（loc/msg/type），只是不带 input/ctx，避免回显用户输入。
         safe_errors = [
             {
-                "location": ".".join(str(part) for part in item.get("loc", ())),
-                "message": item.get("msg", "输入无效"),
+                "loc": list(item.get("loc", ())),
+                "msg": item.get("msg", "输入无效"),
                 "type": item.get("type", "validation_error"),
             }
             for item in exc.errors()
