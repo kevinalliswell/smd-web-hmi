@@ -99,6 +99,46 @@ async def test_invalidated_snapshot_cannot_be_refreshed_by_old_callback():
     assert cache.current_state == "Standby"
 
 
+async def test_snapshot_received_in_the_same_clock_tick_as_invalidate_is_still_stale():
+    """与失效时刻读数完全相等的链路帧必须判为旧帧。
+
+    回归：守卫原本用严格小于。time.monotonic() 的分辨率在 Windows 上约 15.6 ms，
+    失效前最后一帧的回执时刻与 invalidate() 常落在同一个 tick、读数完全相等，
+    于是失效前的状态会被重新接受并重新授权控制。这里直接读内部失效时刻来构造
+    "完全相等"这个边界，避免测试结论依赖运行机器的时钟分辨率。
+    """
+    cache = StatusCache()
+    cache.invalidate()
+    same_tick = cache._invalidated_at
+
+    await cache.update(
+        {
+            "state_machine": {"current_state": "Standby"},
+            "_hostcomm": {"received_monotonic": same_tick},
+        }
+    )
+
+    assert cache.current_state is None
+    assert cache.is_fresh is False
+
+
+async def test_snapshot_received_after_invalidate_is_accepted():
+    """同一边界的另一侧：严格晚于失效时刻的链路帧必须被接受，不能一起挡掉。"""
+    cache = StatusCache()
+    cache.invalidate()
+    after = cache._invalidated_at + 1e-6
+
+    await cache.update(
+        {
+            "state_machine": {"current_state": "Standby"},
+            "_hostcomm": {"received_monotonic": after},
+        }
+    )
+
+    assert cache.current_state == "Standby"
+    assert cache.is_fresh is True
+
+
 def test_status_controls_use_single_state_and_availability_policy():
     from app.services.state_policy import enrich_status_snapshot
 

@@ -29,8 +29,16 @@ class StatusCache:
 
     async def update(self, snapshot: dict[str, Any], ts_iso: str | None = None) -> None:
         async with self._lock:
-            received = (snapshot.get("_hostcomm") or {}).get("received_monotonic", time.monotonic())
-            if isinstance(received, (int, float)) and received < self._invalidated_at:
+            receipt = snapshot.get("_hostcomm") or {}
+            # 没有链路回执的快照是此刻本地构造的，不是"失效前排队的旧回调"，不受下面的判定约束。
+            from_link = "received_monotonic" in receipt
+            received = receipt.get("received_monotonic", time.monotonic())
+            # 失效之后，只有失效时刻「之后」才从链路收到的快照才能重新授权控制。
+            # 必须是 <= 而不是 <：time.monotonic() 的分辨率在 Windows 上约 15.6 ms，
+            # 失效前最后一帧的回执时刻与 invalidate() 经常落在同一个 tick 上、读数完全相等；
+            # 严格小于会把这种旧帧当作新帧接受，等于拿失效前的状态重新授权控制。
+            # 代价是与失效同一 tick 到达的新帧也会被丢掉一帧，方向上是 fail closed。
+            if from_link and isinstance(received, (int, float)) and received <= self._invalidated_at:
                 return
             self._snapshot = snapshot
             self._last_update_monotonic = (
