@@ -1,0 +1,44 @@
+﻿{
+    "before":  {
+                   "install_dir":  true,
+                   "uninstaller":  true,
+                   "service":  true,
+                   "registry":  true,
+                   "data_dir":  true,
+                   "scheduled_task":  1,
+                   "start_menu":  1,
+                   "port_8000_listen":  1
+               },
+    "uninstall":  {
+                      "exit_code":  0,
+                      "seconds":  0.3
+                  },
+    "after":  {
+                  "install_dir":  true,
+                  "service":  false,
+                  "registry":  false,
+                  "data_dir":  true,
+                  "scheduled_task":  0,
+                  "start_menu":  0,
+                  "port_8000_listen":  0,
+                  "install_dir_leftovers":  ".staging"
+              },
+    "data_dir_contents_before_removal":  [
+                                             "config",
+                                             "db",
+                                             "logs",
+                                             "updates",
+                                             "client.json",
+                                             "maintenance-reply.json",
+                                             "maintenance-request.json",
+                                             "uninstalled.json"
+                                         ],
+    "data_dir_removed":  true,
+    "final":  {
+                  "install_dir":  true,
+                  "data_dir":  false,
+                  "legacy_dir":  true,
+                  "free_gb":  3.5
+              },
+    "timestamp":  "2026-09-21T09:57:06.6771063Z"
+}
