@@ -8,5 +8,5 @@ pytest-cov==6.0.0
 httpx==0.28.1            # FastAPI TestClient / ASGI 测试
 
 # 代码质量
-black==24.10.0
+black==26.5.1
 isort==5.13.2
