@@ -8,6 +8,9 @@ permissions:
 jobs:
   checks:
     uses: ./.github/workflows/checks.yml
+    with:
+      local_mac: true
+      local_windows: true
   publish:
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
     needs: checks

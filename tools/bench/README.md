@@ -10,7 +10,7 @@ SmdBench 在**无实体设备连接的专用 Windows 10/11 x64 测试机**上，
 .\SmdBench\SmdBench.exe run --installer .\SmdHmi-0.3.0-windows-x64.exe --manifest .\manifest.json --evidence C:\SmdBenchEvidence\run-001 --scenario all
 ```
 
-`0.3.0` 是本轮目标版本，此处示例不表示已经发布；须替换为实际下载版本。`preflight` 只读；`run` 才创建安装与数据。证据目录必须不存在，且不得位于程序、数据、工具或私有运行目录内。`--scenario full` 运行正常实验/报告、权限及实验中的安装器忙碌拒绝，`faults` 运行配方前置与故障恢复；两者结束时都会检查离线确认和同版修复。正式工具发布验收要求 `all`，同时覆盖完整实验和故障场景。
+`0.3.0` 已发布，发行证据见[验证记录](../../docs/verification/2026-09-13-overwrite-install.md)。示例中的安装器必须来自与工具相同的实际发行版本和提交。`preflight` 只读；`run` 才创建安装与数据。证据目录必须不存在，且不得位于程序、数据、工具或私有运行目录内。`--scenario full` 运行正常实验/报告、权限及实验中的安装器忙碌拒绝，`faults` 运行配方前置与故障恢复；两者结束时都会检查离线确认和同版修复。正式工具发布验收要求 `all`，同时覆盖完整实验和故障场景。
 
 ## 数据与所有权边界
 

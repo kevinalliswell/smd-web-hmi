@@ -1,0 +1,143 @@
+name: Isolated local Windows tools
+description: Prepare portable build tools for the non-administrator Server 2019 runner
+inputs:
+  nsis:
+    description: Include the portable NSIS compiler for a non-interactive package build
+    default: 'false'
+runs:
+  using: composite
+  steps:
+    - name: Verify the service identity and prepare portable PowerShell
+      shell: powershell
+      env:
+        SMD_NEEDS_NSIS: ${{ inputs.nsis }}
+      run: |
+        $ErrorActionPreference = 'Stop'
+        Set-StrictMode -Version Latest
+        $Identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+        $Principal = [Security.Principal.WindowsPrincipal]::new($Identity)
+        $Session = [Diagnostics.Process]::GetCurrentProcess().SessionId
+        if ($Identity.User.Value -cne 'S-1-5-20' -or
+            $Principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator) -or $Session -ne 0) {
+            throw 'Local Windows build jobs require NetworkService, non-administrator, Session 0'
+        }
+        if (-not [Environment]::Is64BitOperatingSystem -or [Environment]::OSVersion.Version.Build -lt 17763) {
+            throw 'The local toolchain requires Windows Server 2019 x64 or later'
+        }
+        [ordered]@{identity=$Identity.Name; sid=$Identity.User.Value; session=$Session; windows_build=[Environment]::OSVersion.Version.Build} | ConvertTo-Json -Compress
+        $Root = [IO.Path]::GetFullPath($env:SMD_CI_WINDOWS_ROOT)
+        $Temp = [IO.Path]::GetFullPath($env:RUNNER_TEMP).TrimEnd('\')
+        $Prefix = 'smd-hmi-{0}-{1}-{2}-' -f $env:GITHUB_RUN_ID, $env:GITHUB_RUN_ATTEMPT, $env:GITHUB_JOB
+        if ([IO.Path]::GetDirectoryName($Root) -ine $Temp -or
+            -not [IO.Path]::GetFileName($Root).StartsWith($Prefix, [StringComparison]::Ordinal) -or
+            -not (Test-Path -LiteralPath $Root -PathType Container) -or
+            ((Get-Item -LiteralPath $Root).Attributes -band [IO.FileAttributes]::ReparsePoint)) {
+            throw 'Portable tools require this job''s pre-checkout temporary directory'
+        }
+        $Utf8 = [Text.UTF8Encoding]::new($false)
+        function Add-Environment([string]$Name, [string]$Value) {
+            [IO.File]::AppendAllText($env:GITHUB_ENV, "$Name=$Value`n", $Utf8)
+        }
+        function Install-Archive([string]$Name, [string]$Url, [string]$Sha256) {
+            $FileName = [Uri]::UnescapeDataString(([Uri]$Url).Segments[-1])
+            $Cached = Join-Path (Join-Path $env:RUNNER_TOOL_CACHE 'smd-archives') $FileName
+            $Archive = $Cached
+            $Destination = Join-Path $Root $Name
+            if (-not (Test-Path -LiteralPath $Cached -PathType Leaf)) {
+                $Archive = Join-Path $Root $FileName
+                & curl.exe --fail --location --connect-timeout 20 --max-time 300 --silent --show-error --output $Archive $Url
+                if ($LASTEXITCODE -ne 0) { throw "$Name download failed ($LASTEXITCODE)" }
+            }
+            if ((Get-FileHash -LiteralPath $Archive -Algorithm SHA256).Hash.ToLowerInvariant() -cne $Sha256) {
+                throw "$Name archive SHA-256 mismatch"
+            }
+            Write-Host "$Name verified SHA-256 $Sha256 (cache=$($Archive -ceq $Cached))"
+            if ($FileName.EndsWith('.tar.gz', [StringComparison]::Ordinal)) {
+                New-Item -ItemType Directory -Path $Destination | Out-Null
+                & tar.exe -xzf $Archive -C $Destination
+                if ($LASTEXITCODE -ne 0) { throw "$Name archive extraction failed" }
+            } else {
+                Expand-Archive -LiteralPath $Archive -DestinationPath $Destination
+            }
+            if ($Archive -cne $Cached) { Remove-Item -LiteralPath $Archive }
+            return $Destination
+        }
+        # Official release asset digests; ZIP deployment does not install an MSI or alter the registry.
+        $Pwsh = Install-Archive 'pwsh' 'https://github.com/PowerShell/PowerShell/releases/download/v7.4.20/PowerShell-7.4.20-win-x64.zip' 'fb88cd3731847006b157978d6c0a426390d346696d91d1ed85b5e5eb88cb2d40'
+        [IO.File]::AppendAllText($env:GITHUB_PATH, "$Pwsh`n", $Utf8)
+        & (Join-Path $Pwsh 'pwsh.exe') -NoProfile -NonInteractive -Command '$PSVersionTable.PSVersion.ToString()'
+        if ($LASTEXITCODE -ne 0) { throw 'Portable PowerShell did not start' }
+        # Digest from https://nodejs.org/dist/v24.21.0/SHASUMS256.txt.
+        $NodeArchive = Install-Archive 'node' 'https://nodejs.org/dist/v24.21.0/node-v24.21.0-win-x64.zip' '158f7685b44de51f6c0df1d153526cbcd3e1bc739a8dfc607721cef75de9e541'
+        $Node = Join-Path $NodeArchive 'node-v24.21.0-win-x64'
+        [IO.File]::AppendAllText($env:GITHUB_PATH, "$Node`n", $Utf8)
+        $NodeVersion = (& (Join-Path $Node 'node.exe') --version).Trim()
+        if ($LASTEXITCODE -ne 0 -or $NodeVersion -cne 'v24.21.0') { throw 'Portable Node version mismatch' }
+        $NpmVersion = (& (Join-Path $Node 'npm.cmd') --version).Trim()
+        if ($LASTEXITCODE -ne 0) { throw 'Portable npm did not start' }
+        Write-Host "Node $NodeVersion ($Node\node.exe); npm $NpmVersion ($Node\npm.cmd)"
+        Add-Environment 'npm_config_cache' (Join-Path $Root 'npm-cache')
+        if ($env:SMD_NEEDS_NSIS -ceq 'true') {
+            # SHA-256 published by the NSIS project in the SourceForge 3.11 file metadata.
+            $Nsis = Install-Archive 'nsis' 'https://downloads.sourceforge.net/project/nsis/NSIS%203/3.11/nsis-3.11.zip' 'c7d27f780ddb6cffb4730138cd1591e841f4b7edb155856901cdf5f214394fa1'
+            $Compiler = Join-Path $Nsis 'nsis-3.11\makensis.exe'
+            $Version = (& $Compiler /VERSION).Trim()
+            if ($LASTEXITCODE -ne 0 -or $Version -cne 'v3.11') { throw 'Portable NSIS version mismatch' }
+            Write-Output "Portable NSIS: $Version"
+            Add-Environment 'SMD_MAKENSIS' $Compiler
+        }
+        # The same relocatable CPython selected by uv 0.10.11, pinned to its official metadata digest.
+        # Direct extraction and stdlib venv avoid another unbounded GitHub download inside uv.
+        $Python = Install-Archive 'python' 'https://github.com/astral-sh/python-build-standalone/releases/download/20260310/cpython-3.13.12%2B20260310-x86_64-pc-windows-msvc-install_only_stripped.tar.gz' '09df14cdd7ad59863596189623b2f34f6a2925b9317279ce53346a38dd62e60f'
+        Add-Environment 'SMD_CI_BASE_PYTHON' (Join-Path $Python 'python\python.exe')
+        Add-Environment 'PIP_CACHE_DIR' (Join-Path $Root 'pip-cache')
+        Add-Environment 'SMD_CI_VENV' (Join-Path $Root 'venv')
+        # Optional offline packages are keyed by ordered UTF-8 lock bytes after CRLF-to-LF normalization.
+        # This is stable across checkout's platform line endings. Every later pip
+        # command still uses --require-hashes; a missing or altered wheel fails the build.
+        $LockBytes = [IO.MemoryStream]::new()
+        $LockHasher = [Security.Cryptography.SHA256]::Create()
+        try {
+            foreach ($LockName in @('backend/requirements.lock', 'desktop/requirements.lock', 'tools/bench/requirements.lock')) {
+                $Text = [IO.File]::ReadAllText((Join-Path $env:GITHUB_WORKSPACE $LockName)).Replace("`r`n", "`n")
+                $Bytes = [Text.Encoding]::UTF8.GetBytes($Text)
+                $LockBytes.Write($Bytes, 0, $Bytes.Length)
+            }
+            $LockKey = ([BitConverter]::ToString($LockHasher.ComputeHash($LockBytes.ToArray()))).Replace('-', '').ToLowerInvariant()
+        } finally {
+            $LockBytes.Dispose()
+            $LockHasher.Dispose()
+        }
+        $Wheels = Join-Path (Join-Path $env:RUNNER_TOOL_CACHE 'smd-wheels') $LockKey
+        if (Test-Path -LiteralPath $Wheels -PathType Container) {
+            Add-Environment 'PIP_FIND_LINKS' $Wheels
+            Add-Environment 'PIP_NO_INDEX' '1'
+            Write-Host "Using offline wheels for exact lock SHA-256 $LockKey; pip still requires package hashes"
+        }
+    - name: Create the isolated Python environment and record evidence
+      shell: pwsh
+      env:
+        SMD_RUNNER_NAME: ${{ runner.name }}
+      run: |
+        $ErrorActionPreference = 'Stop'
+        Set-StrictMode -Version Latest
+        & $env:SMD_CI_BASE_PYTHON -m venv $env:SMD_CI_VENV
+        if ($LASTEXITCODE -ne 0) { throw 'Isolated Python environment creation failed' }
+        $Scripts = Join-Path $env:SMD_CI_VENV 'Scripts'
+        $Utf8 = [Text.UTF8Encoding]::new($false)
+        [IO.File]::AppendAllText($env:GITHUB_PATH, "$Scripts`n", $Utf8)
+        [IO.File]::AppendAllText($env:GITHUB_ENV, "VIRTUAL_ENV=$env:SMD_CI_VENV`nPYTHONNOUSERSITE=1`nPIP_REQUIRE_VIRTUALENV=true`n", $Utf8)
+        @'
+        import json, os, platform, ssl, struct, sys
+        assert sys.platform == "win32" and struct.calcsize("P") == 8
+        assert sys.version_info[:3] == (3, 13, 12)
+        assert ssl.HAS_PSK, "Windows build must support the HostComm TLS-PSK runtime"
+        evidence = {"runner": os.environ["SMD_RUNNER_NAME"], "os": platform.platform(),
+                    "arch": platform.machine(), "python": platform.python_version(),
+                    "openssl": ssl.OPENSSL_VERSION, "tls_psk": ssl.HAS_PSK,
+                    "scope": "non-interactive build; no installation or GUI acceptance"}
+        print(json.dumps(evidence))
+        with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as summary:
+            summary.write("Local Windows runtime: `" + json.dumps(evidence) + "`\n")
+        '@ | & (Join-Path $Scripts 'python.exe') -
+        if ($LASTEXITCODE -ne 0) { throw 'Local Windows Python capability check failed' }

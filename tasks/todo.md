@@ -1,8 +1,16 @@
 # 执行任务清单
 
-进度真源。历史审查基线为`dev@855c84d`；2026-09-05开始执行，2026-09-08完成的固件交接doc.3和rc.5安装版闭环软件验收见[上一轮验证](../docs/verification/2026-09-08-installed-hostcomm-loop.md)。`0.3.0`保留数据的覆盖安装软件正式版已发布并完成发行资产核验，结果及待验项目见[本轮验证](../docs/verification/2026-09-13-overwrite-install.md)。rc.4安装诊断与用户反馈见[排查记录](../docs/verification/2026-09-06-windows-installer-errors.md)，rc.3功能和[HostComm 2.0验证](../docs/verification/2026-09-06-hostcomm-v2-runtime.md)保留为历史证据，均不能代替本轮发布检查。状态：`todo`未做、`doing`执行中、`implemented`实现并软件验证但等待上层验收、`done`本项全部验收完成、`blocked`需要外部证据。完成时记录完整SHA和验证产物；“文档已描述”不是代码已实现。用户已确认固件尚未开发；HostComm v2.0 的主机实现和新固件实现分别在 HOST/FW 任务中维护，软件验证不等于真机验收。
+进度真源。历史审查基线为`dev@855c84d`；2026-09-05开始执行，2026-09-08完成的固件交接doc.3和rc.5安装版闭环软件验收见[上一轮验证](../docs/verification/2026-09-08-installed-hostcomm-loop.md)。`0.3.0`保留数据的覆盖安装软件正式版已发布并完成发行资产核验，结果及待验项目见[本轮验证](../docs/verification/2026-09-13-overwrite-install.md)。rc.4安装诊断与用户反馈见[排查记录](../docs/verification/2026-09-06-windows-installer-errors.md)，rc.3功能和[HostComm 2.0验证](../docs/verification/2026-09-06-hostcomm-v2-runtime.md)保留为历史证据，均不能代替本轮发布检查。状态：`todo`未做、`doing`执行中、`implemented`实现并软件验证但等待上层验收、`done`本项全部验收完成、`blocked`需要外部证据。完成时记录完整SHA和验证产物；“文档已描述”不是代码已实现。截至2026-09-20用户确认固件开发中、尚未交付验收；HostComm v2.0 的主机实现和新固件实现分别在 HOST/FW 任务中维护，软件验证不等于真机验收。
 
-## 当前优先：覆盖安装与软件正式版
+## 当前优先：STM32H750 技术交底与固件联调
+
+以已发布 `0.3.0` / `v0.3.0@404ecb50edf23864ed482e68cc4a1933deb3383f` 为交底基线；doc.4只更新说明，协议2.0/design.1不变。用户确认安装成功仅登记安装结果，固件开发中、尚未提交构建材料或真机验收。先交付[技术交底](../docs/hostcomm/v2/technical-briefing.md)及离线资料，再由双方回填负责人、工程配置和FW模块进度。
+
+| ID / 优先级 | 任务 | 责任角色 | 依赖 | 验收条件 / 证据 | 状态 |
+|---|---|---|---|---|---|
+| DOC-FW-03 / P1 | 0.3.0固件技术交底、doc.4与离线资料包 | 项目/后端/文档负责人；固件负责人审阅 | 已发布0.3.0契约；板卡资料；FW-00 | 26种消息/时序/配对与代码、Schema一致；文档及Python/JS向量检查、独立审查、离线解包摘要/链接/附图校验通过；包绑定最终PR完整SHA；[文档核对记录](../docs/verification/2026-09-20-firmware-briefing.md)与包外validation.json登记证据；PR开放，不关闭FW/M5验收 | done（资料交付，双方签收另行记录） |
+
+## 2026-09-13 覆盖安装与软件正式版
 
 2026-09-13 批准 [ADR-011](../docs/decisions/ADR-011-overwrite-install-and-software-release.md)。PR79/81合并后，`main@404ecb50edf23864ed482e68cc4a1933deb3383f` 的主线及v0.3.0标签分别完整验收；[Release工作流34948794299](https://github.com/kevinalliswell/smd-web-hmi/actions/runs/34948794299)八项任务全部通过，软件正式版于2026-09-15 09:49:48 UTC发布，非草稿、非预发布，21项资产。21项实际发行资产、15条校验值、精确9项Windows及19项联调断言、身份和证据独立核验均通过，OVER-01—07按本轮软件发行范围完成。本轮仍不关闭人工Windows或M5任务；历史故障及预算阻塞保留[验证记录](../docs/verification/2026-09-13-overwrite-install.md)。升级默认保留当前数据和配置。
 
@@ -102,7 +110,7 @@ M0实现提交与验证：[91c1623 文档基线记录](../docs/verification/2026
 
 ## HostComm v2.0 与新固件
 
-用户于2026-09-06确认固件尚未开发，并授权项目设计契约；[板卡资料](../docs/hardware/stm32h750vbt6-board.md)已补充 STM32H750VBT6、LAN8720、W25Q128、24C02 与 ADS8688，以及原图/引脚/复用冲突。[设计入口](../docs/hostcomm/v2/README.md)与[详细实施路线](../docs/hostcomm/v2/firmware-plan.md)区分设计、软件实现和真机验收。FW-00 的完成只覆盖设计产物；旧 0.3.0-rc.2 使用 1.0；0.3.0-rc.3 增加 2.0 运行适配和无执行器模拟器，见[运行验证](../docs/verification/2026-09-06-hostcomm-v2-runtime.md)。HOST-2001—2005保持其列明的软件实现和上层依赖状态；本轮HOST-2006—2009的done仅表示其软件任务及明确列出的Windows CI验收单元完成，不关闭FW-09台架、M4 Win10/11人工环境或M5现场依赖。
+用户于2026-09-06授权项目设计契约；截至2026-09-20固件开发中、尚未交付验收，各模块实际进度等待固件负责人按[技术交底](../docs/hostcomm/v2/technical-briefing.md)回填，不能由“开发中”推断任一子项通过；[板卡资料](../docs/hardware/stm32h750vbt6-board.md)已补充 STM32H750VBT6、LAN8720、W25Q128、24C02 与 ADS8688，以及原图/引脚/复用冲突。[设计入口](../docs/hostcomm/v2/README.md)与[详细实施路线](../docs/hostcomm/v2/firmware-plan.md)区分设计、软件实现和真机验收。FW-00 的完成只覆盖设计产物；旧 0.3.0-rc.2 使用 1.0；0.3.0-rc.3 增加 2.0 运行适配和无执行器模拟器，见[运行验证](../docs/verification/2026-09-06-hostcomm-v2-runtime.md)。HOST-2001—2005保持其列明的软件实现和上层依赖状态；本轮HOST-2006—2009的done仅表示其软件任务及明确列出的Windows CI验收单元完成，不关闭FW-09台架、M4 Win10/11人工环境或M5现场依赖。
 
 | ID / 优先级 | 任务 | 责任角色 | 依赖 | 验收条件 / 证据 | 状态 |
 |---|---|---|---|---|---|
@@ -140,4 +148,4 @@ FW-01 已取得板卡资源与引脚图，仍需解决复用/重复标注并补�
 |---|---|---|---|---|---|
 | OPS-01 / P2 | 审查依赖升级队列与大版本待办 | 维护负责人 | M1-03/04 | 当前PR53/62/66/67按新主线检查；Python同步哈希锁，Actions适配共享CI；原PR49—52/54/56/60的主版本升级独立验证；七项必要检查通过才合入 | todo |
 
-清理时15个依赖分支的原始引用已备份，未由清理操作删除。新策略生效后，Dependabot关闭13个旧提案并生成分组PR66/67；截至2026-09-06 03:15（Asia/Shanghai），活动依赖PR为53、62、66、67。关闭不表示升级已合入；已关闭的大版本提案仍作为独立维护待办，原始工作可从PR和bundle恢复。清理快照与具体SHA见[最终软件验证](../docs/verification/2026-09-06-software.md#最终集成软件验证)。相关固件仓库仅为[历史参考资料](../docs/verification/2026-09-06-firmware-candidates.md)；用户已确认本项目固件尚未开发。
+清理时15个依赖分支的原始引用已备份，未由清理操作删除。新策略生效后，Dependabot关闭13个旧提案并生成分组PR66/67；截至2026-09-06 03:15（Asia/Shanghai），活动依赖PR为53、62、66、67。关闭不表示升级已合入；已关闭的大版本提案仍作为独立维护待办，原始工作可从PR和bundle恢复。清理快照与具体SHA见[最终软件验证](../docs/verification/2026-09-06-software.md#最终集成软件验证)。相关固件仓库仅为[历史参考资料](../docs/verification/2026-09-06-firmware-candidates.md)；当时用户确认本项目固件尚未开发，当前开发状态见上方HostComm任务。

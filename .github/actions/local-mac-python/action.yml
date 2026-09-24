@@ -1,0 +1,34 @@
+name: Isolated local Mac Python
+description: Prepare a disposable venv without changing the shared runner Python
+runs:
+  using: composite
+  steps:
+    # Relocatable Python avoids setup-python's fixed /Users/runner toolcache.
+    - uses: astral-sh/setup-uv@d0d8abe699bfb85fec6de9f7adb5ae17292296ff # v6
+      with:
+        version: '0.10.11'
+        enable-cache: false
+        prune-cache: false
+    - name: Create the job environment and record runner identity
+      shell: bash
+      env:
+        SMD_RUNNER_NAME: ${{ runner.name }}
+      run: |
+        set -euo pipefail
+        smdVenv=$(mktemp -d "$RUNNER_TEMP/smd-hmi-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${GITHUB_JOB}-XXXXXX")
+        printf 'SMD_CI_VENV=%s\n' "$smdVenv" >> "$GITHUB_ENV"
+        uv venv --managed-python --python 3.13.12 --seed "$smdVenv"
+        printf '%s/bin\n' "$smdVenv" >> "$GITHUB_PATH"
+        printf 'VIRTUAL_ENV=%s\nPYTHONNOUSERSITE=1\nPIP_REQUIRE_VIRTUALENV=true\n' "$smdVenv" >> "$GITHUB_ENV"
+        "$smdVenv/bin/python" - <<'PY'
+        import json, os, platform, ssl, sys
+        assert platform.system() == "Darwin" and platform.machine() == "arm64"
+        assert sys.version_info[:2] == (3, 13)
+        assert ssl.HAS_PSK, "Mac backend must exercise TLS-PSK, not skip it"
+        evidence = {"runner": os.environ["SMD_RUNNER_NAME"], "os": platform.system(),
+                    "arch": platform.machine(), "python": platform.python_version(),
+                    "openssl": ssl.OPENSSL_VERSION, "tls_psk": ssl.HAS_PSK}
+        print(json.dumps(evidence))
+        with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as summary:
+            summary.write("Local Mac runtime: `" + json.dumps(evidence) + "`\n")
+        PY

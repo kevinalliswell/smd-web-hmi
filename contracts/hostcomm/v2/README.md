@@ -1,6 +1,6 @@
 # HostComm 2.0 可执行设计契约
 
-设计修订：`2.0-design.1`。本包是固件和上位机适配的共同输入，**不是已完成的 STM32 固件或现有 1.0 客户端驱动**。固件交接说明已修订为 [2.0-doc.2](../../../docs/hostcomm/v2/firmware-handoff.md)，线上design.1与本目录Schema/向量不变。规范解释、职责和迁移顺序见[设计入口](../../../docs/hostcomm/v2/README.md)。示例工程值全部为未批准的合成测试数据，不能用于控制实际设备。
+设计修订：`2.0-design.1`。本包是固件和上位机适配的共同输入，**不是已完成的 STM32 固件或现有 1.0 客户端驱动**。固件交接说明已修订为 [2.0-doc.4](../../../docs/hostcomm/v2/firmware-handoff.md)，线上design.1与本目录Schema/向量不变。适用已发布 SmdHmi `0.3.0`；固件工程师先读[技术交底](../../../docs/hostcomm/v2/technical-briefing.md)。规范解释、职责和迁移顺序见[设计入口](../../../docs/hostcomm/v2/README.md)。示例工程值全部为未批准的合成测试数据，不能用于控制实际设备。
 
 ## 文件与运行
 

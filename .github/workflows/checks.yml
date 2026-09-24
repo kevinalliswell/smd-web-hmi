@@ -1,43 +1,67 @@
 name: Shared checks
 on:
   workflow_call:
+    inputs:
+      local_mac:
+        description: Use the repository's trusted persistent Mac runner
+        type: boolean
+        default: false
+      local_windows:
+        description: Use the trusted Server 2019 runner for compile-only validation
+        type: boolean
+        default: false
 permissions:
   contents: read
 jobs:
   lint:
-    runs-on: ubuntu-latest
+    runs-on: ${{ inputs.local_mac && fromJSON('["self-hosted", "macOS", "ARM64", "local-mac", "smd-web"]') || 'ubuntu-latest' }}
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-python@v5
+        if: runner.os != 'macOS'
         with:
           python-version: '3.13'
           cache: pip
           cache-dependency-path: backend/requirements-dev.lock
+      - uses: ./.github/actions/local-mac-python
+        if: runner.os == 'macOS'
       - run: pip install --require-hashes -r backend/requirements-dev.lock
       - run: python scripts/release/metadata.py && python scripts/release/check_locks.py
       - run: python scripts/check_docs.py
       - run: python scripts/check_hostcomm_contract.py
       - run: black --config backend/pyproject.toml --check backend/app backend/tests desktop tools/bench scripts/release contracts scripts/check_hostcomm_contract.py
       - run: isort --settings-path backend/pyproject.toml --check-only backend/app backend/tests desktop tools/bench scripts/release contracts scripts/check_hostcomm_contract.py
+      - uses: ./.github/actions/local-mac-cleanup
+        if: ${{ always() && runner.os == 'macOS' }}
   backend:
     strategy:
       fail-fast: false
       matrix:
+        os: [ubuntu-latest, windows-latest, local-mac]
+        python: ['3.13']
+        exclude:
+          # Keep all original hosted checks for untrusted PRs; Mac is additive.
+          - os: ${{ inputs.local_mac && 'not-selected' || 'local-mac' }}
         include:
           - os: ubuntu-latest
-            python: '3.13'
-          - os: windows-latest
-            python: '3.13'
-          - os: ubuntu-latest
-            python: '3.11' 
-    runs-on: ${{ matrix.os }}
+            python: '3.11'
+    runs-on: ${{ matrix.os == 'local-mac' && fromJSON('["self-hosted", "macOS", "ARM64", "local-mac", "smd-web"]') || matrix.os }}
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-python@v5
+        if: runner.os != 'macOS'
         with:
           python-version: ${{ matrix.python }}
           cache: pip
           cache-dependency-path: backend/requirements-dev.lock
+      - uses: ./.github/actions/local-mac-python
+        if: runner.os == 'macOS'
       - run: pip install --require-hashes -r backend/requirements-dev.lock
       - name: Native Windows service and ACL test dependencies
         if: runner.os == 'Windows'
@@ -69,13 +93,18 @@ jobs:
             [void][System.Management.Automation.Language.Parser]::ParseFile($_.FullName, [ref]$Tokens, [ref]$ParseErrors)
             if ($ParseErrors.Count) { throw ($ParseErrors | Out-String) }
           }
+      - uses: ./.github/actions/local-mac-cleanup
+        if: ${{ always() && runner.os == 'macOS' }}
   frontend:
-    runs-on: ubuntu-latest
+    runs-on: ${{ inputs.local_mac && fromJSON('["self-hosted", "macOS", "ARM64", "local-mac", "smd-web"]') || 'ubuntu-latest' }}
+    timeout-minutes: 25
     defaults:
       run:
         working-directory: frontend
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
@@ -85,8 +114,11 @@ jobs:
         working-directory: .
         run: node contracts/hostcomm/v2/verify-js.mjs
       - uses: actions/setup-python@v5
+        if: runner.os != 'macOS'
         with:
           python-version: '3.13'
+      - uses: ./.github/actions/local-mac-python
+        if: runner.os == 'macOS'
       - run: pip install --require-hashes -r backend/requirements-dev.lock
         working-directory: .
       - run: npm ci
@@ -100,6 +132,8 @@ jobs:
           name: frontend-dist
           path: frontend/dist
           retention-days: 7
+      - uses: ./.github/actions/local-mac-cleanup
+        if: ${{ always() && runner.os == 'macOS' }}
   audit:
     runs-on: ubuntu-latest
     steps:
@@ -115,6 +149,144 @@ jobs:
           node-version: '24'
       - working-directory: frontend
         run: npm audit --audit-level=high
+  windows-compile:
+    # Additive portability check. Hosted Windows tests/build/package remain required.
+    if: inputs.local_windows
+    runs-on: [self-hosted, Windows, X64, local-windows, windows-build, smd-web]
+    timeout-minutes: 90
+    steps:
+      - name: Bootstrap private Git before checkout
+        timeout-minutes: 10
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+          $Root = Join-Path $env:RUNNER_TEMP ('smd-hmi-{0}-{1}-{2}-{3}' -f $env:GITHUB_RUN_ID, $env:GITHUB_RUN_ATTEMPT, $env:GITHUB_JOB, [guid]::NewGuid().ToString('N'))
+          New-Item -ItemType Directory -Path $Root | Out-Null
+          $Utf8 = New-Object Text.UTF8Encoding($false)
+          [IO.File]::AppendAllText($env:GITHUB_ENV, "SMD_CI_WINDOWS_ROOT=$Root`n", $Utf8)
+          try {
+              $Zip = Join-Path $Root 'git.zip'
+              $Cached = Join-Path $env:RUNNER_TOOL_CACHE 'smd-archives/MinGit-2.55.0.5-64-bit.zip'
+              if (Test-Path -LiteralPath $Cached -PathType Leaf) {
+                  Copy-Item -LiteralPath $Cached -Destination $Zip
+              } else {
+                  curl.exe --fail --location --silent --show-error --connect-timeout 20 --max-time 300 --output $Zip 'https://github.com/git-for-windows/git/releases/download/v2.55.0.windows.5/MinGit-2.55.0.5-64-bit.zip'
+                  if ($LASTEXITCODE -ne 0) { throw 'Private Git download failed or exceeded its deadline' }
+              }
+              if ((Get-FileHash $Zip -Algorithm SHA256).Hash.ToLowerInvariant() -ne '56d7b226b7693196cfc71fef26568f536c4a021ab6c37ff2db4287bed908e96e') { throw 'MinGit archive digest mismatch' }
+              Expand-Archive -LiteralPath $Zip -DestinationPath (Join-Path $Root 'git')
+              [IO.File]::AppendAllText($env:GITHUB_PATH, (Join-Path $Root 'git/cmd') + "`n", $Utf8)
+              Remove-Item -LiteralPath $Zip
+              & (Join-Path $Root 'git/cmd/git.exe') --version
+              if ($LASTEXITCODE -ne 0) { throw 'Private Git cannot run' }
+          } catch {
+              Remove-Item -LiteralPath $Root -Recurse -Force
+              throw
+          }
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: ./.github/actions/local-windows-tools
+        timeout-minutes: 20
+        with:
+          nsis: 'true'
+      - name: Install locked compile dependencies
+        timeout-minutes: 15
+        shell: pwsh
+        run: pip install --require-hashes -r backend/requirements.lock -r desktop/requirements.lock
+      - name: Compile frontend from the same checkout
+        shell: pwsh
+        working-directory: frontend
+        run: |
+          npm ci
+          if ($LASTEXITCODE -ne 0) { throw 'Frontend dependency installation failed' }
+          npm run build
+          if ($LASTEXITCODE -ne 0) { throw 'Frontend compilation failed' }
+      - name: PowerShell syntax and self-hosted execution refusal
+        shell: pwsh
+        run: |
+          Get-ChildItem deploy/windows,scripts/release -Filter *.ps1 -Recurse | ForEach-Object {
+              $Tokens = $null; $ParseErrors = $null
+              [void][System.Management.Automation.Language.Parser]::ParseFile($_.FullName, [ref]$Tokens, [ref]$ParseErrors)
+              if ($ParseErrors.Count) { throw ($ParseErrors | Out-String) }
+          }
+          try {
+              & ./scripts/release/build-windows.ps1 -OutputDir 'must-not-exist'
+              throw 'Unsafe build unexpectedly accepted the self-hosted runner'
+          } catch {
+              if ($_.Exception.Message -notlike 'Frozen executable validation requires a disposable GitHub-hosted Windows runner*') { throw }
+          }
+          if (Test-Path 'must-not-exist') { throw 'Refused build modified the checkout' }
+      - name: Freeze application and compile NSIS without executing product binaries
+        shell: pwsh
+        run: ./scripts/release/build-windows.ps1 -CompileOnly -MakeNsis $env:SMD_MAKENSIS
+      - name: Freeze independent bench without launching Chromium or installation
+        # Playwright's socket timeout does not bound the complete browser transfer.
+        timeout-minutes: 15
+        shell: pwsh
+        run: |
+          pip install --require-hashes -r tools/bench/requirements.lock
+          if ($LASTEXITCODE -ne 0) { throw 'Bench dependency installation failed' }
+          python tools/bench/freeze.py --output artifacts/bench --work artifacts/bench-work
+          if ($LASTEXITCODE -ne 0) { throw 'Bench freeze failed' }
+          python scripts/release/package_bench.py --bundle artifacts/bench/SmdBench --inventory-only
+          if ($LASTEXITCODE -ne 0) { throw 'Frozen bench inventory differs' }
+      - name: Record compile identity and limits
+        shell: pwsh
+        env:
+          SMD_RUNNER_NAME: ${{ runner.name }}
+        run: |
+          $Commit = (& git rev-parse HEAD).Trim()
+          if ($LASTEXITCODE -ne 0 -or $Commit -cne $env:GITHUB_SHA) { throw 'Build source identity mismatch' }
+          $Version = (& python scripts/release/metadata.py).Trim()
+          if ($LASTEXITCODE -ne 0) { throw 'Source version mismatch' }
+          $Files = @("artifacts/SmdHmi-$Version-windows-x64.exe", 'artifacts/manifest.json', 'artifacts/bench/SmdBench/tool-manifest.json')
+          $Hashes = [ordered]@{}
+          foreach ($File in $Files) { $Hashes[$File] = (Get-FileHash -LiteralPath $File -Algorithm SHA256).Hash.ToLowerInvariant() }
+          $Result = [ordered]@{runner=$env:SMD_RUNNER_NAME; commit=$Commit; version=$Version; scope='compile-only'; files=$Hashes} | ConvertTo-Json -Depth 3 -Compress
+          Write-Output $Result
+          $Result >> $env:GITHUB_STEP_SUMMARY
+          'Compilation only; frozen execution, service/ACL, install, upgrade, uninstall and GUI acceptance remain unverified here. These bytes are not release candidates.' >> $env:GITHUB_STEP_SUMMARY
+      - name: Clean this Windows job's tools and generated files
+        if: always()
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ($env:SMD_CI_WINDOWS_ROOT -and (Test-Path -LiteralPath $env:SMD_CI_WINDOWS_ROOT)) {
+              $Root = [IO.Path]::GetFullPath($env:SMD_CI_WINDOWS_ROOT)
+              $Parent = [IO.Path]::GetFullPath($env:RUNNER_TEMP).TrimEnd('\')
+              $Prefix = 'smd-hmi-{0}-{1}-{2}-' -f $env:GITHUB_RUN_ID, $env:GITHUB_RUN_ATTEMPT, $env:GITHUB_JOB
+              if ([IO.Path]::GetDirectoryName($Root) -ne $Parent -or
+                  [IO.Path]::GetFileName($Root) -notmatch ('^' + [regex]::Escape($Prefix) + '[0-9a-f]{32}$') -or
+                  ((Get-Item -LiteralPath $Root).Attributes -band [IO.FileAttributes]::ReparsePoint)) {
+                  throw 'Unexpected Windows job tools path'
+              }
+              try {
+                  # Checkout may not have completed; the tools still need cleanup.
+                  if (Test-Path -LiteralPath (Join-Path $env:GITHUB_WORKSPACE '.git')) {
+                      Set-Location $env:GITHUB_WORKSPACE
+                      $GitRoot = (& git rev-parse --show-toplevel)
+                      if ($LASTEXITCODE -ne 0 -or [IO.Path]::GetFullPath($GitRoot) -ne [IO.Path]::GetFullPath($env:GITHUB_WORKSPACE)) {
+                          throw 'Refusing cleanup outside this checkout'
+                      }
+                      git clean -ffdxq
+                      if ($LASTEXITCODE -ne 0) { throw 'Checkout cleanup failed' }
+                  }
+              } finally {
+                  # Windows PowerShell 5.1 cannot recursively remove npm cache paths
+                  # beyond MAX_PATH. Use the system command with an extended path;
+                  # no process from the tools directory may remove its own runtime.
+                  Set-Location $Parent
+                  $LongRoot = '\\?\' + $Root
+                  & $env:ComSpec /d /c "rd /s /q `"$LongRoot`""
+                  if ($LASTEXITCODE -ne 0 -or (Test-Path -LiteralPath $Root)) {
+                      throw 'Windows job tools cleanup failed'
+                  }
+                  Write-Output 'Removed this job tools directory, including long cache paths'
+              }
+          }
   windows-build:
     needs: [lint, backend, frontend, audit]
     runs-on: windows-latest
