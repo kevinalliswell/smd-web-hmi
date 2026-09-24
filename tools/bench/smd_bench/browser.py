@@ -25,6 +25,15 @@ async def eventually(function, predicate, *, timeout=60):
         await asyncio.sleep(0.15)
 
 
+def _console_code(text, status):
+    if status:
+        return "http_" + status[1]
+    if text.startswith("WebSocket connection"):
+        return "websocket"
+    network = re.search(r"net::ERR_[A-Z_]{1,60}", text)
+    return network[0] if network else "other"
+
+
 class Browser:
     def __init__(self, evidence: Path, *, private_dir: Path | None = None, base="http://127.0.0.1:8000"):
         self.base, self.evidence = base, evidence
@@ -40,6 +49,8 @@ class Browser:
         self._service_stopped = False
         self._poll_failure_credits = 0
         self._pending_poll_console = []
+        self._window_polls = []
+        self.poll_settle_timeout = 3.0
         self.current_stage = "startup"
 
     async def open(self, *, diagnostic_logging=False):
@@ -70,9 +81,11 @@ class Browser:
         self.context = await self.browser.new_context(viewport={"width": 1440, "height": 1000}, accept_downloads=True)
         self.page = await self.context.new_page()
         self.page.set_default_timeout(30000)
-        self.page.on("pageerror", lambda _error: self.page_errors.append("pageerror"))
+        self.page.on("pageerror", self._page_error)
         self.page.on("response", self._response)
         self.page.on("console", self._console)
+        self.page.on("request", self._request_started)
+        self.page.on("requestfinished", self._request_settled)
         self.page.on("requestfailed", self._request_failed)
 
     def _is_control_poll(self, url):
@@ -107,12 +120,49 @@ class Browser:
                 return data.get("status")
 
             await eventually(health, lambda status: status == "ready")
+            await self._settle_window_polls()
         finally:
             self._service_stopped = False
             self._poll_failure_credits = 0
             self._pending_poll_console.clear()
+            self._window_polls.clear()
+
+    async def _settle_window_polls(self):
+        # Chromium reports a refused poll and its console echo separately and asynchronously. Keep the
+        # window open until every poll it issued has settled and each proven failure met its echo, so a
+        # late report is not misread as unexpected; what counts as proof is unchanged.
+        deadline = time.monotonic() + self.poll_settle_timeout
+        while self._window_polls or self._pending_poll_console or self._poll_failure_credits:
+            if time.monotonic() >= deadline:
+                return
+            await asyncio.sleep(0.05)
+
+    def _request_started(self, request):
+        if self._service_stopped and self._is_control_poll(request.url) and request.method == "GET":
+            self._window_polls.append(request)
+
+    def _request_settled(self, request):
+        self._window_polls[:] = [item for item in self._window_polls if item is not request]
+
+    def _page_error(self, error):
+        name = getattr(error, "name", None)
+        self.page_errors.append(
+            {
+                "kind": "pageerror",
+                "stage": self.current_stage,
+                "name": name if isinstance(name, str) and re.fullmatch(r"[A-Za-z]{1,40}", name) else "Error",
+            }
+        )
+
+    def unexpected_observations(self, limit=20):
+        return {
+            "page_errors": self.page_errors[:limit],
+            "api_failures": self.api_failures[:limit],
+            "console_errors": self.console_errors[:limit],
+        }
 
     def _request_failed(self, request):
+        self._request_settled(request)
         if (
             self._service_stopped
             and self._is_control_poll(request.url)
@@ -143,7 +193,12 @@ class Browser:
         }:
             expected = True
         target = self.expected_console_errors if expected else self.console_errors
-        row = {"kind": "http_failure" if status else "console_error", "stage": self.current_stage}
+        row = {
+            "kind": "http_failure" if status else "console_error",
+            "stage": self.current_stage,
+            "path": path,
+            "code": _console_code(message.text, status),
+        }
         if (
             self._service_stopped
             and self._is_control_poll(message.location.get("url", ""))
