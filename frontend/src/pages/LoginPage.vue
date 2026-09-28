@@ -20,7 +20,12 @@ async function onSubmit() {
     const result = await auth.login(username.value, password.value)
     router.push({ name: result.must_change_password ? 'change-password' : 'overview' })
   } catch (e) {
-    error.value = e.response?.data?.message || '登录失败，请检查用户名或密码'
+    // 422 不逐字段回显：登录页没必要把输入校验细节（字段名、正则）摊给操作员。
+    // 其余情况沿用后端的业务消息；没有响应体时回到通用中文提示，不暴露传输层英文错误。
+    error.value =
+      e.response?.status === 422
+        ? '用户名或密码格式不正确'
+        : e.response?.data?.message || '登录失败，请检查用户名或密码'
   } finally {
     loading.value = false
   }

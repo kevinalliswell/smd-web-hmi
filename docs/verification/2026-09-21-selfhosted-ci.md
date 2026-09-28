@@ -1,5 +1,7 @@
 # 自托管 CI 接入验证（macOS ARM64 + Windows x64）
 
+> 2026-09-23 起仓库公开、改用纯托管 CI：本文所述两条自托管通道及 `third_party/nsis/` 已随 PR #90 撤除，本文仅作历史记录。
+
 绑定提交:`3f90ef01bcd6b2a9478d7531c63c50aa8a87c77d`(PR #84 分支 `claude/nifty-dirac-ipu0bx`)
 证据 run:[35530682712](https://github.com/kevinalliswell/smd-web-hmi/actions/runs/35530682712)
 运行器:`kevin-mac-smd`(macOS ARM64)、`ustb-win-smd`(Windows Server 2019 x64,NetworkService 非管理员服务)

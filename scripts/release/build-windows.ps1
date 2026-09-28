@@ -47,8 +47,7 @@ try {
     if (-not (Test-Path (Join-Path $Smoke 'smd.db'))) { throw 'Frozen migration did not create configured DB' }
 } finally { Remove-Item Env:SMD_DATA_ROOT -ErrorAction SilentlyContinue }
 Invoke-Checked 'python' @('scripts/release/metadata.py','--bundle',$Stage)
-# Self-hosted CI provides a portable makensis via SMD_MAKENSIS; default stays the ProgramFiles install.
-$MakeNsis = if ($env:SMD_MAKENSIS) { $env:SMD_MAKENSIS } else { Join-Path ${env:ProgramFiles(x86)} 'NSIS/makensis.exe' }
+$MakeNsis = Join-Path ${env:ProgramFiles(x86)} 'NSIS/makensis.exe'
 $PayloadBytes = [long](Get-ChildItem -LiteralPath $Stage -Recurse -File | Measure-Object -Property Length -Sum).Sum
 $NsisArguments = @('/INPUTCHARSET','UTF8','/V3',"/DVERSION=$Version","/DPAYLOAD=$Stage","/DPAYLOAD_BYTES=$PayloadBytes","/DOUTPUT=$Repo/$OutputDir/SmdHmi-$Version-windows-x64.exe",'deploy/windows/installer.nsi')
 Invoke-Checked 'python' (@('scripts/release/check_nsis_encoding.py','--makensis',$MakeNsis,'--') + $NsisArguments)
