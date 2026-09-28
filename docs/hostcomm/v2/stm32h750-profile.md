@@ -1,10 +1,10 @@
 # STM32H750 工程 profile 边界
 
-更新日期：2026-09-06。用户已确认控制板采用 **STM32H750**；固件尚未开发。补充图片已指明 **STM32H750VBT6、LAN8720、W25Q128、24C02 与 ADS8688**，来源、接口图及引脚转录见[板卡资料](../../hardware/stm32h750vbt6-board.md)。完整板卡型号/修订、原理图、器件后缀及实板验证仍待补齐。本文细化 [FW-01 与资源预算](firmware-plan.md#资源预算和能力声明)，不作为已完成的硬件验收记录。
+文档修订：`2.0-doc.4`，更新日期：2026-09-20。用户已确认控制板采用 **STM32H750**；固件开发中、尚未交付验收。补充图片已指明 **STM32H750VBT6、LAN8720、W25Q128、24C02 与 ADS8688**，来源、接口图及引脚转录见[板卡资料](../../hardware/stm32h750vbt6-board.md)。完整板卡型号/修订、原理图、器件后缀及实板验证仍待补齐。实装资料回填及首次联调步骤见[技术交底](technical-briefing.md)。本文细化 [FW-01 与资源预算](firmware-plan.md#资源预算和能力声明)，不作为已完成的硬件验收记录。
 
 ## 已确认的器件资料
 
-本次核对 ST 官方 [DS12556 数据手册](https://www.st.com/resource/en/datasheet/stm32h750ib.pdf)，读取版本为 **Rev 8，January 2026，335 页**。它同时覆盖 STM32H750VB/ZB/IB/XB；使用该 URL 不表示用户选择了 IB 后缀。[ST 产品页](https://www.st.com/en/microcontrollers-microprocessors/stm32h750ib.html)仅用于官方资料交叉核对。
+器件资料历史核对采用 ST 官方 [DS12556 数据手册](https://www.st.com/resource/en/datasheet/stm32h750ib.pdf)，读取版本为 **Rev 8，January 2026，335 页**。它同时覆盖 STM32H750VB/ZB/IB/XB；使用该 URL 不表示用户选择了 IB 后缀。[ST 产品页](https://www.st.com/en/microcontrollers-microprocessors/stm32h750ib.html)仅用于官方资料交叉核对。
 
 | 器件级事实 | 对本项目的约束 |
 |---|---|

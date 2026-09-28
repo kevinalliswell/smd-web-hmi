@@ -1,8 +1,8 @@
 # HostComm v2 状态、停止与恢复
 
-文档修订：`2.0-doc.3`；设计基线：`2.0-design.1`；协议：`2.0`。本次补充交接说明，不改变报文字段或握手设计版本。
+文档修订：`2.0-doc.4`；设计基线：`2.0-design.1`；协议：`2.0`。本次补充交接说明，不改变报文字段或握手设计版本。
 
-状态：通信语义设计基线；固件尚未实现，硬件动作与时序尚未验收。本文的“必须”约束 v2 实现，不能作为现有 HostComm 1.0 或 Mock 已支持的声明。报文字段、数值编码与资源上限以 v2 主契约和 Schema 为准。
+状态：通信语义设计基线；固件开发中、尚未交付验收，硬件动作与时序尚未验收。本文的“必须”约束 v2 实现，不能作为现有 HostComm 1.0 或 Mock 已支持的声明。报文字段、数值编码与资源上限以 v2 主契约和 Schema 为准。
 
 ## 身份与不变量
 
@@ -125,9 +125,9 @@ safe_complete 只能在工程批准的撤危险输出、置换、冷却及传感
 | 状态来源 | 只有 status_snapshot.run 决定页面阶段；telemetry 不携带可代替它的生命周期状态，run_changed 提醒刷新并保留历史。不要把 1.0 状态别名写入 v2 |
 | 普通操作 | 主机先查未决操作并核对当前状态/权限，申请或确认租约后下发；unknown/result_expired/not_found 不能当成功。停止使用当前会话已知 run_id，独立于普通操作锁和读取窗口 |
 | 安全闭合 | 对已绑定运行，measurement_complete 只登记测定结束，safe_complete 才登记档案结束；ack_run 另行使设备可开始下一实验。后到的历史事件不得把已结束档案改回运行中 |
-| 陌生运行 | 当前仅保留未绑定 run_id 的原始数据，不自动新建 TestSession、不归入 active_test；“建立待核查运行”的完整接管流程仍须后续实现。无 run_id 的全局报警仍正常归档 |
+| 陌生运行 | 按device_id/run_id持久发现待核查项，继续保存原始数据，不自动猜测既有实验归属；管理员/维护员审查后创建恢复档案或凭持久启动请求关联既有档案，再恢复回放。具体接口见下方核查说明；无run_id的全局报警仍正常归档 |
 
-实现依据：[V2Client](../../../backend/app/hostcomm/v2_client.py)、[状态投影](../../../backend/app/hostcomm/v2_projection.py)、[操作策略](../../../backend/app/services/state_policy.py)、[归档投影](../../../backend/app/services/v2_archive.py)。`test_full_application_continues_recording_until_safe_completion`、`test_recovery_pending_rejects_start_before_creating_an_experiment` 及读取窗口占满时停止用例见[完整应用测试](../../../backend/tests/test_v2_application.py)；陌生运行和跨启动边界见[归档测试](../../../backend/tests/test_v2_archive.py)。这些是软件证据，尚非目标固件验收。
+实现依据：[V2Client](../../../backend/app/hostcomm/v2_client.py)、[状态投影](../../../backend/app/hostcomm/v2_projection.py)、[操作策略](../../../backend/app/services/state_policy.py)、[归档投影](../../../backend/app/services/v2_archive.py)、[运行恢复](../../../backend/app/services/v2_run_recovery.py)。`test_full_application_continues_recording_until_safe_completion`、`test_recovery_pending_rejects_start_before_creating_an_experiment` 及读取窗口占满时停止用例见[完整应用测试](../../../backend/tests/test_v2_application.py)；陌生运行和跨启动边界见[归档测试](../../../backend/tests/test_v2_archive.py)及[恢复回归](../../../backend/tests/test_v2_run_recovery.py)。这些是软件证据，尚非目标固件验收。
 
 ### 日志 ACK、扫描与完整性
 

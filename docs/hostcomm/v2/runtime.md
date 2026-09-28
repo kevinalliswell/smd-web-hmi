@@ -1,6 +1,6 @@
 # HostComm 2.0 上位机运行、离线配对与升级
 
-文档修订：`2.0-doc.3`（2026-09-08）；设计基线 `2.0-design.1`、线协议 `2.0` 不变。上位机运行、配对及模拟器已有软件实现；STM32 固件尚未实现。用户确认 rc.4 安装成功只证明该次安装结果，不证明升级、空库来源、HostComm 配对、Windows TLS 联调、真机或 24 小时验收通过。语义依据为 [wire.md](wire.md)、[state-and-recovery.md](state-and-recovery.md) 和 [data-and-recipe.md](data-and-recipe.md)。
+文档修订：`2.0-doc.4`（2026-09-20）；适用于已发布 SmdHmi `0.3.0`，设计基线 `2.0-design.1`、线协议 `2.0` 不变。上位机运行、配对及模拟器已有软件实现；STM32 固件开发中、尚未交付验收。用户确认 0.3.0 安装成功仅证明该次安装结果；配对、真实板卡 TLS、完整实验及 24 小时验收仍须分别留证。交底会议与首次板端联调见[技术交底](technical-briefing.md)；语义依据为 [wire.md](wire.md)、[state-and-recovery.md](state-and-recovery.md) 和 [data-and-recipe.md](data-and-recipe.md)。
 
 ## 1. 共用后台与配置
 
@@ -84,9 +84,9 @@ Stop-Service SmdHmi
 
 ## 7. 独立Windows联调工具
 
-本轮已实现独立[SmdBench](../../../tools/bench/README.md)，候选ZIP内含Python、Playwright/Chromium和TLS模拟器。先在全新测试VM中运行preflight，再使用与工具同版本同提交的安装器执行run。工具拒绝已有SmdHmi安装/服务/数据，使用私有模拟器目录与凭据；不要求安装开发环境。生产安装包不内置模拟器，现场设备资料不交给该工具。
+独立[SmdBench](../../../tools/bench/README.md)随0.3.0提供工具ZIP，内含Python、Playwright/Chromium和TLS模拟器。先在全新测试VM中运行preflight，再使用与工具同版本同提交的安装器执行run。工具拒绝已有SmdHmi安装/服务/数据，使用私有模拟器目录与凭据；不要求安装开发环境。生产安装包不内置模拟器，现场设备资料不交给该工具。
 
-本轮候选已通过Windows CI中的冻结自检、实际安装版TLS/Chromium固定流程、报告核验及归属清理，严格封装和下载产物核验也已通过。结论只适用于`acceptance.json`绑定的提交、安装器和工具摘要，详细范围见[本轮验证](../../verification/2026-09-08-installed-hostcomm-loop.md)。候选交付状态、最终提交与字节以对应标签流水线及 Release 附件为准；Win10/11 WebView2人工验收和真实STM32联调仍须分别完成。
+0.3.0已通过Windows CI中的冻结自检、实际安装版TLS/Chromium固定流程、报告核验及归属清理，实际发行资产核验见[正式版验证](../../verification/2026-09-13-overwrite-install.md)。结论只适用于`acceptance.json`绑定的提交、安装器和工具摘要；rc.5的历史证据见[安装版闭环记录](../../verification/2026-09-08-installed-hostcomm-loop.md)。工具只能接入回环模拟器，不能直接用于真实板卡联调；Win10/11 WebView2人工验收和真实STM32联调仍须分别完成。轻量离线技术资料包不包含SmdBench二进制或上述运行环境。
 
 ## 8. 源码开发方式的同机TLS模拟器
 

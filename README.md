@@ -4,7 +4,7 @@
 
 ## 项目状态
 
-`0.3.0` 软件采用安装器自动覆盖升级，保留数据、配置和密钥，取消手填版本号的准备流程。实际发布状态以 GitHub Release 和同提交验收资产为准，未通过检查不发布。本轮覆盖安装验证见[执行记录](docs/verification/2026-09-13-overwrite-install.md)，rc.5 的安装版模拟器闭环见[历史证据](docs/verification/2026-09-08-installed-hostcomm-loop.md)。固件尚未开发，Win10/11 原生桌面、真机安全联锁和国标符合性仍单独验收。进度见[任务清单](tasks/todo.md)，发布边界见[验收契约](docs/release-acceptance.md)。
+`0.3.0` 软件采用安装器自动覆盖升级，保留数据、配置和密钥，取消手填版本号的准备流程。实际发布状态以 GitHub Release 和同提交验收资产为准，未通过检查不发布。本轮覆盖安装验证见[执行记录](docs/verification/2026-09-13-overwrite-install.md)，rc.5 的安装版模拟器闭环见[历史证据](docs/verification/2026-09-08-installed-hostcomm-loop.md)。固件开发中、尚未交付验收，Win10/11 原生桌面、真机安全联锁和国标符合性仍单独验收。固件开发先读[技术交底](docs/hostcomm/v2/technical-briefing.md)。进度见[任务清单](tasks/todo.md)，发布边界见[验收契约](docs/release-acceptance.md)。
 
 | 项目 | 本轮软件实现 | 待验证边界 |
 |---|---|---|
