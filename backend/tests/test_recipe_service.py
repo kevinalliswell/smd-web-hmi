@@ -68,7 +68,8 @@ class Board:
 
 
 async def ready():
-    cache = StatusCache()
+    # 这些用例不测状态新鲜度；放宽窗口，免得慢 runner 上准备阶段超过默认 5 秒、快照过期后启动被（正确地）拒绝。
+    cache = StatusCache(degraded_after_s=3600.0)
     await cache.update({"state_machine": {"current_state": "Standby"}})
     return cache
 

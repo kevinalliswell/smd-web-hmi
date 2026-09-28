@@ -237,11 +237,14 @@ async def test_stop_does_not_wait_for_ordinary_receipt(factory):
             state_revision="1",
         )
     )
-    for _ in range(100):
+    for _ in range(2000):
         if transport.sent:
             break
         await asyncio.sleep(0.005)
-    result = await asyncio.wait_for(stop(value), 1)
+    # Stop goes out only once the ordinary command awaits its receipt. Both 10 s bounds merely absorb slow SQLite
+    # commits on busy runners; a stop that waited for that receipt would never finish.
+    assert transport.sent
+    result = await asyncio.wait_for(stop(value), 10)
     assert result["status"] == "applied" and not ordinary.done()
     transport.block.set()
     await ordinary
