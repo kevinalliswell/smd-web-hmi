@@ -1,3 +1,7 @@
 # Windows 批处理必须以 CRLF 检出（LF 的 .bat 在 cmd 中 goto/label 行为不可靠），
 # 打包流水线直接从工作区复制，故所有平台统一强制 CRLF。
 deploy/windows/*.bat text eol=crlf
+
+# 验收证据按字节保存：记录里给出的 SHA-256 必须在任意平台检出后仍然成立，
+# 行尾转换会让文本类证据（结果 JSON、复现脚本、校验清单）的摘要对不上。
+docs/verification/assets/** -text

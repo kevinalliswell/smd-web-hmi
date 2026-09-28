@@ -1,0 +1,190 @@
+{
+  "overview": [
+    {
+      "selector": ".kpi-val",
+      "text": "25.0℃",
+      "fontFamily": "\"Cascadia Mono\", Consolas, \"Courier New\", monospace",
+      "fontSize": "38px",
+      "widths": {
+        "0": 22.265625,
+        "8": 22.265625,
+        "i": 22.265625,
+        "W": 22.265625
+      },
+      "monospaced": true,
+      "widthAs": {
+        "cascadia": 445.3125,
+        "consolas": 417.8515625,
+        "courierNew": 456.07421875,
+        "actual": 445.3125
+      }
+    },
+    {
+      "selector": ".kpi-primary .kpi-val",
+      "text": "25.0℃",
+      "fontFamily": "\"Cascadia Mono\", Consolas, \"Courier New\", monospace",
+      "fontSize": "38px",
+      "widths": {
+        "0": 22.265625,
+        "8": 22.265625,
+        "i": 22.265625,
+        "W": 22.265625
+      },
+      "monospaced": true,
+      "widthAs": {
+        "cascadia": 445.3125,
+        "consolas": 417.8515625,
+        "courierNew": 456.07421875,
+        "actual": 445.3125
+      }
+    },
+    null
+  ],
+  "element_shots": {
+    "kpi": true,
+    "history": true,
+    "proc": true,
+    "font_sample": true
+  },
+  "history": [
+    {
+      "selector": ".mono",
+      "text": "TEST-20260921-003",
+      "fontFamily": "\"Cascadia Mono\", Consolas, \"Courier New\", monospace",
+      "fontSize": "13px",
+      "widths": {
+        "0": 7.6171875,
+        "8": 7.6171875,
+        "i": 7.6171875,
+        "W": 7.6171875
+      },
+      "monospaced": true,
+      "widthAs": {
+        "cascadia": 152.34375,
+        "consolas": 142.94921875,
+        "courierNew": 156.025390625,
+        "actual": 152.34375
+      }
+    },
+    {
+      "selector": "td.mono",
+      "text": "2026-09-21 12:24:31",
+      "fontFamily": "\"Cascadia Mono\", Consolas, \"Courier New\", monospace",
+      "fontSize": "11px",
+      "widths": {
+        "0": 6.4453125,
+        "8": 6.4453125,
+        "i": 6.4453125,
+        "W": 6.4453125
+      },
+      "monospaced": true,
+      "widthAs": {
+        "cascadia": 128.90625,
+        "consolas": 120.95703125,
+        "courierNew": 132.021484375,
+        "actual": 128.90625
+      }
+    },
+    null
+  ],
+  "test": [
+    null,
+    {
+      "selector": ".elapsed",
+      "text": "⏱ —",
+      "fontFamily": "\"Cascadia Mono\", Consolas, \"Courier New\", monospace",
+      "fontSize": "14px",
+      "widths": {
+        "0": 8.203125,
+        "8": 8.203125,
+        "i": 8.203125,
+        "W": 8.203125
+      },
+      "monospaced": true,
+      "widthAs": {
+        "cascadia": 164.0625,
+        "consolas": 153.9453125,
+        "courierNew": 168.02734375,
+        "actual": 164.0625
+      }
+    },
+    {
+      "selector": ".proc-val",
+      "text": "0.00 / 0.00 L/min",
+      "fontFamily": "\"Cascadia Mono\", Consolas, \"Courier New\", monospace",
+      "fontSize": "14px",
+      "widths": {
+        "0": 8.203125,
+        "8": 8.203125,
+        "i": 8.203125,
+        "W": 8.203125
+      },
+      "monospaced": true,
+      "widthAs": {
+        "cascadia": 164.0625,
+        "consolas": 153.9453125,
+        "courierNew": 168.02734375,
+        "actual": 164.0625
+      }
+    }
+  ],
+  "alarms": [
+    {
+      "selector": ".mono",
+      "text": "ALM-OVERTEMP",
+      "fontFamily": "\"Cascadia Mono\", Consolas, \"Courier New\", monospace",
+      "fontSize": "12px",
+      "widths": {
+        "0": 7.03125,
+        "8": 7.03125,
+        "i": 7.03125,
+        "W": 7.03125
+      },
+      "monospaced": true,
+      "widthAs": {
+        "cascadia": 140.625,
+        "consolas": 131.953125,
+        "courierNew": 144.0234375,
+        "actual": 140.625
+      }
+    },
+    {
+      "selector": "td.mono",
+      "text": "ALM-OVERTEMP",
+      "fontFamily": "\"Cascadia Mono\", Consolas, \"Courier New\", monospace",
+      "fontSize": "12px",
+      "widths": {
+        "0": 7.03125,
+        "8": 7.03125,
+        "i": 7.03125,
+        "W": 7.03125
+      },
+      "monospaced": true,
+      "widthAs": {
+        "cascadia": 140.625,
+        "consolas": 131.953125,
+        "courierNew": 144.0234375,
+        "actual": 140.625
+      }
+    }
+  ],
+  "available_fonts": {
+    "Cascadia Mono": true,
+    "Consolas": true,
+    "Courier New": true,
+    "Segoe UI": true
+  },
+  "_env": {
+    "browser_version": "153.0.4234.32",
+    "channel": "msedge",
+    "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36 Edg/153.0.0.0",
+    "viewport": [
+      1416,
+      861,
+      1,
+      2880,
+      1800
+    ]
+  },
+  "_elapsed_s": 10.6
+}

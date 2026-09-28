@@ -1,0 +1,478 @@
+{
+  "tokens": {
+    "dark": {
+      "--bg-base": "#0b0e15",
+      "--bg-card": "#151a24",
+      "--bg-card2": "#1b2231",
+      "--bg-hover": "#232c40",
+      "--bg-chrome": "#10141d",
+      "--border": "#252d43",
+      "--border-hi": "#38445f",
+      "--text-pri": "#e8edf6",
+      "--text-sec": "#9fabc4",
+      "--text-muted": "#7e8ba4",
+      "--accent": "#38bdf8",
+      "--accent-dim": "#123349",
+      "--accent-soft": "rgba(56, 189, 248, .08)",
+      "--green": "#22c55e",
+      "--green-dim": "#123d24",
+      "--yellow": "#f59e0b",
+      "--yellow-dim": "#432307",
+      "--red": "#ef4444",
+      "--red-dim": "#481313",
+      "--red-soft": "rgba(239, 68, 68, .08)",
+      "--orange": "#f97316",
+      "--purple": "#a78bfa",
+      "--success-text": "#86efac",
+      "--warning-text": "#fde68a",
+      "--danger-text": "#fca5a5",
+      "--on-orange": "#1a1208",
+      "--on-red": "#ffffff",
+      "--overlay": "rgba(2, 6, 23, .72)",
+      "--chart-grid": "#232c40",
+      "--chart-tick": "#9fabc4",
+      "--series-1": "#3987e5",
+      "--series-2": "#0f9b89",
+      "--series-3": "#465ec4",
+      "--series-4": "#32a0c5",
+      "--series-5": "#9a5169",
+      "--series-6": "#a57be8",
+      "--series-7": "#73599e",
+      "--series-8": "#ca6dc3"
+    },
+    "light": {
+      "--bg-base": "#f2f5f9",
+      "--bg-card": "#ffffff",
+      "--bg-card2": "#f6f8fb",
+      "--bg-hover": "#e9eef5",
+      "--bg-chrome": "#ffffff",
+      "--border": "#dbe2ec",
+      "--border-hi": "#b6c2d4",
+      "--text-pri": "#18202f",
+      "--text-sec": "#4d5b73",
+      "--text-muted": "#66748d",
+      "--accent": "#0369a1",
+      "--accent-dim": "#e0f2fe",
+      "--accent-soft": "rgba(3, 105, 161, .08)",
+      "--green": "#15803d",
+      "--green-dim": "#dcfce7",
+      "--yellow": "#b45309",
+      "--yellow-dim": "#fef3c7",
+      "--red": "#dc2626",
+      "--red-dim": "#fee2e2",
+      "--red-soft": "rgba(220, 38, 38, .08)",
+      "--orange": "#c2410c",
+      "--purple": "#7c3aed",
+      "--success-text": "#166534",
+      "--warning-text": "#92400e",
+      "--danger-text": "#b91c1c",
+      "--on-orange": "#ffffff",
+      "--on-red": "#ffffff",
+      "--overlay": "rgba(15, 23, 42, .42)",
+      "--chart-grid": "#e4eaf2",
+      "--chart-tick": "#4d5b73",
+      "--series-1": "#2a78d6",
+      "--series-2": "#00aa95",
+      "--series-3": "#374991",
+      "--series-4": "#1e8db1",
+      "--series-5": "#85284d",
+      "--series-6": "#9c72de",
+      "--series-7": "#6b46a0",
+      "--series-8": "#b761b1"
+    }
+  },
+  "pages": {
+    "overview": {
+      "from": "dark",
+      "to": "light",
+      "css_colors_before": 20,
+      "css_colors_after": 18,
+      "stale_exclusive_css": [],
+      "applied_exclusive_css_count": 15,
+      "canvas_count": 1,
+      "canvas_before_distinct": [
+        13
+      ],
+      "canvas": [
+        {
+          "size": [
+            1095,
+            260
+          ],
+          "distinct_painted": 13,
+          "series_new_pixels": [
+            2256,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "series_old_pixels": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "stale_series": []
+        }
+      ],
+      "pass": true
+    },
+    "trend": {
+      "from": "light",
+      "to": "dark",
+      "css_colors_before": 21,
+      "css_colors_after": 23,
+      "stale_exclusive_css": [],
+      "applied_exclusive_css_count": 21,
+      "canvas_count": 1,
+      "canvas_before_distinct": [
+        31
+      ],
+      "canvas": [
+        {
+          "size": [
+            1110,
+            380
+          ],
+          "distinct_painted": 26,
+          "series_new_pixels": [
+            6201,
+            3421,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "series_old_pixels": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "stale_series": []
+        }
+      ],
+      "pass": true
+    },
+    "test": {
+      "from": "dark",
+      "to": "light",
+      "css_colors_before": 19,
+      "css_colors_after": 18,
+      "stale_exclusive_css": [],
+      "applied_exclusive_css_count": 15,
+      "canvas_count": 4,
+      "canvas_before_distinct": [
+        6,
+        5,
+        4,
+        5
+      ],
+      "canvas": [
+        {
+          "size": [
+            344,
+            190
+          ],
+          "distinct_painted": 6,
+          "series_new_pixels": [
+            403,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "series_old_pixels": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "stale_series": []
+        },
+        {
+          "size": [
+            344,
+            190
+          ],
+          "distinct_painted": 5,
+          "series_new_pixels": [
+            0,
+            0,
+            516,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "series_old_pixels": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "stale_series": []
+        },
+        {
+          "size": [
+            344,
+            190
+          ],
+          "distinct_painted": 5,
+          "series_new_pixels": [
+            0,
+            0,
+            0,
+            512,
+            0,
+            0,
+            0,
+            0
+          ],
+          "series_old_pixels": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "stale_series": []
+        },
+        {
+          "size": [
+            344,
+            190
+          ],
+          "distinct_painted": 5,
+          "series_new_pixels": [
+            0,
+            0,
+            0,
+            0,
+            439,
+            0,
+            0,
+            0
+          ],
+          "series_old_pixels": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "stale_series": []
+        }
+      ],
+      "pass": true
+    },
+    "alarms": {
+      "from": "light",
+      "to": "dark",
+      "css_colors_before": 18,
+      "css_colors_after": 20,
+      "stale_exclusive_css": [],
+      "applied_exclusive_css_count": 18,
+      "canvas_count": 0,
+      "canvas_before_distinct": [],
+      "canvas": [],
+      "pass": true
+    },
+    "history": {
+      "from": "dark",
+      "to": "light",
+      "css_colors_before": 15,
+      "css_colors_after": 15,
+      "stale_exclusive_css": [],
+      "applied_exclusive_css_count": 12,
+      "canvas_count": 0,
+      "canvas_before_distinct": [],
+      "canvas": [],
+      "pass": true
+    },
+    "run-recoveries": {
+      "from": "light",
+      "to": "dark",
+      "css_colors_before": 13,
+      "css_colors_after": 15,
+      "stale_exclusive_css": [],
+      "applied_exclusive_css_count": 13,
+      "canvas_count": 0,
+      "canvas_before_distinct": [],
+      "canvas": [],
+      "pass": true
+    },
+    "recipes": {
+      "from": "dark",
+      "to": "light",
+      "css_colors_before": 15,
+      "css_colors_after": 15,
+      "stale_exclusive_css": [],
+      "applied_exclusive_css_count": 12,
+      "canvas_count": 0,
+      "canvas_before_distinct": [],
+      "canvas": [],
+      "pass": true
+    },
+    "operations": {
+      "from": "light",
+      "to": "dark",
+      "css_colors_before": 14,
+      "css_colors_after": 16,
+      "stale_exclusive_css": [],
+      "applied_exclusive_css_count": 14,
+      "canvas_count": 0,
+      "canvas_before_distinct": [],
+      "canvas": [],
+      "pass": true
+    },
+    "parameters": {
+      "from": "dark",
+      "to": "light",
+      "css_colors_before": 16,
+      "css_colors_after": 16,
+      "stale_exclusive_css": [],
+      "applied_exclusive_css_count": 13,
+      "canvas_count": 0,
+      "canvas_before_distinct": [],
+      "canvas": [],
+      "pass": true
+    },
+    "diagnostics": {
+      "from": "light",
+      "to": "dark",
+      "css_colors_before": 14,
+      "css_colors_after": 16,
+      "stale_exclusive_css": [],
+      "applied_exclusive_css_count": 14,
+      "canvas_count": 0,
+      "canvas_before_distinct": [],
+      "canvas": [],
+      "pass": true
+    },
+    "settings": {
+      "from": "dark",
+      "to": "light",
+      "css_colors_before": 15,
+      "css_colors_after": 15,
+      "stale_exclusive_css": [],
+      "applied_exclusive_css_count": 12,
+      "canvas_count": 0,
+      "canvas_before_distinct": [],
+      "canvas": [],
+      "pass": true
+    },
+    "analytics": {
+      "from": "light",
+      "to": "dark",
+      "css_colors_before": 15,
+      "css_colors_after": 16,
+      "stale_exclusive_css": [],
+      "applied_exclusive_css_count": 14,
+      "canvas_count": 1,
+      "canvas_before_distinct": [
+        13
+      ],
+      "canvas": [
+        {
+          "size": [
+            819,
+            360
+          ],
+          "distinct_painted": 12,
+          "series_new_pixels": [
+            605,
+            593,
+            618,
+            592,
+            594,
+            601,
+            623,
+            615
+          ],
+          "series_old_pixels": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "stale_series": []
+        }
+      ],
+      "pass": true
+    },
+    "reports": {
+      "from": "dark",
+      "to": "light",
+      "css_colors_before": 15,
+      "css_colors_after": 15,
+      "stale_exclusive_css": [],
+      "applied_exclusive_css_count": 12,
+      "canvas_count": 0,
+      "canvas_before_distinct": [],
+      "canvas": [],
+      "pass": true
+    },
+    "help": {
+      "from": "light",
+      "to": "dark",
+      "css_colors_before": 17,
+      "css_colors_after": 20,
+      "stale_exclusive_css": [],
+      "applied_exclusive_css_count": 18,
+      "canvas_count": 0,
+      "canvas_before_distinct": [],
+      "canvas": [],
+      "pass": true
+    }
+  },
+  "_env": {
+    "browser_version": "153.0.4234.32",
+    "channel": "msedge",
+    "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36 Edg/153.0.0.0",
+    "viewport": [
+      1416,
+      861,
+      1,
+      2880,
+      1800
+    ]
+  },
+  "_elapsed_s": 61.5
+}

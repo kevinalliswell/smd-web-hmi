@@ -1,0 +1,793 @@
+{
+  "start_test_nested": {
+    "opener": {
+      "tag": "BUTTON",
+      "id": null,
+      "text": "▶ 启动试验",
+      "cls": "primary",
+      "hasCancelAttr": false,
+      "inDialog": false,
+      "dialogLabel": null
+    },
+    "outer_dialogs_open": 1,
+    "outer_focus_on_open": {
+      "tag": "INPUT",
+      "id": "start-test-id",
+      "text": "TEST-20260921-004",
+      "cls": "",
+      "hasCancelAttr": false,
+      "inDialog": true,
+      "dialogLabel": "启动试验"
+    },
+    "outer_tab_forward": [
+      {
+        "tag": "INPUT",
+        "id": "start-test-height",
+        "text": "",
+        "cls": "",
+        "hasCancelAttr": false,
+        "inDialog": true,
+        "dialogLabel": "启动试验"
+      },
+      {
+        "tag": "INPUT",
+        "id": "start-test-label",
+        "text": "",
+        "cls": "",
+        "hasCancelAttr": false,
+        "inDialog": true,
+        "dialogLabel": "启动试验"
+      },
+      {
+        "tag": "SUMMARY",
+        "id": null,
+        "text": "选择已下发配方",
+        "cls": "",
+        "hasCancelAttr": false,
+        "inDialog": true,
+        "dialogLabel": "启动试验"
+      },
+      {
+        "tag": "TEXTAREA",
+        "id": "start-test-notes",
+        "text": "",
+        "cls": "",
+        "hasCancelAttr": false,
+        "inDialog": true,
+        "dialogLabel": "启动试验"
+      },
+      {
+        "tag": "BUTTON",
+        "id": null,
+        "text": "取消",
+        "cls": "",
+        "hasCancelAttr": false,
+        "inDialog": true,
+        "dialogLabel": "启动试验"
+      },
+      {
+        "tag": "INPUT",
+        "id": "start-test-id",
+        "text": "TEST-20260921-004",
+        "cls": "",
+        "hasCancelAttr": false,
+        "inDialog": true,
+        "dialogLabel": "启动试验"
+      },
+      {
+        "tag": "INPUT",
+        "id": "start-test-height",
+        "text": "",
+        "cls": "",
+        "hasCancelAttr": false,
+        "inDialog": true,
+        "dialogLabel": "启动试验"
+      },
+      {
+        "tag": "INPUT",
+        "id": "start-test-label",
+        "text": "",
+        "cls": "",
+        "hasCancelAttr": false,
+        "inDialog": true,
+        "dialogLabel": "启动试验"
+      },
+      {
+        "tag": "SUMMARY",
+        "id": null,
+        "text": "选择已下发配方",
+        "cls": "",
+        "hasCancelAttr": false,
+        "inDialog": true,
+        "dialogLabel": "启动试验"
+      },
+      {
+        "tag": "TEXTAREA",
+        "id": "start-test-notes",
+        "text": "",
+        "cls": "",
+        "hasCancelAttr": false,
+        "inDialog": true,
+        "dialogLabel": "启动试验"
+      }
+    ],
+    "nested_opener": {
+      "tag": "BUTTON",
+      "id": null,
+      "text": "下一步",
+      "cls": "primary",
+      "hasCancelAttr": false,
+      "inDialog": true,
+      "dialogLabel": "启动试验"
+    },
+    "nested_dialogs_open": 2,
+    "nested_focus_on_open": {
+      "tag": "BUTTON",
+      "id": null,
+      "text": "取消",
+      "cls": "",
+      "hasCancelAttr": true,
+      "inDialog": true,
+      "dialogLabel": "⚠\n启动试验"
+    },
+    "nested_tab_forward": [
+      {
+        "tag": "BUTTON",
+        "id": null,
+        "text": "确认启动",
+        "cls": "danger",
+        "hasCancelAttr": false,
+        "inDialog": true,
+        "dialogLabel": "⚠\n启动试验"
+      },
+      {
+        "tag": "BUTTON",
+        "id": null,
+        "text": "取消",
+        "cls": "",
+        "hasCancelAttr": true,
+        "inDialog": true,
+        "dialogLabel": "⚠\n启动试验"
+      },
+      {
+        "tag": "BUTTON",
+        "id": null,
+        "text": "确认启动",
+        "cls": "danger",
+        "hasCancelAttr": false,
+        "inDialog": true,
+        "dialogLabel": "⚠\n启动试验"
+      },
+      {
+        "tag": "BUTTON",
+        "id": null,
+        "text": "取消",
+        "cls": "",
+        "hasCancelAttr": true,
+        "inDialog": true,
+        "dialogLabel": "⚠\n启动试验"
+      },
+      {
+        "tag": "BUTTON",
+        "id": null,
+        "text": "确认启动",
+        "cls": "danger",
+        "hasCancelAttr": false,
+        "inDialog": true,
+        "dialogLabel": "⚠\n启动试验"
+      },
+      {
+        "tag": "BUTTON",
+        "id": null,
+        "text": "取消",
+        "cls": "",
+        "hasCancelAttr": true,
+        "inDialog": true,
+        "dialogLabel": "⚠\n启动试验"
+      }
+    ],
+    "nested_tab_backward": [
+      {
+        "tag": "BUTTON",
+        "id": null,
+        "text": "确认启动",
+        "cls": "danger",
+        "hasCancelAttr": false,
+        "inDialog": true,
+        "dialogLabel": "⚠\n启动试验"
+      },
+      {
+        "tag": "BUTTON",
+        "id": null,
+        "text": "取消",
+        "cls": "",
+        "hasCancelAttr": true,
+        "inDialog": true,
+        "dialogLabel": "⚠\n启动试验"
+      },
+      {
+        "tag": "BUTTON",
+        "id": null,
+        "text": "确认启动",
+        "cls": "danger",
+        "hasCancelAttr": false,
+        "inDialog": true,
+        "dialogLabel": "⚠\n启动试验"
+      },
+      {
+        "tag": "BUTTON",
+        "id": null,
+        "text": "取消",
+        "cls": "",
+        "hasCancelAttr": true,
+        "inDialog": true,
+        "dialogLabel": "⚠\n启动试验"
+      },
+      {
+        "tag": "BUTTON",
+        "id": null,
+        "text": "确认启动",
+        "cls": "danger",
+        "hasCancelAttr": false,
+        "inDialog": true,
+        "dialogLabel": "⚠\n启动试验"
+      },
+      {
+        "tag": "BUTTON",
+        "id": null,
+        "text": "取消",
+        "cls": "",
+        "hasCancelAttr": true,
+        "inDialog": true,
+        "dialogLabel": "⚠\n启动试验"
+      }
+    ],
+    "dialogs_after_first_esc": 1,
+    "focus_after_first_esc": {
+      "tag": "BUTTON",
+      "id": null,
+      "text": "下一步",
+      "cls": "primary",
+      "hasCancelAttr": false,
+      "inDialog": true,
+      "dialogLabel": "启动试验"
+    },
+    "dialogs_after_second_esc": 0,
+    "focus_after_second_esc": {
+      "tag": "BUTTON",
+      "id": null,
+      "text": "▶ 启动试验",
+      "cls": "primary",
+      "hasCancelAttr": false,
+      "inDialog": false,
+      "dialogLabel": null
+    }
+  },
+  "password_reset": {
+    "opener": {
+      "tag": "BUTTON",
+      "id": null,
+      "text": "重置密码",
+      "cls": "",
+      "hasCancelAttr": false,
+      "inDialog": false,
+      "dialogLabel": null
+    },
+    "dialogs_open": 1,
+    "focus_on_open": {
+      "tag": "INPUT",
+      "id": "reset-password",
+      "text": "",
+      "cls": "",
+      "hasCancelAttr": false,
+      "inDialog": true,
+      "dialogLabel": "重置 admin 的密码"
+    },
+    "tab_forward": [
+      {
+        "tag": "INPUT",
+        "id": "reset-password-confirmation",
+        "text": "",
+        "cls": "",
+        "hasCancelAttr": false,
+        "inDialog": true,
+        "dialogLabel": "重置 admin 的密码"
+      },
+      {
+        "tag": "BUTTON",
+        "id": null,
+        "text": "取消",
+        "cls": "",
+        "hasCancelAttr": false,
+        "inDialog": true,
+        "dialogLabel": "重置 admin 的密码"
+      },
+      {
+        "tag": "INPUT",
+        "id": "reset-password",
+        "text": "",
+        "cls": "",
+        "hasCancelAttr": false,
+        "inDialog": true,
+        "dialogLabel": "重置 admin 的密码"
+      },
+      {
+        "tag": "INPUT",
+        "id": "reset-password-confirmation",
+        "text": "",
+        "cls": "",
+        "hasCancelAttr": false,
+        "inDialog": true,
+        "dialogLabel": "重置 admin 的密码"
+      },
+      {
+        "tag": "BUTTON",
+        "id": null,
+        "text": "取消",
+        "cls": "",
+        "hasCancelAttr": false,
+        "inDialog": true,
+        "dialogLabel": "重置 admin 的密码"
+      },
+      {
+        "tag": "INPUT",
+        "id": "reset-password",
+        "text": "",
+        "cls": "",
+        "hasCancelAttr": false,
+        "inDialog": true,
+        "dialogLabel": "重置 admin 的密码"
+      },
+      {
+        "tag": "INPUT",
+        "id": "reset-password-confirmation",
+        "text": "",
+        "cls": "",
+        "hasCancelAttr": false,
+        "inDialog": true,
+        "dialogLabel": "重置 admin 的密码"
+      },
+      {
+        "tag": "BUTTON",
+        "id": null,
+        "text": "取消",
+        "cls": "",
+        "hasCancelAttr": false,
+        "inDialog": true,
+        "dialogLabel": "重置 admin 的密码"
+      }
+    ],
+    "tab_backward": [
+      {
+        "tag": "INPUT",
+        "id": "reset-password-confirmation",
+        "text": "",
+        "cls": "",
+        "hasCancelAttr": false,
+        "inDialog": true,
+        "dialogLabel": "重置 admin 的密码"
+      },
+      {
+        "tag": "INPUT",
+        "id": "reset-password",
+        "text": "",
+        "cls": "",
+        "hasCancelAttr": false,
+        "inDialog": true,
+        "dialogLabel": "重置 admin 的密码"
+      },
+      {
+        "tag": "BUTTON",
+        "id": null,
+        "text": "取消",
+        "cls": "",
+        "hasCancelAttr": false,
+        "inDialog": true,
+        "dialogLabel": "重置 admin 的密码"
+      },
+      {
+        "tag": "INPUT",
+        "id": "reset-password-confirmation",
+        "text": "",
+        "cls": "",
+        "hasCancelAttr": false,
+        "inDialog": true,
+        "dialogLabel": "重置 admin 的密码"
+      },
+      {
+        "tag": "INPUT",
+        "id": "reset-password",
+        "text": "",
+        "cls": "",
+        "hasCancelAttr": false,
+        "inDialog": true,
+        "dialogLabel": "重置 admin 的密码"
+      },
+      {
+        "tag": "BUTTON",
+        "id": null,
+        "text": "取消",
+        "cls": "",
+        "hasCancelAttr": false,
+        "inDialog": true,
+        "dialogLabel": "重置 admin 的密码"
+      },
+      {
+        "tag": "INPUT",
+        "id": "reset-password-confirmation",
+        "text": "",
+        "cls": "",
+        "hasCancelAttr": false,
+        "inDialog": true,
+        "dialogLabel": "重置 admin 的密码"
+      },
+      {
+        "tag": "INPUT",
+        "id": "reset-password",
+        "text": "",
+        "cls": "",
+        "hasCancelAttr": false,
+        "inDialog": true,
+        "dialogLabel": "重置 admin 的密码"
+      }
+    ],
+    "dialogs_after_esc": 0,
+    "focus_after_close": {
+      "tag": "BUTTON",
+      "id": null,
+      "text": "重置密码",
+      "cls": "",
+      "hasCancelAttr": false,
+      "inDialog": false,
+      "dialogLabel": null
+    }
+  },
+  "parameters_confirm": {
+    "opener": {
+      "tag": "BUTTON",
+      "id": null,
+      "text": "下发参数",
+      "cls": "primary",
+      "hasCancelAttr": false,
+      "inDialog": false,
+      "dialogLabel": null
+    },
+    "trigger_disabled": false,
+    "dialogs_open": 1,
+    "focus_on_open": {
+      "tag": "BUTTON",
+      "id": null,
+      "text": "取消",
+      "cls": "",
+      "hasCancelAttr": true,
+      "inDialog": true,
+      "dialogLabel": "确认下发参数"
+    },
+    "tab_forward": [
+      {
+        "tag": "BUTTON",
+        "id": null,
+        "text": "确认下发",
+        "cls": "primary",
+        "hasCancelAttr": false,
+        "inDialog": true,
+        "dialogLabel": "确认下发参数"
+      },
+      {
+        "tag": "BUTTON",
+        "id": null,
+        "text": "取消",
+        "cls": "",
+        "hasCancelAttr": true,
+        "inDialog": true,
+        "dialogLabel": "确认下发参数"
+      },
+      {
+        "tag": "BUTTON",
+        "id": null,
+        "text": "确认下发",
+        "cls": "primary",
+        "hasCancelAttr": false,
+        "inDialog": true,
+        "dialogLabel": "确认下发参数"
+      },
+      {
+        "tag": "BUTTON",
+        "id": null,
+        "text": "取消",
+        "cls": "",
+        "hasCancelAttr": true,
+        "inDialog": true,
+        "dialogLabel": "确认下发参数"
+      },
+      {
+        "tag": "BUTTON",
+        "id": null,
+        "text": "确认下发",
+        "cls": "primary",
+        "hasCancelAttr": false,
+        "inDialog": true,
+        "dialogLabel": "确认下发参数"
+      },
+      {
+        "tag": "BUTTON",
+        "id": null,
+        "text": "取消",
+        "cls": "",
+        "hasCancelAttr": true,
+        "inDialog": true,
+        "dialogLabel": "确认下发参数"
+      }
+    ],
+    "tab_backward": [
+      {
+        "tag": "BUTTON",
+        "id": null,
+        "text": "确认下发",
+        "cls": "primary",
+        "hasCancelAttr": false,
+        "inDialog": true,
+        "dialogLabel": "确认下发参数"
+      },
+      {
+        "tag": "BUTTON",
+        "id": null,
+        "text": "取消",
+        "cls": "",
+        "hasCancelAttr": true,
+        "inDialog": true,
+        "dialogLabel": "确认下发参数"
+      },
+      {
+        "tag": "BUTTON",
+        "id": null,
+        "text": "确认下发",
+        "cls": "primary",
+        "hasCancelAttr": false,
+        "inDialog": true,
+        "dialogLabel": "确认下发参数"
+      },
+      {
+        "tag": "BUTTON",
+        "id": null,
+        "text": "取消",
+        "cls": "",
+        "hasCancelAttr": true,
+        "inDialog": true,
+        "dialogLabel": "确认下发参数"
+      },
+      {
+        "tag": "BUTTON",
+        "id": null,
+        "text": "确认下发",
+        "cls": "primary",
+        "hasCancelAttr": false,
+        "inDialog": true,
+        "dialogLabel": "确认下发参数"
+      },
+      {
+        "tag": "BUTTON",
+        "id": null,
+        "text": "取消",
+        "cls": "",
+        "hasCancelAttr": true,
+        "inDialog": true,
+        "dialogLabel": "确认下发参数"
+      }
+    ],
+    "dialogs_after_esc": 0,
+    "focus_after_close": {
+      "tag": "BUTTON",
+      "id": null,
+      "text": "下发参数",
+      "cls": "primary",
+      "hasCancelAttr": false,
+      "inDialog": false,
+      "dialogLabel": null
+    }
+  },
+  "offline_upgrade_entry": {
+    "controls_found": [],
+    "maintenance_panel_text": "版本与维护状态 当前版本：0.3.0 更新软件时，直接运行新版 Windows 安装器。安装器自动识别版本，保留数据库、配置和账号，无需在此填写版本号或准备升级。 实验或冷却进行中不能安装。设备离线或状态未知时，由本机管理员在安装器中确认设备已物理停机。 当前无维护操作 刷新状态"
+  },
+  "_prepare_running_test": {
+    "recipe_option": "a49dc816236d4f9d815b07056b10a66d",
+    "state_after_start": "Heating",
+    "stop_button_enabled": true
+  },
+  "stop_test": {
+    "opener": {
+      "tag": "BUTTON",
+      "id": null,
+      "text": "■ 停止试验",
+      "cls": "danger",
+      "hasCancelAttr": false,
+      "inDialog": false,
+      "dialogLabel": null
+    },
+    "dialogs_open": 1,
+    "focus_on_open": {
+      "tag": "BUTTON",
+      "id": null,
+      "text": "取消",
+      "cls": "",
+      "hasCancelAttr": true,
+      "inDialog": true,
+      "dialogLabel": "⚠\n停止试验"
+    },
+    "tab_forward": [
+      {
+        "tag": "BUTTON",
+        "id": null,
+        "text": "确认停止",
+        "cls": "danger",
+        "hasCancelAttr": false,
+        "inDialog": true,
+        "dialogLabel": "⚠\n停止试验"
+      },
+      {
+        "tag": "BUTTON",
+        "id": null,
+        "text": "取消",
+        "cls": "",
+        "hasCancelAttr": true,
+        "inDialog": true,
+        "dialogLabel": "⚠\n停止试验"
+      },
+      {
+        "tag": "BUTTON",
+        "id": null,
+        "text": "确认停止",
+        "cls": "danger",
+        "hasCancelAttr": false,
+        "inDialog": true,
+        "dialogLabel": "⚠\n停止试验"
+      },
+      {
+        "tag": "BUTTON",
+        "id": null,
+        "text": "取消",
+        "cls": "",
+        "hasCancelAttr": true,
+        "inDialog": true,
+        "dialogLabel": "⚠\n停止试验"
+      },
+      {
+        "tag": "BUTTON",
+        "id": null,
+        "text": "确认停止",
+        "cls": "danger",
+        "hasCancelAttr": false,
+        "inDialog": true,
+        "dialogLabel": "⚠\n停止试验"
+      },
+      {
+        "tag": "BUTTON",
+        "id": null,
+        "text": "取消",
+        "cls": "",
+        "hasCancelAttr": true,
+        "inDialog": true,
+        "dialogLabel": "⚠\n停止试验"
+      },
+      {
+        "tag": "BUTTON",
+        "id": null,
+        "text": "确认停止",
+        "cls": "danger",
+        "hasCancelAttr": false,
+        "inDialog": true,
+        "dialogLabel": "⚠\n停止试验"
+      },
+      {
+        "tag": "BUTTON",
+        "id": null,
+        "text": "取消",
+        "cls": "",
+        "hasCancelAttr": true,
+        "inDialog": true,
+        "dialogLabel": "⚠\n停止试验"
+      }
+    ],
+    "tab_backward": [
+      {
+        "tag": "BUTTON",
+        "id": null,
+        "text": "确认停止",
+        "cls": "danger",
+        "hasCancelAttr": false,
+        "inDialog": true,
+        "dialogLabel": "⚠\n停止试验"
+      },
+      {
+        "tag": "BUTTON",
+        "id": null,
+        "text": "取消",
+        "cls": "",
+        "hasCancelAttr": true,
+        "inDialog": true,
+        "dialogLabel": "⚠\n停止试验"
+      },
+      {
+        "tag": "BUTTON",
+        "id": null,
+        "text": "确认停止",
+        "cls": "danger",
+        "hasCancelAttr": false,
+        "inDialog": true,
+        "dialogLabel": "⚠\n停止试验"
+      },
+      {
+        "tag": "BUTTON",
+        "id": null,
+        "text": "取消",
+        "cls": "",
+        "hasCancelAttr": true,
+        "inDialog": true,
+        "dialogLabel": "⚠\n停止试验"
+      },
+      {
+        "tag": "BUTTON",
+        "id": null,
+        "text": "确认停止",
+        "cls": "danger",
+        "hasCancelAttr": false,
+        "inDialog": true,
+        "dialogLabel": "⚠\n停止试验"
+      },
+      {
+        "tag": "BUTTON",
+        "id": null,
+        "text": "取消",
+        "cls": "",
+        "hasCancelAttr": true,
+        "inDialog": true,
+        "dialogLabel": "⚠\n停止试验"
+      },
+      {
+        "tag": "BUTTON",
+        "id": null,
+        "text": "确认停止",
+        "cls": "danger",
+        "hasCancelAttr": false,
+        "inDialog": true,
+        "dialogLabel": "⚠\n停止试验"
+      },
+      {
+        "tag": "BUTTON",
+        "id": null,
+        "text": "取消",
+        "cls": "",
+        "hasCancelAttr": true,
+        "inDialog": true,
+        "dialogLabel": "⚠\n停止试验"
+      }
+    ],
+    "dialogs_after_esc": 0,
+    "focus_after_close": {
+      "tag": "BUTTON",
+      "id": null,
+      "text": "■ 停止试验",
+      "cls": "danger",
+      "hasCancelAttr": false,
+      "inDialog": false,
+      "dialogLabel": null
+    }
+  },
+  "_cleanup_stop_test": {
+    "state_after_stop": "End"
+  },
+  "_env": {
+    "browser_version": "153.0.4234.32",
+    "channel": "msedge",
+    "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36 Edg/153.0.0.0",
+    "viewport": [
+      1416,
+      861,
+      1,
+      2880,
+      1800
+    ]
+  },
+  "_elapsed_s": 50.7
+}

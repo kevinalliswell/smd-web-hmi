@@ -6,7 +6,7 @@
 
 仓库保持私有，GitHub Release 发行资产的下载需要本仓库访问权限。
 
-上一候选 `0.3.0-rc.5` 已完成 HOST-2006—2009 的软件实现及 Windows CI 安装版联调，完整构建身份、实际产物摘要和清理结果见[安装版闭环验证](verification/2026-09-08-installed-hostcomm-loop.md)。候选交付状态、最终提交与字节以对应标签流水线及 Release 附件为准。固件文档修订为 `2.0-doc.3`，协议仍为 `2.0 / 2.0-design.1`；交接要求与未验边界见[固件交接](hostcomm/v2/firmware-handoff.md)和[兼容核对](hostcomm/v2/compatibility.md)。Win10/11 WebView2 人工验收、真实 STM32、安全联锁与持续运行验收仍未完成。
+上一候选 `0.3.0-rc.5` 已完成 HOST-2006—2009 的软件实现及 Windows CI 安装版联调，完整构建身份、实际产物摘要和清理结果见[安装版闭环验证](verification/2026-09-08-installed-hostcomm-loop.md)。候选交付状态、最终提交与字节以对应标签流水线及 Release 附件为准。固件文档修订为 `2.0-doc.3`，协议仍为 `2.0 / 2.0-design.1`；交接要求与未验边界见[固件交接](hostcomm/v2/firmware-handoff.md)和[兼容核对](hostcomm/v2/compatibility.md)。Win10/11 WebView2 人工验收已在 `main@0515727` 上完成一轮有界执行——中文安装目录真实首次安装、桌面壳与浏览器双入口一致、断网离线可用、静默卸载清理，见[真机 UI 验收](verification/2026-09-21-ui-real-machine.md#7-webview2-桌面壳与浏览器双入口)；该结论只绑定该提交与首次安装路径，不含覆盖升级、回滚、代码签名与现场信任。真实 STM32、安全联锁与持续运行验收仍未完成。
 
 2026-09-07 用户确认清理 rc.2 残留服务后 rc.4 安装成功，见[安装排查记录](verification/2026-09-06-windows-installer-errors.md)。该现场结果不证明当时已完成覆盖升级、空库核验或 HostComm 联调，本轮 CI 结果也不代替该现场验收。
 
