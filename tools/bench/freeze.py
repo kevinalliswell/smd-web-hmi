@@ -7,6 +7,7 @@ import hashlib
 import importlib.metadata
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -90,7 +91,13 @@ def main() -> None:
     shutil.copytree(work / "browsers", bundle / "browsers")
     shutil.copy2(ROOT / "tools/bench/README.md", bundle / "README.md")
     version = subprocess.check_output([sys.executable, str(ROOT / "scripts/release/metadata.py")], text=True).strip()
-    commit = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
+    # REST 归档检出(无 .git)时回退 CI 注入的 GITHUB_SHA(同一棵树)。
+    try:
+        commit = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
+    except (OSError, subprocess.CalledProcessError):
+        commit = os.environ.get("GITHUB_SHA", "")
+        if not re.fullmatch(r"[0-9a-f]{40}", commit):
+            raise
     import playwright
 
     browser_metadata = json.loads(

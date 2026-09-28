@@ -80,11 +80,11 @@ async function onConfirm() {
   color: var(--danger-text);
   border-radius: 6px;
   padding: 10px;
-  font-size: 12px;
+  font-size: var(--fs-base);
   line-height: 1.6;
 }
 .err {
   color: var(--danger-text);
-  font-size: 12px;
+  font-size: var(--fs-base);
 }
 </style>

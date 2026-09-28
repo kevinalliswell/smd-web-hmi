@@ -42,7 +42,12 @@ function onLogout() {
     >
       <span aria-hidden="true">☰</span>
     </button>
-    <div class="brand">熔滴炉 <span class="muted">Web 上位机</span></div>
+    <div class="brand">
+      <span class="brand-glyph" aria-hidden="true">
+        <svg width="15" height="15" viewBox="0 0 24 24"><path d="M12 3.5c3 3.6 4.9 6.3 4.9 8.9a4.9 4.9 0 0 1-9.8 0c0-2.6 1.9-5.3 4.9-8.9Z" fill="var(--bg-chrome)" /></svg>
+      </span>
+      熔滴炉 <span class="muted">Web 上位机</span>
+    </div>
     <div class="hd-sep" />
     <div class="hd-badge"><span class="dot" :class="commDot" />{{ commLabel }}</div>
     <div class="hd-badge">状态：<b style="color: var(--accent)">{{ currentState }}</b></div>
@@ -66,21 +71,26 @@ function onLogout() {
 <style scoped>
 #header {
   display: flex; align-items: center; height: var(--header-h);
-  background: var(--bg-card); border-bottom: 1px solid var(--border);
-  padding: 0 16px; gap: 12px; flex-shrink: 0;
+  background: var(--bg-chrome); border-bottom: 1px solid var(--border);
+  padding: 0 20px; gap: 12px; flex-shrink: 0;
 }
 .nav-toggle { display: none; width: 34px; height: 34px; padding: 0; font-size: 18px; }
-.brand { font-weight: 700; font-size: 15px; }
+.brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 15px; }
+.brand-glyph {
+  width: 26px; height: 26px; border-radius: 7px; background: var(--accent);
+  display: grid; place-items: center; flex: none;
+}
 .hd-sep { width: 1px; height: 24px; background: var(--border); }
 .hd-badge {
-  display: flex; align-items: center; gap: 6px; padding: 3px 10px;
-  border-radius: 4px; background: var(--bg-card2); border: 1px solid var(--border);
+  display: flex; align-items: center; gap: 7px; padding: 4px 12px;
+  border-radius: var(--radius-pill); background: var(--bg-card2); border: 1px solid var(--border);
+  font-size: var(--fs-base); color: var(--text-sec);
 }
 .spacer { flex: 1; }
-.hd-bell { position: relative; width: 34px; height: 34px; padding: 0; font-size: 16px; }
+.hd-bell { position: relative; width: 34px; height: 34px; padding: 0; font-size: var(--fs-xl); }
 .alarm-count {
-  position: absolute; top: -2px; right: -2px; background: var(--red); color: #fff;
-  font-size: 10px; font-weight: 700; border-radius: 8px; padding: 1px 4px;
+  position: absolute; top: -2px; right: -2px; background: var(--red); color: var(--on-red);
+  font-size: var(--fs-xs); font-weight: 700; border-radius: var(--radius-pill); padding: 1px 4px;
 }
 .hd-user { color: var(--text-sec); }
 
@@ -102,6 +112,6 @@ function onLogout() {
 @media (max-width: 460px) {
   #header { padding: 0 8px; }
   .brand .muted { display: none; }
-  .brand { font-size: 14px; }
+  .brand { font-size: var(--fs-lg); }
 }
 </style>

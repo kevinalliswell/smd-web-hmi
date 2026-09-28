@@ -188,7 +188,7 @@ label {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  font-size: 12px;
+  font-size: var(--fs-base);
   color: var(--text-sec);
   min-width: 0;
 }

@@ -1,21 +1,36 @@
+// 图表取色管道：所有图表颜色在渲染时从 CSS 令牌解析,换肤经 smd-theme-change 全自动刷新。
+// 兜底值与 theme.css 深色令牌同步维护。
 const FALLBACK = {
-  grid: '#2a3150',
-  tick: '#a0aac0',
+  grid: '#232c40',
+  tick: '#9fabc4',
   accent: '#38bdf8',
-  series1: '#3987e5',
-  series2: '#199e70',
+  series: ['#3987e5', '#0f9b89', '#465ec4', '#32a0c5', '#9a5169', '#a57be8', '#73599e', '#ca6dc3'],
+  co: '#f97316',
+  accentSoft: 'rgba(56, 189, 248, 0.08)',
 }
 
 export function getChartTheme() {
   const styles = getComputedStyle(document.documentElement)
   const token = (name, fallback) => styles.getPropertyValue(name).trim() || fallback
+  const series = FALLBACK.series.map((fallback, i) => token(`--series-${i + 1}`, fallback))
   return {
     grid: token('--chart-grid', FALLBACK.grid),
     tick: token('--chart-tick', FALLBACK.tick),
     accent: token('--accent', FALLBACK.accent),
-    series1: token('--series-1', FALLBACK.series1),
-    series2: token('--series-2', FALLBACK.series2),
+    // 兼容既有调用:series1/2 与 series[0]/[1] 同值
+    series1: series[0],
+    series2: series[1],
+    series,
+    co: token('--orange', FALLBACK.co),
+    accentSoft: token('--accent-soft', FALLBACK.accentSoft),
   }
+}
+
+// #rrggbb → rgba(r, g, b, alpha);非 6 位 hex 原样返回(令牌本身已带透明度时)
+export function withAlpha(color, alpha) {
+  if (!/^#[0-9a-fA-F]{6}$/.test(color)) return color
+  const value = parseInt(color.slice(1), 16)
+  return `rgba(${(value >> 16) & 255}, ${(value >> 8) & 255}, ${value & 255}, ${alpha})`
 }
 
 export function applyChartTheme(chart) {
@@ -27,11 +42,19 @@ export function applyChartTheme(chart) {
     if (scale.ticks) scale.ticks.color = name === 'yTemp' ? colors.accent : colors.tick
     if (scale.title) scale.title.color = name === 'yTemp' ? colors.accent : colors.tick
   })
-  const seriesColors = [colors.series1, colors.series2]
+  const seriesColors = colors.series
   ;(chart.data?.datasets || []).forEach((ds) => {
-    // 仅刷新按系列槽着色的数据集；显式指定颜色的（如 CO 橙）保持不变
+    // 语义色数据集(CO 橙)按语义令牌刷新,保证换肤后曲线与图例/标签同色
+    if (ds.seriesSemantic === 'co') {
+      ds.borderColor = colors.co
+      return
+    }
+    // 仅刷新按系列槽着色的数据集；无标记的裸显式颜色保持不变
     if (ds.seriesSlot === undefined) return
-    ds.borderColor = seriesColors[ds.seriesSlot % seriesColors.length]
+    const color = seriesColors[ds.seriesSlot % seriesColors.length]
+    ds.borderColor = color
+    // 带填充的槽位数据集(如实时炉温)同步刷新同色淡填充
+    if (ds.fill) ds.backgroundColor = withAlpha(color, 0.08)
   })
   const legendLabels = chart.options.plugins?.legend?.labels
   if (legendLabels) legendLabels.color = colors.tick

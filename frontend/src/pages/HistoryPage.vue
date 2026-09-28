@@ -349,35 +349,6 @@ onMounted(loadTests)
 </template>
 
 <style scoped>
-.page {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-.page-title {
-  font-size: 18px;
-  font-weight: 700;
-}
-.banner {
-  border-radius: 6px;
-  padding: 8px 12px;
-  font-size: 12px;
-}
-.banner.ok {
-  background: var(--green-dim);
-  border: 1px solid var(--green);
-  color: var(--success-text);
-}
-.banner.err {
-  background: var(--red-dim);
-  border: 1px solid var(--red);
-  color: var(--danger-text);
-}
-.banner.info {
-  background: var(--accent-dim);
-  border: 1px solid var(--accent);
-  color: var(--accent);
-}
 .layout {
   display: grid;
   grid-template-columns: 360px 1fr;
@@ -398,10 +369,6 @@ onMounted(loadTests)
   flex-direction: column;
   gap: 16px;
 }
-.card-title {
-  font-weight: 700;
-  margin-bottom: 10px;
-}
 .card-head {
   display: flex;
   align-items: center;
@@ -411,13 +378,10 @@ onMounted(loadTests)
 .card-head .card-title {
   margin-bottom: 0;
 }
-.spacer {
-  flex: 1;
-}
 .t-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 12px;
+  font-size: var(--fs-base);
 }
 .t-table th,
 .t-table td {
@@ -428,7 +392,7 @@ onMounted(loadTests)
 .t-table th {
   color: var(--text-sec);
   font-weight: 600;
-  font-size: 11px;
+  font-size: var(--fs-sm);
 }
 .t-table tbody tr {
   cursor: pointer;
@@ -440,7 +404,7 @@ onMounted(loadTests)
   background: var(--accent-dim);
 }
 .small {
-  font-size: 11px;
+  font-size: var(--fs-sm);
   color: var(--text-sec);
 }
 .running {
@@ -461,13 +425,13 @@ onMounted(loadTests)
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 8px;
-  font-size: 13px;
+  font-size: var(--fs-md);
 }
 .meta .k {
   display: inline-block;
   min-width: 64px;
   color: var(--text-sec);
-  font-size: 12px;
+  font-size: var(--fs-base);
 }
 @media (max-width: 1100px) {
   .layout {

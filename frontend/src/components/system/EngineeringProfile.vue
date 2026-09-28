@@ -31,10 +31,10 @@ const rows = computed(() => {
 <style scoped>
 .profile { display: flex; flex-direction: column; gap: 12px; }
 h2 { font-size: 15px; }
-p, dl, table, summary { font-size: 12px; line-height: 1.6; }
+p, dl, table, summary { font-size: var(--fs-base); line-height: 1.6; }
 dl { display: grid; grid-template-columns: auto 1fr; gap: 8px 16px; }
 dt, th { color: var(--text-sec); text-align: left; }
 dd { margin: 0; overflow-wrap: anywhere; }
 th, td { padding: 5px 8px; border-bottom: 1px solid var(--border); }
-pre { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 11px; padding-top: 12px; }
+pre { white-space: pre-wrap; overflow-wrap: anywhere; font-size: var(--fs-sm); padding-top: 12px; }
 </style>

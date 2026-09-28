@@ -4,6 +4,7 @@ import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useDeviceStore } from '@/stores/device'
 import { useChart } from '@/composables/useChart'
+import { getChartTheme, withAlpha } from '@/utils/chartTheme'
 import { formatTime } from '@/utils/dateTime'
 
 const props = defineProps({
@@ -16,12 +17,16 @@ const canvas = ref(null)
 const chart = useChart()
 
 onMounted(() => {
+  // PV/SV 均按系列槽位取色(炉温=槽0,与趋势/历史页一致;SV 用槽 3 并以虚线区分)——
+  // 此前 SV 用的报警黄违反"曲线不得与报警同色"的约束
+  const colors = getChartTheme()
   chart.create(canvas.value, [
     {
       label: '炉温 PV (℃)',
       data: [],
-      borderColor: '#38bdf8',
-      backgroundColor: 'rgba(56,189,248,0.08)',
+      borderColor: colors.series[0],
+      backgroundColor: withAlpha(colors.series[0], 0.08),
+      seriesSlot: 0,
       borderWidth: 2,
       pointRadius: 0,
       tension: 0.25,
@@ -30,7 +35,8 @@ onMounted(() => {
     {
       label: '炉温 SV (℃)',
       data: [],
-      borderColor: '#f59e0b',
+      borderColor: colors.series[3],
+      seriesSlot: 3,
       borderWidth: 1.5,
       borderDash: [5, 4],
       pointRadius: 0,

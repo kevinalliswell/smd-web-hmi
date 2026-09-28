@@ -103,24 +103,21 @@ const TIPS = [
 </template>
 
 <style scoped>
-.page { display: flex; flex-direction: column; gap: 16px; }
-.page-title { font-size: 18px; font-weight: 700; }
 .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start; }
-.card-title { font-weight: 700; margin-bottom: 10px; }
 .card.danger { border-color: var(--red); }
 .card.danger .card-title { color: var(--danger-text); }
-ul { margin: 0; padding-left: 18px; line-height: 1.9; font-size: 13px; }
-.t { width: 100%; border-collapse: collapse; font-size: 13px; }
+ul { margin: 0; padding-left: 18px; line-height: 1.9; font-size: var(--fs-md); }
+.t { width: 100%; border-collapse: collapse; font-size: var(--fs-md); }
 .t th, .t td { text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
 .t th { color: var(--text-sec); font-weight: 600; width: 110px; white-space: nowrap; }
 .t th.l2 { color: var(--yellow); }
 .t th.l3 { color: var(--red); }
 .flow { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
 .flow li { display: grid; grid-template-columns: 28px 150px 1fr; align-items: center; gap: 10px; }
-.seq { width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; background: var(--accent-dim); color: var(--accent); font-weight: 700; font-size: 12px; }
+.seq { width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; background: var(--accent-dim); color: var(--accent); font-weight: 700; font-size: var(--fs-base); }
 .name { font-weight: 600; }
-.co { display: inline-block; margin-left: 6px; font-size: 9px; font-weight: 700; background: var(--orange); color: var(--on-orange); border-radius: 3px; padding: 0 4px; }
-.desc { font-size: 12px; line-height: 1.5; }
-.about { font-size: 12px; line-height: 1.6; }
+.co { display: inline-block; margin-left: 6px; font-size: var(--fs-2xs); font-weight: 700; background: var(--orange); color: var(--on-orange); border-radius: 3px; padding: 0 4px; }
+.desc { font-size: var(--fs-base); line-height: 1.5; }
+.about { font-size: var(--fs-base); line-height: 1.6; }
 @media (max-width: 1000px) { .grid { grid-template-columns: 1fr; } .flow li { grid-template-columns: 28px 1fr; } .flow .desc { grid-column: 2; } }
 </style>

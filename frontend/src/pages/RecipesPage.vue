@@ -318,14 +318,13 @@ async function activate() {
   </div>
 </template>
 <style scoped>
-.page,
 .editor {
   display: flex;
   flex-direction: column;
   gap: 16px;
 }
 h1 {
-  font-size: 18px;
+  font-size: var(--fs-title);
 }
 .selection {
   display: grid;
@@ -345,7 +344,7 @@ h1 {
 }
 .digest {
   overflow-wrap: anywhere;
-  font-size: 12px;
+  font-size: var(--fs-base);
 }
 .metadata {
   display: grid;
@@ -359,7 +358,7 @@ label {
   flex-direction: column;
   gap: 6px;
   color: var(--text-sec);
-  font-size: 12px;
+  font-size: var(--fs-base);
 }
 .message,
 .validation {

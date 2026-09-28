@@ -12,8 +12,18 @@ import pytest
 
 from app.services.gateway_lease import GatewayLease, GatewayLeaseError
 
+
+def _windows_task_scheduler_admin() -> bool:
+    """注册 LocalService 计划任务需要提升的管理员令牌;非管理员自托管 runner 实探为否。"""
+    if os.name != "nt" or os.environ.get("GITHUB_ACTIONS") != "true":
+        return False
+    import ctypes
+
+    return bool(ctypes.windll.shell32.IsUserAnAdmin())
+
+
 pytestmark = pytest.mark.skipif(
-    os.name != "nt" or os.environ.get("GITHUB_ACTIONS") != "true",
+    not _windows_task_scheduler_admin(),
     reason="requires isolated Windows GitHub runner with Task Scheduler administrator rights",
 )
 

@@ -7,6 +7,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
+from windows_capabilities import requires_admin_owner
 
 SCRIPT = Path(__file__).resolve().parents[2] / "deploy/windows/reset-test-installation.ps1"
 SMOKE_SCRIPT = Path(__file__).resolve().parents[2] / "scripts/release/test-reset-smoke.ps1"
@@ -211,6 +212,7 @@ def trees(tmp_path):
     return data, program, backup
 
 
+@requires_admin_owner
 def test_full_backup_preserves_empty_directories_and_verifies_bytes(powershell, tmp_path, trees):
     data, program, backup = trees
     result = run(
@@ -248,6 +250,7 @@ def test_copy_corruption_fails_verification_and_keeps_originals(powershell, tmp_
     assert backup.is_dir()
 
 
+@requires_admin_owner
 def test_failed_backup_never_removes_registration_or_retires_originals(powershell, tmp_path, trees):
     data, program, _ = trees
     backup_root = tmp_path / "reset-backups"
@@ -289,6 +292,7 @@ def test_junction_is_rejected_without_following_or_changing_target(powershell, t
     assert (program / "service.exe").read_bytes() == b"program fixture"
 
 
+@requires_admin_owner
 def test_retired_tree_removes_service_ownership_and_access(powershell, tmp_path, trees):
     data, _, backup = trees
     retired = backup / "retired-data"
@@ -484,6 +488,7 @@ def test_backup_timing_projection_rejects_invalid_data_and_drops_private_fields(
     assert str(tmp_path) not in result.stdout
 
 
+@requires_admin_owner
 def test_real_backup_records_all_thirteen_steps_without_exposing_source_contents(powershell, tmp_path, trees):
     data, program, backup = trees
     result = run(
@@ -518,6 +523,7 @@ def test_real_backup_records_all_thirteen_steps_without_exposing_source_contents
 
 
 @pytest.mark.parametrize("copy_fails", [False, True])
+@requires_admin_owner
 def test_timing_write_failure_preserves_original_backup_error_or_success(powershell, tmp_path, trees, copy_fails):
     data, program, backup = trees
     body = (

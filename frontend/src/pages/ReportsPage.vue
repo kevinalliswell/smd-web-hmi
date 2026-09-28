@@ -137,24 +137,16 @@ onMounted(loadAll)
 </template>
 
 <style scoped>
-.page { display: flex; flex-direction: column; gap: 16px; }
 .page-head { display: flex; align-items: center; gap: 12px; }
-.page-title { font-size: 18px; font-weight: 700; }
-.spacer { flex: 1; }
-.banner { border-radius: 6px; padding: 8px 12px; font-size: 12px; }
-.banner.ok { background: var(--green-dim); border: 1px solid var(--green); color: var(--success-text); }
-.banner.err { background: var(--red-dim); border: 1px solid var(--red); color: var(--danger-text); }
-.banner.info { background: var(--accent-dim); border: 1px solid var(--accent); color: var(--accent); }
-.card-title { font-weight: 700; margin-bottom: 10px; }
 .form { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
-.form label { color: var(--text-sec); font-size: 12px; }
+.form label { color: var(--text-sec); font-size: var(--fs-base); }
 .height-input { width: 180px; }
 .actions { display: flex; gap: 10px; flex-wrap: wrap; }
-.rep-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.rep-table { width: 100%; border-collapse: collapse; font-size: var(--fs-base); }
 .rep-table th, .rep-table td { text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--border); }
-.rep-table th { color: var(--text-sec); font-weight: 600; font-size: 11px; }
-.small { font-size: 11px; color: var(--text-sec); }
+.rep-table th { color: var(--text-sec); font-weight: 600; font-size: var(--fs-sm); }
+.small { font-size: var(--fs-sm); color: var(--text-sec); }
 .empty { text-align: center; padding: 18px; }
-.dl { padding: 3px 12px; font-size: 12px; }
+.dl { padding: 3px 12px; font-size: var(--fs-base); }
 @media (max-width: 560px) { .form > * { width: 100%; } .actions { flex-direction: column; } }
 </style>

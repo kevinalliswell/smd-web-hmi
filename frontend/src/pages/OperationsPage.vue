@@ -80,11 +80,10 @@ onMounted(() => load())
   </div>
 </template>
 <style scoped>
-.page { display: flex; flex-direction: column; gap: 16px; }
 .page-head, .actions { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .source-logs, label { display: flex; flex-direction: column; gap: 10px; }
 .source-logs input { width: min(100%, 320px); }
-.source-logs label { font-size: 12px; }
-h1 { font-size: 18px; } h2 { font-size: 14px; } p { line-height: 1.6; font-size: 12px; }
-h2 span { margin-left: 12px; font-size: 12px; font-weight: 400; }
+.source-logs label { font-size: var(--fs-base); }
+h1 { font-size: var(--fs-title); } h2 { font-size: var(--fs-lg); } p { line-height: 1.6; font-size: var(--fs-base); }
+h2 span { margin-left: 12px; font-size: var(--fs-base); font-weight: 400; }
 </style>

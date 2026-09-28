@@ -302,50 +302,19 @@ onMounted(load)
 </template>
 
 <style scoped>
-.page {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
 .page-head {
   display: flex;
   align-items: center;
   gap: 12px;
 }
-.page-title {
-  font-size: 18px;
-  font-weight: 700;
-}
 .crc {
   color: var(--text-sec);
-  font-size: 12px;
-}
-.spacer {
-  flex: 1;
-}
-.banner {
-  border-radius: 6px;
-  padding: 8px 12px;
-  font-size: 12px;
-}
-.banner.ok {
-  background: var(--green-dim);
-  border: 1px solid var(--green);
-  color: var(--success-text);
-}
-.banner.err {
-  background: var(--red-dim);
-  border: 1px solid var(--red);
-  color: var(--danger-text);
+  font-size: var(--fs-base);
 }
 .groups {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
   gap: 16px;
-}
-.card-title {
-  font-weight: 700;
-  margin-bottom: 10px;
 }
 .fields {
   display: flex;
@@ -360,7 +329,7 @@ onMounted(load)
 }
 .field label {
   color: var(--text-sec);
-  font-size: 12px;
+  font-size: var(--fs-base);
 }
 .field input {
   width: 130px;
@@ -378,7 +347,7 @@ onMounted(load)
 .diff {
   width: 100%;
   border-collapse: collapse;
-  font-size: 12px;
+  font-size: var(--fs-base);
 }
 .diff th,
 .diff td {

@@ -211,24 +211,18 @@ onMounted(loadAll)
 </template>
 
 <style scoped>
-.page { display: flex; flex-direction: column; gap: 16px; }
-.page-title { font-size: 18px; font-weight: 700; }
-.banner { border-radius: 6px; padding: 8px 12px; font-size: 12px; }
-.banner.ok { background: var(--green-dim); border: 1px solid var(--green); color: var(--success-text); }
-.banner.err { background: var(--red-dim); border: 1px solid var(--red); color: var(--danger-text); }
-.card-title { font-weight: 700; margin-bottom: 10px; }
-.sub-title { font-weight: 600; margin: 12px 0 8px; color: var(--text-sec); font-size: 12px; }
-.kv { border-collapse: collapse; font-size: 13px; }
+.sub-title { font-weight: 600; margin: 12px 0 8px; color: var(--text-sec); font-size: var(--fs-base); }
+.kv { border-collapse: collapse; font-size: var(--fs-md); }
 .kv th, .kv td { text-align: left; padding: 5px 10px; }
 .kv th { color: var(--text-sec); font-weight: 600; width: 120px; }
-.small { font-size: 11px; }
+.small { font-size: var(--fs-sm); }
 .actions { margin-top: 12px; }
 .form { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-.u-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.u-table { width: 100%; border-collapse: collapse; font-size: var(--fs-base); }
 .u-table th, .u-table td { text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--border); }
-.u-table th { color: var(--text-sec); font-weight: 600; font-size: 11px; }
+.u-table th { color: var(--text-sec); font-weight: 600; font-size: var(--fs-sm); }
 .ops { display: flex; gap: 6px; }
-.ops button { padding: 3px 10px; font-size: 12px; }
+.ops button { padding: 3px 10px; font-size: var(--fs-base); }
 .on { color: var(--green); }
 .off { color: var(--text-muted); }
 .new-user { margin-top: 8px; }

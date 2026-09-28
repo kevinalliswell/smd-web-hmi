@@ -36,7 +36,7 @@ function reload() {
   flex-wrap: wrap;
 }
 p {
-  font-size: 12px;
+  font-size: var(--fs-base);
   margin-top: 6px;
   line-height: 1.6;
 }

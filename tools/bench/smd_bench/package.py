@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+import os
 import re
 import subprocess
 import sys
@@ -47,7 +48,13 @@ def tool_manifest() -> dict:
     from app import __version__
 
     repo = Path(__file__).resolve().parents[3]
-    commit = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=repo, text=True).strip()
+    # REST 归档检出(无 .git)时回退 CI 注入的 GITHUB_SHA(同一棵树)。
+    try:
+        commit = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=repo, text=True).strip()
+    except (OSError, subprocess.CalledProcessError):
+        commit = os.environ.get("GITHUB_SHA", "")
+        if not re.fullmatch(r"[0-9a-f]{40}", commit):
+            raise
     return {"version": __version__, "commit": commit, "source_execution": True, "scenario_version": "1"}
 
 

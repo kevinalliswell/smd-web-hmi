@@ -135,24 +135,19 @@ onBeforeUnmount(() => clearInterval(timer))
 </template>
 
 <style scoped>
-.page { display: flex; flex-direction: column; gap: 16px; }
 .page-head { display: flex; align-items: center; gap: 12px; }
-.page-title { font-size: 18px; font-weight: 700; }
-.spacer { flex: 1; }
-.banner.err { background: var(--red-dim); border: 1px solid var(--red); color: var(--danger-text); border-radius: 6px; padding: 8px 12px; font-size: 12px; }
 .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start; }
-.card-title { font-weight: 700; margin-bottom: 10px; }
-.kv { width: 100%; border-collapse: collapse; font-size: 12px; }
+.kv { width: 100%; border-collapse: collapse; font-size: var(--fs-base); }
 .kv th, .kv td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border); }
 .kv th { color: var(--text-sec); font-weight: 600; width: 130px; }
 .dev-list { display: flex; flex-direction: column; gap: 6px; }
 .dev-row { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 5px; background: var(--bg-card2); }
 .dev-name { font-weight: 600; }
-.dev-status { margin-left: auto; font-size: 12px; }
-.dev-alarm { color: var(--red); font-size: 11px; font-family: monospace; }
-.note { font-size: 11px; margin-top: 8px; }
+.dev-status { margin-left: auto; font-size: var(--fs-base); }
+.dev-alarm { color: var(--red); font-size: var(--fs-sm); font-family: monospace; }
+.note { font-size: var(--fs-sm); margin-top: 8px; }
 .dbg-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-.dbg-out { margin-top: 12px; background: var(--bg-base); border: 1px solid var(--border); border-radius: 6px; padding: 10px; font-size: 11px; max-height: 360px; overflow: auto; }
+.dbg-out { margin-top: 12px; background: var(--bg-base); border: 1px solid var(--border); border-radius: 6px; padding: 10px; font-size: var(--fs-sm); max-height: 360px; overflow: auto; }
 @media (max-width: 1000px) { .grid { grid-template-columns: 1fr; } }
 @media (max-width: 560px) { .page-head { align-items: stretch; flex-direction: column; } .dev-row { align-items: flex-start; flex-wrap: wrap; } }
 </style>

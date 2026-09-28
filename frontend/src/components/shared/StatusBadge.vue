@@ -19,8 +19,9 @@ defineProps({
 
 <style scoped>
 .status-row {
-  display: flex; align-items: center; gap: 7px; padding: 5px 8px;
-  border-radius: 5px; background: var(--bg-card2);
+  display: flex; align-items: center; gap: 9px; padding: 6px 10px;
+  border-radius: var(--radius-lg); background: var(--bg-card2);
+  border: 1px solid var(--border);
 }
 .status-label { color: var(--text-sec); }
 .status-val { margin-left: auto; font-weight: 600; }

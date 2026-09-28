@@ -8,6 +8,7 @@ import pytest
 from smd_bench import windows
 from smd_bench.diagnostics import failure_details
 from smd_desktop import windows_powershell
+from windows_capabilities import requires_admin_owner
 
 
 def test_bench_child_isolates_inherited_powershell_modules(tmp_path, monkeypatch):
@@ -98,6 +99,7 @@ def test_real_service_wait_diagnostic_does_not_publish_exception_message():
 
 
 @pytest.mark.skipif(os.name != "nt", reason="requires real Windows PowerShell 5.1 ACL behavior")
+@requires_admin_owner
 def test_real_bench_acl_ignores_incompatible_parent_modules(tmp_path, monkeypatch):
     for name in ("Microsoft.PowerShell.Security", "Microsoft.PowerShell.Utility"):
         module = tmp_path / "modules" / name

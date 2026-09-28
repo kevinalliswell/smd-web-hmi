@@ -135,10 +135,10 @@ const labels = { t10: 'T10', t40: 'T40', ts: 'Ts', td_drip_temp: 'Td' }
   min-width: 0;
 }
 h2 {
-  font-size: 14px;
+  font-size: var(--fs-lg);
 }
 p {
-  font-size: 12px;
+  font-size: var(--fs-base);
   line-height: 1.6;
 }
 ol,
@@ -163,7 +163,7 @@ button {
 table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 12px;
+  font-size: var(--fs-base);
 }
 th,
 td {

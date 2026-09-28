@@ -3,7 +3,10 @@
 import asyncio
 import hashlib
 import json
+import os
+import tempfile
 import time
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -11,8 +14,26 @@ import pytest
 
 from app import __version__
 from app.db.models import TestSession
-from app.services.local_maintenance import LocalMaintenanceBridge, assess_maintenance
+from app.services.local_maintenance import LocalMaintenanceBridge, assess_maintenance, write_protected_json
 from app.services.maintenance_service import MaintenanceBlockedError, MaintenanceManager
+
+
+def _can_write_protected_json() -> bool:
+    """保护 DACL 仅授权 SYSTEM/Administrators/服务 SID;非特权 CI 账户对自建文件的原子替换实探为否。"""
+    if os.name != "nt":
+        return True
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as scratch:
+        try:
+            write_protected_json(Path(scratch) / "probe.json", {})
+        except PermissionError:
+            return False
+    return True
+
+
+pytestmark = pytest.mark.skipif(
+    not _can_write_protected_json(),
+    reason="write_protected_json 的保护 DACL 仅授权 SYSTEM/Administrators/服务 SID;非特权环境(如 NetworkService 自托管服务)无法执行,托管 Windows runner 照常运行",
+)
 
 
 def intent(**values):

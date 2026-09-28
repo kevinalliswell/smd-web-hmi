@@ -30,18 +30,19 @@ const series = {
 }
 const revision = ref(0)
 
+// slot 与 TREND_CHANNELS 对齐:同一通道跨页同槽同色
 const CHARTS = [
   {
     title: '温度',
     unit: '℃',
     series: [
-      { key: 'furnace_pv', label: '炉温' },
-      { key: 'burden_temp', label: '料层温度' },
+      { key: 'furnace_pv', label: '炉温', slot: 0 },
+      { key: 'burden_temp', label: '料层温度', slot: 1 },
     ],
   },
-  { title: '压差', unit: 'Pa', series: [{ key: 'delta_p', label: '压差' }] },
-  { title: '位移', unit: 'mm', series: [{ key: 'displacement', label: '位移' }] },
-  { title: '滴落重量', unit: 'g', series: [{ key: 'drip_weight', label: '滴落重量' }] },
+  { title: '压差', unit: 'Pa', series: [{ key: 'delta_p', label: '压差', slot: 2 }] },
+  { title: '位移', unit: 'mm', series: [{ key: 'displacement', label: '位移', slot: 3 }] },
+  { title: '滴落重量', unit: 'g', series: [{ key: 'drip_weight', label: '滴落重量', slot: 4 }] },
 ]
 
 let previousTime = null

@@ -4,6 +4,7 @@ import pytest
 from pydantic import ValidationError
 from smd_bench.contracts import DriverAction, Manifest, validate_run_id
 from smd_bench.ownership import assert_owned_path, validate_marker
+from windows_capabilities import requires_symlink_privilege
 
 
 def test_run_id_never_becomes_a_path_or_powershell_expression():
@@ -25,6 +26,7 @@ def test_driver_cannot_advance_transport_clock_or_accept_free_code():
     assert DriverAction.model_validate({"id": "x", "action": "sample", "values": {"burden_mc": 600000}})
 
 
+@requires_symlink_privilege
 def test_cleanup_requires_exact_marker_and_refuses_symlink(tmp_path):
     root = tmp_path / "owned"
     root.mkdir()
@@ -41,6 +43,7 @@ def test_cleanup_requires_exact_marker_and_refuses_symlink(tmp_path):
         assert_owned_path(linked, root)
 
 
+@requires_symlink_privilege
 def test_cleanup_refuses_reparse_point_within_owned_tree(tmp_path):
     root = tmp_path / "owned"
     root.mkdir()

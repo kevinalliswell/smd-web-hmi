@@ -23,7 +23,8 @@ const props = defineProps({
   // 标题与单位分开：单位只在轴上出现一次，不重复进图例
   title: { type: String, required: true },
   unit: { type: String, default: '' },
-  // [{ label, key, dashed?, color? }]；color 用于保留既有语义色（如 CO 橙）
+  // [{ label, key, dashed?, color?, slot? }]；color 用于保留既有语义色（如 CO 橙）,
+  // slot 指定全局系列槽位以保证跨页同通道同色,缺省按图内顺序取槽
   series: { type: Array, required: true },
   // labels/values 是普通（非响应式）缓冲，由 revision 递增来通知刷新：
   // 若把响应式数组直接交给 Chart.js 持有，二者会互相触发更新直至爆栈。
@@ -42,13 +43,13 @@ let unsubscribeTheme = null
 const showLegend = computed(() => props.series.length > 1)
 
 function buildDatasets(colors) {
-  const slots = [colors.series1, colors.series2]
+  const slots = colors.series
   return props.series.map((s, i) => ({
     label: s.label,
     data: [],
-    borderColor: s.color || slots[i % slots.length],
+    borderColor: s.color || slots[(s.slot ?? i) % slots.length],
     // 语义色显式指定时不参与主题换肤重着色
-    seriesSlot: s.color ? undefined : i,
+    seriesSlot: s.color ? undefined : (s.slot ?? i),
     borderWidth: 2,
     borderDash: s.dashed ? [5, 4] : undefined,
     pointRadius: 0,
@@ -122,7 +123,7 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: baseline;
   gap: 6px;
-  font-size: 12px;
+  font-size: var(--fs-base);
   font-weight: 600;
   color: var(--text-sec);
   margin-bottom: 6px;
