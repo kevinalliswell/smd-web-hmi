@@ -1,6 +1,0 @@
-self-hosted-runner:
-  labels:
-    - local-mac
-    - local-windows
-    - windows-build
-    - smd-web
