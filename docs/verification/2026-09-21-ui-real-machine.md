@@ -68,6 +68,15 @@
 [assets/2026-09-21-ui/shots/](assets/2026-09-21-ui/shots/)，全部文件的 SHA-256 见
 [assets/2026-09-21-ui/SHA256SUMS.txt](assets/2026-09-21-ui/SHA256SUMS.txt)。
 
+2026-09-28 补记：`scripts/ui_acceptance.py` 与 `scripts/prepare_device_fixture.py` 在验收完成之后
+被修改过一次，把登录口令改为只从本机环境变量读取，移除提交在仓库里的默认值（AGENTS.md：一次性
+口令不得提交）。本页的截图与 `results/` 断言由修改前的版本产出，其 SHA-256 分别为
+`03b1d5e377c5e025214e178e20744cd610fdfb5d673717118236f29ecbcb6905` 和
+`575a3387cee404f49b770cf73bf36d22599bf31837d7acd44d6555ffb4c2a5a8`；
+`SHA256SUMS.txt` 已更新为修改后的摘要。改动只涉及口令来源，断言、选择器和截图逻辑均未变动。
+重跑这两个脚本前须先设置 `SMD_UI_PASSWORD`（`ui_acceptance.py` 另需 `SMD_UI_FIRST_PASSWORD`），
+未设置时脚本直接退出而不是回落到默认口令。
+
 浏览器窗口固定 `--window-size=1440,1000`；第 1—6 项额外加 `--force-device-scale-factor=1`，
 把 DPR 锁到 1，使 100% 档的 CSS 视口（1416×861）与 [M1-05 缩放基线](2026-09-06-browser-zoom.md)
 的 1440×913 / DPR 1 同口径可比。第 7 项对照组不加该参数，与桌面壳同为 DPR 2。

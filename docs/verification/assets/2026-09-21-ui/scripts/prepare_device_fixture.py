@@ -13,7 +13,17 @@ import urllib.request
 
 BASE = os.environ.get("SMD_UI_BASE", "http://127.0.0.1:8100")
 USER = os.environ.get("SMD_UI_USER", "maint1")
-PASSWORD = os.environ.get("SMD_UI_PASSWORD", "Pr84Maint#2026")
+
+
+def _required_secret(name: str) -> str:
+    """口令只从本机环境读取：仓库内不保留默认值（AGENTS.md：一次性口令不得提交）。"""
+    value = os.environ.get(name)
+    if not value:
+        raise SystemExit(f"{name} 未设置：验收口令须由本机环境提供，不写入仓库")
+    return value
+
+
+PASSWORD = _required_secret("SMD_UI_PASSWORD")
 
 
 def call(method: str, path: str, token: str | None = None, body: dict | None = None) -> dict:
