@@ -1,5 +1,7 @@
 # 文档入口
 
+新增：[Tauri现代化实施台账](../tasks/tauri-modernization.md)、[ADR-012](decisions/ADR-012-tauri-modernization.md)、[P0基线验证](verification/2026-10-22-tauri-p0.md)。用户已批准渐进迁移；现有交付及设备验收状态仍以下文实际证据为准。
+
 维护角色：项目维护者。[v0.3.0 上位机软件正式版](https://github.com/kevinalliswell/smd-web-hmi/releases/tag/v0.3.0)已于 **2026-09-15 09:49:48 UTC** 发布，提供保留账户、配置、配对密钥及实际数据库路径的覆盖安装，无需手填目标版本。发布提交为 `404ecb50edf23864ed482e68cc4a1933deb3383f`，软件与设备验收边界见[ADR-011](decisions/ADR-011-overwrite-install-and-software-release.md)。
 
 主线和标签分别完成必要检查、真实 rc.4/rc.5 升级、完整 TLS 安装版实验与报告、故障恢复及资产门禁。标签工作流八项任务全部通过，Release 非草稿、非预发布，包含21项发行资产，实际下载和校验值均已核验，工具ZIP内部清单也已核验。构建身份、历史失败与分层证据见[本轮验证记录](verification/2026-09-13-overwrite-install.md#标签构建与正式发布)，任务见[路线图](../tasks/plan.md)和[待办](../tasks/todo.md)。实际发行字节与范围以该 Release 的机器验收和 `SHA256SUMS.txt` 为准；本轮19项联调结果与自动门禁的覆盖范围分别记录。

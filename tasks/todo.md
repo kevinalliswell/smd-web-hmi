@@ -1,5 +1,7 @@
 # 执行任务清单
 
+2026-10-22启动[批准的Tauri现代化P0—P7](tauri-modernization.md)。本页继续记录原项目任务；新轮进度只在迁移台账更新，不以换壳关闭未完成固件、Windows人工或真机验收。
+
 进度真源。历史审查基线为`dev@855c84d`；2026-09-05开始执行，2026-09-08完成的固件交接doc.3和rc.5安装版闭环软件验收见[上一轮验证](../docs/verification/2026-09-08-installed-hostcomm-loop.md)。`0.3.0`保留数据的覆盖安装软件正式版已发布并完成发行资产核验，结果及待验项目见[本轮验证](../docs/verification/2026-09-13-overwrite-install.md)。rc.4安装诊断与用户反馈见[排查记录](../docs/verification/2026-09-06-windows-installer-errors.md)，rc.3功能和[HostComm 2.0验证](../docs/verification/2026-09-06-hostcomm-v2-runtime.md)保留为历史证据，均不能代替本轮发布检查。状态：`todo`未做、`doing`执行中、`implemented`实现并软件验证但等待上层验收、`done`本项全部验收完成、`blocked`需要外部证据。完成时记录完整SHA和验证产物；“文档已描述”不是代码已实现。用户已确认固件尚未开发；HostComm v2.0 的主机实现和新固件实现分别在 HOST/FW 任务中维护，软件验证不等于真机验收。
 
 ## 当前优先：覆盖安装与软件正式版
