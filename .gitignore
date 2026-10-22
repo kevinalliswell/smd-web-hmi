@@ -36,6 +36,8 @@ frontend/dist/
 frontend/.vite/
 dist-ssr/
 *.tsbuildinfo
+target/
+artifacts/modernization/
 
 # ===== 编辑器 / 系统 =====
 .idea/

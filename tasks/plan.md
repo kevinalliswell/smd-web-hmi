@@ -6,6 +6,8 @@
 
 ## 决策与交付方式
 
+2026-10-22用户批准Tauri 2 + Vue 3/TypeScript + 独立FastAPI服务 + SQLite渐进迁移，首交付桌面与新版总览。新桌面目标见[ADR-012](../docs/decisions/ADR-012-tauri-modernization.md)，P0—P7进度真源为[迁移台账](tauri-modernization.md)。下述pywebview为现有交付基线，未经新壳完整验证不移除；原固件/现场验收继续有效。
+
 保留Vue/FastAPI/SQLAlchemy/SQLite。每炉单一后台/网关/写入协调器，所有界面复用API。实现工具链Python3.13与Node24；桌面为pywebview、固定WebView2、PyInstaller onedir、NSIS和Windows Service。程序/运行时按版本隔离，ProgramData保存数据，升级用持久事务和完整回滚。依据见[ADR索引](../docs/decisions/README.md)。
 
 需求由[国标映射](../docs/experiment-spec.md)与[架构/接口](../docs/上位机软件开发规格说明书.md)维护；实现进度只在[任务清单](todo.md)更新；证据格式见[验收规范](../docs/verification.md)。不在多份文档复制测试数和“全部完成”的阶段结论。

@@ -17,8 +17,8 @@ jobs:
       - run: python scripts/release/metadata.py && python scripts/release/check_locks.py
       - run: python scripts/check_docs.py
       - run: python scripts/check_hostcomm_contract.py
-      - run: black --config backend/pyproject.toml --check backend/app backend/tests desktop tools/bench scripts/release contracts scripts/check_hostcomm_contract.py
-      - run: isort --settings-path backend/pyproject.toml --check-only backend/app backend/tests desktop tools/bench scripts/release contracts scripts/check_hostcomm_contract.py
+      - run: black --config backend/pyproject.toml --check backend/app backend/tests desktop tools/bench tools/modernization scripts/release contracts scripts/check_hostcomm_contract.py
+      - run: isort --settings-path backend/pyproject.toml --check-only backend/app backend/tests desktop tools/bench tools/modernization scripts/release contracts scripts/check_hostcomm_contract.py
   backend:
     strategy:
       fail-fast: false

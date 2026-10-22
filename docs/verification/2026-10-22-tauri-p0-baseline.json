@@ -1,0 +1,27 @@
+{
+  "commit": "3b1552d7656fdee7df4beba3b4a05fbde485d5c9",
+  "python": "3.13.7",
+  "platform": "Windows-11-10.0.26200-SP0",
+  "scope": "loopback HostComm 1.0 mock; synthetic incomplete data; no device or installed service",
+  "synthetic_samples": 3600,
+  "startup_ready_seconds": 4.937,
+  "service_working_set_before_bytes": 145670144,
+  "reports": {
+    "html": {
+      "seconds": 0.343,
+      "bytes": 4053
+    },
+    "pdf": {
+      "seconds": 0.372,
+      "bytes": 6155
+    },
+    "xlsx": {
+      "seconds": 0.399,
+      "bytes": 8371
+    }
+  },
+  "hostcomm_quality": "online",
+  "websocket_authenticated_ping": true,
+  "service_working_set_after_bytes": 152199168,
+  "outcome": "passed"
+}
