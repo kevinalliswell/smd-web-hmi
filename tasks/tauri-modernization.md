@@ -8,7 +8,7 @@
 
 | 阶段 | 分支 / PR | 退出条件 | 状态 / 证据 |
 |---|---|---|---|
-| P0 基线 | `codex/tauri-p0`；PR 创建后补记 | 决策/台账、工具链、原版检查及隔离运行基线可复验 | doing；[验证记录](../docs/verification/2026-10-22-tauri-p0.md) |
+| P0 基线 | `codex/tauri-p0`；[草稿 PR98](https://github.com/kevinalliswell/smd-web-hmi/pull/98)，基线 main | 决策/台账、工具链、原版检查及隔离运行基线可复验 | done；[验证记录](../docs/verification/2026-10-22-tauri-p0.md)，既有失败已独列，CI结果单独记录 |
 | P1 桌面与总览 | `codex/tauri-p1`，依赖 P0 | 实际 WebView2、模拟器数据、新总览、其他页可用、无第二网关、样包 | todo |
 | P2 任务可靠性 | `codex/tauri-p2`，依赖 P1 | 持久任务、渲染隔离、重启/故障/冲突及通信延迟验证 | todo |
 | P3 控制与恢复 | `codex/tauri-p3`，依赖 P2 | 首次登录至控制、报警、结束及恢复的业务闭环 | todo |
@@ -21,10 +21,10 @@
 
 | ID | 工作与依赖 | 验收证据 | 状态 |
 |---|---|---|---|
-| P0-01 | ADR：进程、来源、权限、安装、旧壳退出 | ADR-012 + 文档检查 | doing |
-| P0-02 | 本台账 + 路线图/待办/文档入口 | 全 P0—P7 编号可追踪；PR/提交按阶段更新 | doing |
-| P0-03 | Python3.13环境、Node24、Rust锁、Windows工具链盘点 | 锁安装、版本记录；Windows CI 作为安装基准 | doing |
-| P0-04 | 原版检查、安装布局、隔离运行/内存/通信/报告夹具 | 基线 SHA、命令、JSON/日志、已知失败 | doing |
+| P0-01 | ADR：进程、来源、权限、安装、旧壳退出 | ADR-012 + 文档检查；提交/PR见下方交付索引 | done |
+| P0-02 | 本台账 + 路线图/待办/文档入口 | 全 P0—P7 编号可追踪；提交/PR见下方交付索引 | done |
+| P0-03 | Python3.13环境、Node24、Rust锁、Windows工具链盘点 | 锁安装、版本记录；本机未发现原生编译链，Windows CI作为安装基准 | done |
+| P0-04 | 原版检查、安装布局、隔离运行/内存/通信/报告夹具 | 基线SHA、命令、JSON、已知失败；不等于全部基线检查通过 | done |
 | P1-00 | P0发现的依赖安全/类型生成/Windows子进程编码与测试空间问题；P0 | 单独提交，兼容更新、原失败复验、保留安全余量 | todo |
 | P1-01 | Tauri薄壳、单实例、来源限制、固定WebView2；P0 | Rust测试及Windows实际运行 | todo |
 | P1-02 | 内置诊断；P1-01 | 配置/连接/TLS/运行时异常，无自动服务控制 | todo |
@@ -67,3 +67,7 @@
 - 任务状态：pending → running → completed/failed/interrupted；服务重启遗留任务中断不自动重跑。仅导出显式重试创建关联新任务，不自动重发物理命令或源日志补传。
 - /api/jobs分页，操作员本人、管理员以上全部；原任务路由兼容，权限不降低。P2随代码生成OpenAPI及迁移证据。
 - 不自动合并、发布或安装到现场生产目录；所有基线夹具使用独立临时目录和loopback。
+
+## 阶段交付索引
+
+P0-01—04：实施提交 `cd5138522498073080d97959ec0da5fdcffb6956`，[草稿 PR98](https://github.com/kevinalliswell/smd-web-hmi/pull/98)，基线 `main@3b1552d7656fdee7df4beba3b4a05fbde485d5c9`。验证、未验及遗留事项均见[P0记录](../docs/verification/2026-10-22-tauri-p0.md)。可运行交付是 `tools/modernization/baseline.py`，不包含新桌面样包。下一入口 `P1-00`，随后 `P1-01/P1-03`；分支从本P0分支依赖创建，P0未合并前PR基线保持 `codex/tauri-p0`。
