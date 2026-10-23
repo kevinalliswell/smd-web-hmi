@@ -13,7 +13,7 @@ def test_recovery_migration_preserves_old_rows_and_allows_unknown_start(tmp_path
 
     def upgrade(revision):
         result = subprocess.run(
-            [sys.executable, "-m", "alembic", "upgrade", revision],
+            [sys.executable, "-X", "utf8", "-m", "alembic", "upgrade", revision],
             cwd=Path(__file__).resolve().parents[1],
             env=env,
             capture_output=True,
