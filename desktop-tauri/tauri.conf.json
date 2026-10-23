@@ -1,0 +1,24 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "SMD HMI",
+  "version": "0.3.0",
+  "identifier": "com.smd.hmi.desktop",
+  "build": { "frontendDist": "ui" },
+  "app": {
+    "windows": [],
+    "withGlobalTauri": true,
+    "security": {
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; connect-src 'self'; object-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'",
+      "capabilities": [
+        {
+          "identifier": "local-diagnostics",
+          "description": "Only bundled diagnostics can check the local service. Remote business pages have no native permissions.",
+          "local": true,
+          "windows": ["main"],
+          "permissions": ["allow-connect-service", "allow-diagnostic-status", "allow-self-check-rendered"]
+        }
+      ]
+    }
+  },
+  "bundle": { "active": false }
+}

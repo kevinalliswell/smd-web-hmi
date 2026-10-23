@@ -1,4 +1,4 @@
-param([string]$OutputDir = 'artifacts')
+param([string]$OutputDir = 'artifacts', [ValidateSet('pywebview','tauri')][string]$DesktopShell = 'pywebview')
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 $Repo = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
@@ -26,7 +26,15 @@ $Signature = Get-AuthenticodeSignature $RuntimeExe[0].FullName
 if ($Signature.Status -ne 'Valid' -or $Signature.SignerCertificate.Subject -notmatch 'O=Microsoft Corporation') { throw 'Runtime Microsoft signature invalid' }
 if ($RuntimeExe[0].VersionInfo.ProductVersion -ne $Lock.version) { throw 'Fixed Runtime product version differs from lock' }
 Copy-Item $RuntimeExe[0].Directory.FullName (Join-Path $Stage 'webview2') -Recurse
-Invoke-Checked 'python' @('scripts/release/freeze.py','--output',$Stage,'--work',"$OutputDir/freeze-work")
+Invoke-Checked 'python' @('scripts/release/freeze.py','--output',$Stage,'--work',"$OutputDir/freeze-work",'--desktop-shell',$DesktopShell)
+if ($DesktopShell -eq 'tauri') {
+    Invoke-Checked 'cargo' @('build','--manifest-path','desktop-tauri/Cargo.toml','--release','--locked')
+    $ShellStage = Join-Path $Stage 'SmdDesktop'
+    New-Item -ItemType Directory -Path $ShellStage -Force | Out-Null
+    Copy-Item desktop-tauri/target/release/SmdDesktop.exe $ShellStage
+    Copy-Item desktop-tauri/Cargo.lock $ShellStage
+    Copy-Item desktop-tauri/tauri.conf.json $ShellStage
+}
 Copy-Item frontend/dist (Join-Path $Stage 'frontend') -Recurse
 Copy-Item deploy/windows/configure-acl.ps1 $Stage
 Copy-Item deploy/windows/configure-recovery.ps1 $Stage

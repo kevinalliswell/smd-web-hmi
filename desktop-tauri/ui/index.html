@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SMD · 连接诊断</title>
+  <link rel="stylesheet" href="diagnostic.css">
+  <script src="diagnostic.js" defer></script>
+</head>
+<body>
+  <main>
+    <div class="brand"><span class="mark">S</span><span>SMD HMI<small>软熔滴落实验系统</small></span></div>
+    <div class="panel">
+      <span class="eyebrow">桌面连接诊断</span>
+      <h1 id="title">正在连接本机后台</h1>
+      <p id="message" role="status" aria-live="polite">检查配置与服务响应，请稍候。</p>
+      <button id="retry" type="button" disabled>检查中…</button>
+      <p class="note">关闭桌面窗口不影响后台采集。此页仅检查连接，维护操作请联系管理员。</p>
+    </div>
+    <footer>SMD · 本机工作站</footer>
+  </main>
+</body>
+</html>

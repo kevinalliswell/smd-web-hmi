@@ -43,6 +43,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--work", type=Path, required=True)
+    parser.add_argument("--desktop-shell", choices=("pywebview", "tauri"), default="pywebview")
     opts = parser.parse_args()
     repo = Path(__file__).resolve().parents[2]
     environment = os.environ.copy()
@@ -53,6 +54,8 @@ def main():
         paths.append(environment["PYTHONPATH"])
     environment["PYTHONPATH"] = os.pathsep.join(paths)
     for entry, name in APPLICATIONS:
+        if entry == "shell" and opts.desktop_shell == "tauri":
+            continue
         subprocess.run(
             [sys.executable, "-m", "PyInstaller", *arguments(repo, opts.output, opts.work, entry, name)],
             env=environment,
