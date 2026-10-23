@@ -135,6 +135,10 @@ def test_frozen_backend_migrates_and_loads_http_websocket_runtime(tmp_path, monk
 import asyncio
 import sys
 from pathlib import Path
+
+# Frozen Python ignores PYTHONUTF8; configure its captured streams explicitly.
+sys.stdout.reconfigure(encoding='utf-8')
+sys.stderr.reconfigure(encoding='utf-8')
 from smd_desktop.runtime import load_environment
 from smd_desktop.service import migrate
 from app.db.database import assert_schema_current, dispose_engine
@@ -159,8 +163,16 @@ print('frozen backend migration and HTTP/WebSocket imports passed')
 """,
         encoding="utf-8",
     )
-    environment = {**options["env"], "PYINSTALLER_CONFIG_DIR": str(tmp_path / "pyinstaller-cache")}
-    build = run([*arguments, str(entry)], env=environment, cwd=tmp_path, capture_output=True, text=True, timeout=300)
+    environment = {**options["env"], "PYINSTALLER_CONFIG_DIR": str(tmp_path / "pyinstaller-cache"), "PYTHONUTF8": "1"}
+    build = run(
+        [*arguments, str(entry)],
+        env=environment,
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        timeout=300,
+    )
     (tmp_path / "freeze-build.log").write_text(build.stdout + build.stderr, encoding="utf-8")
     assert build.returncode == 0, build.stdout + build.stderr
     data = tmp_path / "data"
@@ -173,8 +185,15 @@ print('frozen backend migration and HTTP/WebSocket imports passed')
     executable = tmp_path / "payload/SmdService" / ("SmdService.exe" if os.name == "nt" else "SmdService")
     # Remove source/build import paths so only the frozen bundle can satisfy imports.
     clean_environment = {key: value for key, value in os.environ.items() if key not in {"PYTHONPATH", "PYTHONHOME"}}
+    clean_environment["PYTHONUTF8"] = "1"
     result = run(
-        [str(executable), str(data)], env=clean_environment, cwd=tmp_path, capture_output=True, text=True, timeout=60
+        [str(executable), str(data)],
+        env=clean_environment,
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        timeout=60,
     )
     (tmp_path / "freeze-runtime.log").write_text(result.stdout + result.stderr, encoding="utf-8")
     assert result.returncode == 0, result.stdout + result.stderr
