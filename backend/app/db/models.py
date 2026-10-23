@@ -230,4 +230,31 @@ class ReportExport(Base):
     __table_args__ = (Index("idx_re_test_generated", "test_id", "generated_at"),)
 
 
+class BackgroundJob(Base):
+    """Durable export/recovery identity; callbacks are deliberately never serialized."""
+
+    __tablename__ = "background_job"
+
+    task_id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    kind: Mapped[str] = mapped_column(String(32), nullable=False)
+    operator_id: Mapped[str] = mapped_column(String(32), nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False)
+    progress: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    input_json: Mapped[str] = mapped_column(Text, nullable=False)
+    snapshot_json: Mapped[str | None] = mapped_column(Text)
+    result_json: Mapped[str | None] = mapped_column(Text)
+    error_code: Mapped[str | None] = mapped_column(String(64))
+    message: Mapped[str | None] = mapped_column(Text)
+    retry_of: Mapped[str | None] = mapped_column(String(32))
+    created_at: Mapped[str] = mapped_column(UTCISOText(), nullable=False)
+    started_at: Mapped[str | None] = mapped_column(UTCISOText())
+    finished_at: Mapped[str | None] = mapped_column(UTCISOText())
+
+    __table_args__ = (
+        CheckConstraint("status IN ('pending','running','completed','failed','interrupted')", name="ck_job_status"),
+        Index("idx_job_owner_created", "operator_id", "created_at"),
+        Index("idx_job_status", "status"),
+    )
+
+
 from app.db import v2_models  # noqa: E402,F401 — register v2 metadata after Base and legacy models.

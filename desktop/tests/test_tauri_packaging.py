@@ -74,4 +74,4 @@ def test_tauri_freeze_preserves_service_and_updater(tmp_path, monkeypatch):
         ],
     )
     freeze.main()
-    assert [args[args.index("--name") + 1] for args in builds] == ["SmdService", "SmdUpdate"]
+    assert [args[args.index("--name") + 1] for args in builds] == ["SmdService", "SmdUpdate", "SmdRender"]

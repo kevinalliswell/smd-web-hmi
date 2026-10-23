@@ -423,5 +423,5 @@ def test_v2_migration_preserves_old_source_order_as_unknown(tmp_path):
             ("a" * 32, "b" * 32, "1", "2", "2026-09-06T00:00:00Z"),
         )
         assert db.execute("SELECT scanned_through_seq FROM v2_log_cursor").fetchone() == (None,)
-        assert db.execute("SELECT version_num FROM alembic_version").fetchone() == ("hostcommv2002",)
+        assert db.execute("SELECT version_num FROM alembic_version").fetchone() == ("jobs0001",)
         assert db.execute("PRAGMA integrity_check").fetchone() == ("ok",)

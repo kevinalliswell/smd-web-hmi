@@ -8,14 +8,18 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from app.api.deps import DbDep, UserDep, get_current_user, require_role
+from app.api.routes.jobs import visible_job
 from app.api.schemas import err, ok
 from app.api.validation import TaskIdPath, TestId
-from app.db.database import get_sessionmaker
-from app.db.models import ReportExport, TestSession
-from app.services import report_service
+from app.db.models import BackgroundJob, ReportExport, TestSession
+from app.services.artifact_integrity import verify
 from app.services.background_jobs import BackgroundJobCapacityError, background_jobs
+from app.services.export_jobs import submit_export
+from app.services.job_store import public_job
+from app.services.snapshot_data import json_object
 from app.services.test_id import InvalidTestIdError, validate_test_id
 from app.services.v2_run_recovery import V2RecoveryError, require_recovery_report_ready
 
@@ -65,39 +69,25 @@ async def generate_report(body: GenerateReportRequest, user: UserDep, db: DbDep)
     except V2RecoveryError as exc:
         raise HTTPException(status_code=exc.status_code, detail=err(exc.code, exc.message)) from exc
 
-    async def run_report():
-        sessionmaker = get_sessionmaker()
-        async with sessionmaker() as session:
-            record = await report_service.generate_report(
-                session,
-                test_id,
-                operator_id=user.username,
-                fmt=body.format,
-                options=body.options,
-            )
-        return {
-            "id": record.id,
-            "test_id": record.test_id,
-            "generated_at": record.generated_at,
-            "format": record.format,
-            "file_size_bytes": record.file_size_bytes,
-            "download_url": f"/api/reports/{record.id}/download",
-        }
-
+    # Release the request read transaction before durable admission on its own connection.
+    await db.rollback()
     try:
-        task_id = background_jobs.submit("report", run_report)
+        task_id = await submit_export(
+            "report",
+            body.model_dump(),
+            user.username,
+            manager=background_jobs,
+            factory=async_sessionmaker(db.bind, expire_on_commit=False),
+        )
     except BackgroundJobCapacityError as exc:
         raise HTTPException(status_code=503, detail=err("job_queue_full", "后台任务队列已满，请稍后重试")) from exc
     return ok({"task_id": task_id, "status": "pending", "progress": 0})
 
 
 @router.get("/tasks/{task_id}", dependencies=[Depends(require_role("operator"))])
-async def report_task_status(task_id: TaskIdPath):
+async def report_task_status(task_id: TaskIdPath, db: DbDep, user: UserDep):
     """查询报告生成任务状态。"""
-    snapshot = background_jobs.snapshot(task_id)
-    if snapshot is None or snapshot["kind"] != "report":
-        raise HTTPException(status_code=404, detail=err("not_found", "报告任务不存在"))
-    return ok(snapshot)
+    return ok(public_job(await visible_job(db, task_id, user, kind="report")))
 
 
 @router.get("/{report_id}/download", dependencies=[Depends(get_current_user)])
@@ -106,6 +96,16 @@ async def download_report(report_id: int, db: DbDep):
     record = await db.get(ReportExport, report_id)
     if record is None or not Path(record.file_path).exists():
         raise HTTPException(status_code=404, detail=err("not_found", "报告文件不存在"))
+    notes, _ = json_object(record.notes)
+    if notes.get("task_id"):
+        job = await db.get(BackgroundJob, notes["task_id"])
+        if job is None or job.status != "completed":
+            raise HTTPException(409, detail=err("job_not_completed", "任务尚未归档"))
+    if notes.get("artifact_sha256"):
+        try:
+            await verify(Path(record.file_path), notes["artifact_sha256"])
+        except (OSError, ValueError) as exc:
+            raise HTTPException(409, detail=err("artifact_digest_mismatch", "归档文件核验失败，请重新生成")) from exc
     return FileResponse(
         record.file_path,
         media_type={

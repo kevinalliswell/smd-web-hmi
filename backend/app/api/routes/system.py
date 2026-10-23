@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import os
 import shutil
 from pathlib import Path
@@ -16,12 +17,32 @@ from app.api.schemas import err, ok
 from app.core.config import get_settings
 from app.db.database import get_schema_status
 from app.hostcomm.protocol import now_iso
+from app.services.background_jobs import background_jobs
 from app.services.maintenance_service import maintenance_manager
+from app.services.render_client import metrics as render_metrics
+from app.services.runtime_metrics import runtime_metrics
+from app.services.sampling_health import sampling_health
 
 router = APIRouter(prefix="/api/system", tags=["system"])
 
 # HostComm 调试工具：仅允许只读操作（安全红线——不得提供任何控制/强制/绕过能力）
 DEBUG_READONLY_ACTIONS = {"get_status", "get_parameters"}
+
+
+@router.get("/runtime-metrics", dependencies=[Depends(require_role("admin"))])
+async def runtime_status(request: Request):
+    client = get_hostcomm_client(request)
+    storage = await asyncio.to_thread(shutil.disk_usage, get_settings().data_dir)
+    return ok(
+        {
+            "timing": runtime_metrics.snapshot(),
+            "jobs": background_jobs.metrics(),
+            "render": render_metrics(),
+            "sampling": sampling_health.snapshot(),
+            "storage_free_bytes": storage.free,
+            "communication": getattr(client, "stats", None),
+        }
+    )
 
 
 class HostCommDebugRequest(BaseModel):

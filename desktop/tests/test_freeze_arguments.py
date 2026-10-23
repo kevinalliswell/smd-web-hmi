@@ -23,7 +23,7 @@ def test_generated_spec_assets_resolve_outside_repository_working_directory(tmp_
     args = freeze.arguments(ROOT, tmp_path / "payload", tmp_path / "freeze-work", entry, name)
     spec_dir = Path(args[args.index("--specpath") + 1])
     values = [args[index + 1] for index, item in enumerate(args) if item == "--add-data"]
-    assert len(values) == 2
+    assert len(values) == (0 if entry == "render" else 2)
     for value in values:
         source, destination = value.rsplit(":", 1)
         resolved = spec_dir / source
@@ -86,8 +86,12 @@ namespace = {}
 exec(compile(ast.Module(body=preamble, type_ignores=[]), str(spec), 'exec'), namespace)
 print(json.dumps(sorted(name for name in namespace['hiddenimports'] if name == 'app' or name.startswith('app.'))))
 """
-    assert len(builds) == 3
+    assert len(builds) == 4
     for args, kwargs in builds:
+        if Path(args[-1]).stem == "render":
+            assert "--collect-submodules" not in args
+            assert "--collect-all" not in args
+            continue
         result = run(
             [args[0], "-c", probe, *args[3:]],
             env=kwargs.get("env"),
@@ -98,6 +102,35 @@ print(json.dumps(sorted(name for name in namespace['hiddenimports'] if name == '
         )
         collected = set(json.loads(result.stdout))
         assert expected <= collected, f"{args}: missing app modules {sorted(expected - collected)}"
+
+
+def test_frozen_render_executes_three_formats_without_service_imports(tmp_path):
+    pytest.importorskip("PyInstaller")
+    args = freeze.arguments(ROOT, tmp_path / "payload", tmp_path / "build", "render", "SmdRender")
+    environment = {**os.environ, "PYINSTALLER_CONFIG_DIR": str(tmp_path / "cache"), "PYTHONUTF8": "1"}
+    build = subprocess.run(
+        [sys.executable, "-m", "PyInstaller", *args],
+        env=environment,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        timeout=300,
+    )
+    (tmp_path / "render-build.log").write_text(build.stdout + build.stderr, encoding="utf-8")
+    assert build.returncode == 0, build.stdout + build.stderr
+    executable = tmp_path / "payload/SmdRender" / ("SmdRender.exe" if os.name == "nt" else "SmdRender")
+    clean = {k: v for k, v in environment.items() if not k.startswith("SMD_") and k not in {"PYTHONPATH", "PYTHONHOME"}}
+    result = subprocess.run(
+        [str(executable), "--self-check"],
+        env=clean,
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        timeout=60,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "SmdRender snapshot protocol 1" in result.stdout
 
 
 def test_frozen_backend_migrates_and_loads_http_websocket_runtime(tmp_path, monkeypatch):

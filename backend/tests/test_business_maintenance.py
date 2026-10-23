@@ -181,6 +181,8 @@ async def test_complete_http_lifetime_is_drained_including_response_background(m
         return {"accepted": True}
 
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+        # Build FastAPI's lazy middleware/routes before timing the drain behavior.
+        assert (await client.get("/health")).status_code == 200
         writing = asyncio.create_task(client.post("/api/write-lifetime"))
         await asyncio.wait_for(finalizing.wait(), 1)
 

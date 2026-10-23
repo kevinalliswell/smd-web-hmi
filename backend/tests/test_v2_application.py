@@ -134,7 +134,7 @@ async def stop_with_pending_work(http, client, operation_id, pending, monkeypatc
         # Confirmation and durable intent/result/audit commits have their own
         # bounded integration budget; the wire receipt above remains under 1s.
         result = await asyncio.wait_for(command(http, "stop_test", {}, operation_id), 10)
-    assert witnessed, "Stop never reached its independent wire slot"
+    assert witnessed, f"Stop never reached its independent wire slot: HTTP {result.status_code} {result.text}"
     return result
 
 

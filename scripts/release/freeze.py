@@ -1,4 +1,4 @@
-"""构建三个独立入口；生成spec中的源码/数据路径与调用目录无关。"""
+"""构建四个独立入口；生成spec中的源码/数据路径与调用目录无关。"""
 
 import argparse
 import os
@@ -6,7 +6,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-APPLICATIONS = (("service", "SmdService"), ("shell", "SmdDesktop"), ("updater", "SmdUpdate"))
+APPLICATIONS = (("service", "SmdService"), ("shell", "SmdDesktop"), ("updater", "SmdUpdate"), ("render", "SmdRender"))
 
 
 def arguments(repo: Path, output: Path, work: Path, entry: str, name: str) -> list[str]:
@@ -17,7 +17,8 @@ def arguments(repo: Path, output: Path, work: Path, entry: str, name: str) -> li
     for path in (repo / "backend", repo / "desktop"):
         args.extend(("--paths", str(path)))
     args.extend(("--distpath", str(output), "--workpath", str(work), "--specpath", str(work / "spec")))
-    args.extend(("--collect-submodules", "app", "--collect-all", "webview", "--collect-all", "pythonnet"))
+    if entry != "render":
+        args.extend(("--collect-submodules", "app", "--collect-all", "webview", "--collect-all", "pythonnet"))
     for module in (
         # SQLAlchemy's SQLite dialect calls __import__("aiosqlite") at runtime.
         # Its PyInstaller hook collects dialects but does not include this driver.
@@ -29,10 +30,12 @@ def arguments(repo: Path, output: Path, work: Path, entry: str, name: str) -> li
         "uvicorn.protocols.websockets.auto",
         "uvicorn.lifespan.on",
     ):
-        args.extend(("--hidden-import", module))
+        if entry != "render":
+            args.extend(("--hidden-import", module))
     # PyInstaller resolves data sources relative to the generated spec, unlike script arguments.
-    for source, destination in (("backend/alembic.ini", "."), ("backend/app/db/migrations", "app/db/migrations")):
-        args.extend(("--add-data", f"{repo / source}:{destination}"))
+    if entry != "render":
+        for source, destination in (("backend/alembic.ini", "."), ("backend/app/db/migrations", "app/db/migrations")):
+            args.extend(("--add-data", f"{repo / source}:{destination}"))
     if entry == "shell":
         args.append("--windowed")
     args.append(str(repo / "desktop/entries" / f"{entry}.py"))

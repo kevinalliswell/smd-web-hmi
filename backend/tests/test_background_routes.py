@@ -8,16 +8,18 @@ from app.api.routes import reports as reports_route
 from app.db.models import TestSession
 
 
-async def test_log_export_endpoint_returns_pending_without_running_job(monkeypatch):
+async def test_log_export_endpoint_returns_pending_without_running_job(monkeypatch, db_session):
     submitted = {}
 
-    def submit(kind, runner, *, task_id=None):
+    async def submit(kind, runner, *, task_id=None, **kwargs):
         submitted.update(kind=kind, runner=runner, task_id=task_id)
         return task_id
 
-    monkeypatch.setattr(logs_route.background_jobs, "submit", submit)
+    monkeypatch.setattr(logs_route.background_jobs, "submit_durable", submit)
 
-    response = await logs_route.export_log(logs_route.ExportLogRequest(test_id="TEST-ASYNC"))
+    response = await logs_route.export_log(
+        logs_route.ExportLogRequest(test_id="TEST-ASYNC"), CurrentUser("op", "operator"), db_session
+    )
 
     assert response["data"]["status"] == "pending"
     assert submitted["kind"] == "log_export"
@@ -30,11 +32,11 @@ async def test_report_endpoint_returns_pending_without_running_job(monkeypatch, 
     await db_session.commit()
     submitted = {}
 
-    def submit(kind, runner, *, task_id=None):
+    async def submit(kind, runner, *, task_id=None, **kwargs):
         submitted.update(kind=kind, runner=runner)
         return "b" * 32
 
-    monkeypatch.setattr(reports_route.background_jobs, "submit", submit)
+    monkeypatch.setattr(reports_route.background_jobs, "submit_durable", submit)
 
     response = await reports_route.generate_report(
         reports_route.GenerateReportRequest(test_id="TEST-ASYNC"),

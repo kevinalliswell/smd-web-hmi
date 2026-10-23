@@ -3,14 +3,17 @@
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from app import __version__
-from app.api.deps import get_hostcomm_client, require_role
+from app.api.deps import DbDep, UserDep, get_hostcomm_client, require_role
+from app.api.routes.jobs import visible_job
 from app.api.schemas import ok
 from app.db.models import TestSession
 from app.db.v2_models import V2Operation
 from app.services.background_jobs import BackgroundJobCapacityError, background_jobs
 from app.services.cache import status_cache
+from app.services.job_store import public_job
 from app.services.maintenance_service import MaintenanceBlockedError, maintenance_manager
 from app.services.state_policy import classify_state
 
@@ -22,7 +25,7 @@ class RecoverSourceLogsRequest(BaseModel):
 
 
 @router.post("/source-logs", dependencies=[Depends(require_role("admin"))])
-async def recover_source_logs(body: RecoverSourceLogsRequest, request: Request):
+async def recover_source_logs(body: RecoverSourceLogsRequest, request: Request, user: UserDep, db: DbDep):
     client = get_hostcomm_client(request)
     if not client or getattr(client, "protocol_version", None) != "2.0" or not client.is_online:
         raise HTTPException(503, "当前未连接 HostComm 2 设备")
@@ -33,19 +36,23 @@ async def recover_source_logs(body: RecoverSourceLogsRequest, request: Request):
         await client.recover_logs(first_record_seq=body.first_record_seq)
         return {"device_id": client.device_id, "status": "source_scan_completed"}
 
+    await db.rollback()
     try:
-        task_id = background_jobs.submit("v2_source_recovery", recover)
+        task_id = await background_jobs.submit_durable(
+            "v2_source_recovery",
+            recover,
+            operator_id=user.username,
+            inputs=body.model_dump(),
+            factory=async_sessionmaker(db.bind, expire_on_commit=False),
+        )
     except BackgroundJobCapacityError as exc:
         raise HTTPException(503, "后台任务容量已满") from exc
     return ok({"task_id": task_id, "status": "pending"})
 
 
 @router.get("/source-logs/{task_id}", dependencies=[Depends(require_role("admin"))])
-async def source_recovery_status(task_id: str):
-    snapshot = background_jobs.snapshot(task_id)
-    if snapshot is None or snapshot["kind"] != "v2_source_recovery":
-        raise HTTPException(404, "源日志任务不存在")
-    return ok(snapshot)
+async def source_recovery_status(task_id: str, db: DbDep, user: UserDep):
+    return ok(public_job(await visible_job(db, task_id, user, kind="v2_source_recovery")))
 
 
 async def validate_upgrade_ready(request: Request, db, *, cache=None) -> None:

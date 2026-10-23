@@ -2,10 +2,49 @@
 
 import asyncio
 import re
+from urllib.parse import urlsplit
 
 from playwright.async_api import expect
 
 from .browser import eventually
+
+
+async def confirm_alarm(scenes, button):
+    """Keep a rejected UI command from becoming an opaque state-wait timeout."""
+    async with scenes.ui.page.expect_response(
+        lambda response: response.request.method == "POST"
+        and re.fullmatch(r"/api/alarms/[0-9]+/ack", urlsplit(response.url).path) is not None,
+        timeout=60000,
+    ) as waiting:
+        await button.click()
+    response = await waiting.value
+    payload = await response.json()
+    data = payload.get("data", {})
+    code = payload.get("error_code")
+    allowed = {
+        "state_not_allowed",
+        "device_recovery_pending",
+        "operation_unresolved",
+        "operation_conflict",
+        "device_control_owned",
+        "lease_unconfirmed",
+        "device_read_capacity",
+        "device_comm_fault",
+        "device_comm_timeout",
+        "v2_device_unavailable",
+        "control_owned",
+        "maintenance_active",
+        "identity_conflict",
+        "permission_denied",
+        "operator_permission_denied",
+    }
+    scenes.result["last_alarm_ack"] = {
+        "http_status": response.status,
+        "error_code": code if isinstance(code, str) and code in allowed else "unavailable",
+        "device_confirmed": data.get("device_confirmed") is True,
+    }
+    if response.status != 200 or data.get("device_confirmed") is not True:
+        raise AssertionError("alarm acknowledgment did not prove board confirmation")
 
 
 async def acknowledge_alarms(scenes):
@@ -29,7 +68,7 @@ async def acknowledge_alarms(scenes):
             break
         button = ui.page.get_by_role("button", name="确认", exact=True).filter(visible=True).first
         await expect(button).to_be_enabled(timeout=60000)
-        await button.click()
+        await confirm_alarm(scenes, button)
         await eventually(
             lambda: worker.request("snapshot"),
             lambda value: sum(not a["acknowledged"] for a in value["alarms"])

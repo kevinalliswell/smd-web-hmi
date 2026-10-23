@@ -105,7 +105,7 @@ export interface RecipeVersion { recipe_id: string; version: number; digest: str
 export interface BackgroundJob {
   task_id: string
   kind?: string
-  status: 'pending' | 'running' | 'completed' | 'failed'
+  status: 'pending' | 'running' | 'completed' | 'failed' | 'interrupted'
   progress?: number
   result?: Record<string, unknown>
   message?: string

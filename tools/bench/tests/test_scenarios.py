@@ -1,5 +1,6 @@
 import json
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import pytest
 from smd_bench.scenarios import Scenarios
@@ -43,3 +44,52 @@ def test_start_diagnostic_keeps_status_but_no_body_or_unknown_reason():
     assert result["last_start_response"]["result"] == "accepted"
     assert result["last_start_response"]["reason_code"] == "unavailable"
     assert "private-message" not in json.dumps(result) and "secret" not in json.dumps(result)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "status,payload,confirmed,code",
+    [
+        (409, {"error_code": "state_not_allowed", "message": "private"}, False, "state_not_allowed"),
+        (409, {"error_code": "private-code", "token": "secret"}, False, "unavailable"),
+        (200, {"data": {"device_confirmed": False, "wire_status": "unknown"}}, False, "unavailable"),
+        (200, {"data": {"device_confirmed": True}}, True, "unavailable"),
+    ],
+)
+async def test_alarm_ui_requires_board_confirmation_and_records_only_known_codes(status, payload, confirmed, code):
+    from smd_bench.faults import confirm_alarm
+
+    response = SimpleNamespace(status=status, json=AsyncMock(return_value=payload))
+
+    class ResponseWait:
+        async def __aenter__(self):
+            async def reply():
+                return response
+
+            return SimpleNamespace(value=reply())
+
+        async def __aexit__(self, *args):
+            return False
+
+    def expect_response(predicate, **kwargs):
+        assert not predicate(
+            SimpleNamespace(request=SimpleNamespace(method="GET"), url="http://local/api/alarms/2/ack")
+        )
+        assert not predicate(SimpleNamespace(request=SimpleNamespace(method="POST"), url="http://local/api/commands"))
+        assert predicate(SimpleNamespace(request=SimpleNamespace(method="POST"), url="http://local/api/alarms/2/ack"))
+        return ResponseWait()
+
+    scenes = SimpleNamespace(result={}, ui=SimpleNamespace(page=SimpleNamespace(expect_response=expect_response)))
+    button = SimpleNamespace(click=AsyncMock())
+    if confirmed:
+        await confirm_alarm(scenes, button)
+    else:
+        with pytest.raises(AssertionError, match="board confirmation"):
+            await confirm_alarm(scenes, button)
+    button.click.assert_awaited_once()
+    assert scenes.result["last_alarm_ack"] == {
+        "http_status": status,
+        "error_code": code,
+        "device_confirmed": confirmed,
+    }
+    assert "private" not in json.dumps(scenes.result) and "secret" not in json.dumps(scenes.result)

@@ -12,6 +12,7 @@ def bundle(root: Path):
         "SmdService/SmdService.exe",
         "SmdDesktop/SmdDesktop.exe",
         "SmdUpdate/SmdUpdate.exe",
+        "SmdRender/SmdRender.exe",
         "frontend/index.html",
         "webview2/msedgewebview2.exe",
         "webview2/icudtl.dat",
