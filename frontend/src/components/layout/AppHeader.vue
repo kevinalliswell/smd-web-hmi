@@ -6,6 +6,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useDeviceStore } from '@/stores/device'
 import { useAlarmsStore } from '@/stores/alarms'
 import ThemeToggle from '@/components/shared/ThemeToggle.vue'
+import NavIcon from '@/components/shared/NavIcon.vue'
 
 defineProps({ navigationOpen: { type: Boolean, default: false } })
 defineEmits(['toggle-navigation'])
@@ -59,7 +60,7 @@ function onLogout() {
       title="查看报警事件"
       @click="router.push({ name: 'alarms' })"
     >
-      🔔<span v-if="unackedCount" class="alarm-count">{{ unackedCount }}</span>
+      <NavIcon name="alarms" :size="18" /><span v-if="unackedCount" class="alarm-count">{{ unackedCount }}</span>
     </button>
     <ThemeToggle />
     <div class="hd-sep" />
@@ -87,7 +88,7 @@ function onLogout() {
   font-size: var(--fs-base); color: var(--text-sec);
 }
 .spacer { flex: 1; }
-.hd-bell { position: relative; width: 34px; height: 34px; padding: 0; font-size: var(--fs-xl); }
+.hd-bell { position: relative; display: grid; place-items: center; width: 34px; height: 34px; padding: 0; font-size: var(--fs-xl); }
 .alarm-count {
   position: absolute; top: -2px; right: -2px; background: var(--red); color: var(--on-red);
   font-size: var(--fs-xs); font-weight: 700; border-radius: var(--radius-pill); padding: 1px 4px;

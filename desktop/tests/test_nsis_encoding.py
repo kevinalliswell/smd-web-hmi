@@ -1,6 +1,7 @@
 """Exercise the encoding gate; Windows builds supply the actual NSIS compiler."""
 
 import importlib.util
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -134,6 +135,7 @@ def test_cli_reports_failure_without_traceback_when_compiler_cannot_start(compil
         capture_output=True,
         text=True,
         encoding="utf-8",
+        env={**os.environ, "PYTHONUTF8": "1"},
         cwd=ROOT,
     )
     assert completed.returncode != 0

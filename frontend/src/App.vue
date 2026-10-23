@@ -55,6 +55,7 @@ onUnmounted(() => {
 
 <template>
   <div v-if="isChrome" class="layout">
+    <a class="skip-link" href="#main-content">跳到页面内容</a>
     <AppHeader
       :navigation-open="navigationOpen"
       @toggle-navigation="navigationOpen = !navigationOpen"
@@ -67,7 +68,7 @@ onUnmounted(() => {
         @click="closeNavigation"
       />
       <AppSidebar :open="navigationOpen" @navigate="closeNavigation" />
-      <main class="content">
+      <main id="main-content" class="content" tabindex="-1">
         <div class="content-inner"><VersionMismatchBanner /><RouterView /></div>
       </main>
     </div>
@@ -82,6 +83,8 @@ onUnmounted(() => {
 .content { flex: 1; min-width: 0; overflow: auto; padding: var(--pad-page); }
 .content-inner { width: min(100%, 1600px); min-width: 0; margin: 0 auto; }
 .nav-backdrop { display: none; }
+.skip-link { position: fixed; top: -100px; left: 16px; z-index: 120; padding: 12px; background: var(--bg-card); border: 2px solid var(--accent); border-radius: var(--radius-md); }
+.skip-link:focus { top: 8px; }
 
 @media (max-width: 900px) {
   .content { padding: 12px; }

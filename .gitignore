@@ -38,6 +38,9 @@ dist-ssr/
 *.tsbuildinfo
 target/
 artifacts/modernization/
+.playwright-cli/
+output/playwright/
+desktop-tauri/gen/
 
 # ===== 编辑器 / 系统 =====
 .idea/

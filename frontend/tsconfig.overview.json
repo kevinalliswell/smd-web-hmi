@@ -1,0 +1,9 @@
+{
+  "extends": "./tsconfig.api.json",
+  "compilerOptions": {
+    "checkJs": false,
+    "noImplicitAny": true,
+    "useUnknownInCatchVariables": true
+  },
+  "include": ["src/api/*.ts", "src/api/*.d.ts", "src/stores/device.ts", "src/utils/overview.ts", "src/pages/OverviewPage.vue"]
+}

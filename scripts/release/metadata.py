@@ -7,6 +7,7 @@ import os
 import re
 import subprocess
 import sys
+import tomllib
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -22,6 +23,12 @@ def source_version():
     lock = json.loads((ROOT / "frontend/package-lock.json").read_text(encoding="utf-8"))
     if lock["version"] != frontend or lock["packages"][""]["version"] != frontend:
         raise ValueError("package-lock version differs from package.json")
+    tauri = ROOT / "desktop-tauri"
+    if tauri.exists():
+        cargo = tomllib.loads((tauri / "Cargo.toml").read_text(encoding="utf-8"))
+        config = json.loads((tauri / "tauri.conf.json").read_text(encoding="utf-8"))
+        if cargo["package"]["version"] != backend or config["version"] != backend:
+            raise ValueError("Tauri source versions differ from backend")
     tag = os.environ.get("GITHUB_REF_NAME") if os.environ.get("GITHUB_REF_TYPE") == "tag" else None
     return verify_version(backend, frontend, tag)
 
@@ -75,6 +82,21 @@ def sbom(root: Path, version: str, runtime: dict):
             "externalReferences": [{"type": "distribution", "url": runtime["url"]}],
         }
     )
+    cargo_lock = root / "SmdDesktop/Cargo.lock"
+    if cargo_lock.exists():
+        for item in tomllib.loads(cargo_lock.read_text(encoding="utf-8"))["package"]:
+            if "source" not in item:
+                continue
+            component = {
+                "type": "library",
+                "name": item["name"],
+                "version": item["version"],
+                "purl": f"pkg:cargo/{item['name']}@{item['version']}",
+                "properties": [{"name": "smd:inventory", "value": "tauri-build-lock"}],
+            }
+            if "checksum" in item:
+                component["hashes"] = [{"alg": "SHA-256", "content": item["checksum"]}]
+            components.append(component)
     document = {
         "bomFormat": "CycloneDX",
         "specVersion": "1.6",

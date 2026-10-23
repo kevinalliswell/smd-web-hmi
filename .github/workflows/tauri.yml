@@ -1,0 +1,72 @@
+name: Tauri desktop
+on:
+  pull_request:
+    paths: ['desktop-tauri/**', 'rust-toolchain.toml', 'scripts/release/**', '.github/workflows/tauri.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: tauri-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  native:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install repository Rust toolchain
+        shell: pwsh
+        run: rustup show
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: desktop-tauri
+      - run: cargo fmt --manifest-path desktop-tauri/Cargo.toml --check
+      - run: cargo clippy --manifest-path desktop-tauri/Cargo.toml --locked --all-targets -- -D warnings
+      - run: cargo test --manifest-path desktop-tauri/Cargo.toml --locked
+      - run: cargo build --manifest-path desktop-tauri/Cargo.toml --locked --release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tauri-shell-${{ github.sha }}
+          path: |
+            desktop-tauri/target/release/SmdDesktop.exe
+            desktop-tauri/Cargo.lock
+          if-no-files-found: error
+          retention-days: 7
+  sample:
+    needs: native
+    runs-on: windows-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: rustup show
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: desktop-tauri
+      - run: pip install --require-hashes -r backend/requirements.lock -r desktop/requirements.lock
+      - run: npm ci
+        working-directory: frontend
+      - run: npm run build
+        working-directory: frontend
+      - run: choco install nsis --version=3.11 -y --no-progress
+      - name: Full NSIS sample with Tauri; frozen migration and actual hidden WebView2 self-check
+        shell: pwsh
+        run: ./scripts/release/build-windows.ps1 -OutputDir artifacts/tauri-sample -DesktopShell tauri
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tauri-installer-sample-${{ github.sha }}
+          path: |
+            artifacts/tauri-sample/SmdHmi-*.exe
+            artifacts/tauri-sample/manifest.json
+            artifacts/tauri-sample/sbom.cdx.json
+            artifacts/tauri-sample/SHA256SUMS.txt
+            artifacts/tauri-sample/UPGRADE.md
+          if-no-files-found: error
+          retention-days: 7

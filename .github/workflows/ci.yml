@@ -3,7 +3,7 @@ on:
   push:
     branches: [main]
   pull_request:
-    branches: [main]
+    branches: [main, 'codex/tauri-p*']
 permissions:
   contents: read
 concurrency:
