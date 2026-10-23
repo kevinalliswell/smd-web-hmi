@@ -1,6 +1,6 @@
 # 文档入口
 
-新增：[Tauri现代化实施台账](../tasks/tauri-modernization.md)、[ADR-012](decisions/ADR-012-tauri-modernization.md)、[P0基线验证](verification/2026-10-22-tauri-p0.md)。用户已批准渐进迁移；现有交付及设备验收状态仍以下文实际证据为准。
+新增：[Tauri现代化实施台账](../tasks/tauri-modernization.md)、[ADR-012](decisions/ADR-012-tauri-modernization.md)、[P0基线验证](verification/2026-10-22-tauri-p0.md)、[P2持久任务与渲染隔离](verification/2026-10-23-tauri-p2.md)。用户已批准渐进迁移；现有交付及设备验收状态仍以下文实际证据为准。
 
 维护角色：项目维护者。[v0.3.0 上位机软件正式版](https://github.com/kevinalliswell/smd-web-hmi/releases/tag/v0.3.0)已于 **2026-09-15 09:49:48 UTC** 发布，提供保留账户、配置、配对密钥及实际数据库路径的覆盖安装，无需手填目标版本。发布提交为 `404ecb50edf23864ed482e68cc4a1933deb3383f`，软件与设备验收边界见[ADR-011](decisions/ADR-011-overwrite-install-and-software-release.md)。
 

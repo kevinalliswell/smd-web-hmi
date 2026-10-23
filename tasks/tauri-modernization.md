@@ -10,7 +10,7 @@
 |---|---|---|---|
 | P0 基线 | `codex/tauri-p0`；[草稿 PR98](https://github.com/kevinalliswell/smd-web-hmi/pull/98)，基线 main | 决策/台账、工具链、原版检查及隔离运行基线可复验 | done；[验证记录](../docs/verification/2026-10-22-tauri-p0.md)，既有失败已独列，CI结果单独记录 |
 | P1 桌面与总览 | `codex/tauri-p1`；[草稿 PR99](https://github.com/kevinalliswell/smd-web-hmi/pull/99)，基线 `codex/tauri-p0` | 实际 WebView2、模拟器数据、新总览、其他页可用、无第二网关、样包 | doing；[验证记录](../docs/verification/2026-10-23-tauri-p1.md) |
-| P2 任务可靠性 | `codex/tauri-p2`，依赖 P1 | 持久任务、渲染隔离、重启/故障/冲突及通信延迟验证 | todo |
+| P2 任务可靠性 | `codex/tauri-p2`，基线 `codex/tauri-p1@8f8a892` | 持久任务、渲染隔离、重启/故障/冲突及通信延迟验证 | doing；[验证记录](../docs/verification/2026-10-23-tauri-p2.md) |
 | P3 控制与恢复 | `codex/tauri-p3`，依赖 P2 | 首次登录至控制、报警、结束及恢复的业务闭环 | todo |
 | P4 配置维护 | `codex/tauri-p4`，依赖 P3 | 配方部署/回读、协议参数、HostComm 诊断、四角色 | todo |
 | P5 数据报告 | `codex/tauri-p5`，依赖 P4 | 七通道/历史修订/八次比较/重复性/归档，全应用严格类型 | todo |
@@ -32,12 +32,12 @@
 | P1-04 | 布局/主题/总览；P1-03 | 155项前端测试；浏览器深浅主题/390px截图已验；实际WebView待验 | implemented |
 | P1-05 | 同源API/store接入；P1-04 | 独立Mock/API/WS登录与13路由只读访问通过；桌面联调待验 | doing |
 | P1-06 | 构建/自检/实际渲染及安装样包；P1-01—05 | 首包1288项清单已验；最新样包构建/下载摘要通过，隔离自检在已有窗口下exit0；完整安装回归及交互/生命周期待完成 | doing |
-| P2-01 | 持久任务与追加迁移；P1 | 旧库/空库、状态/操作者/来源/错误 | todo |
-| P2-02 | 原任务路由兼容、新/api/jobs与权限；P2-01 | 本人/管理员、分页、旧客户端回归 | todo |
-| P2-03 | 可序列化报告快照；P2-01 | 边界/修订/水位/版本固定，渲染不占事务 | todo |
-| P2-04 | SmdRender单worker及冻结；P2-03 | 无DB/设备/密钥能力；真实PDF/XLSX/HTML | todo |
-| P2-05 | interrupted/核验/归档/显式重试；P2-02—04 | 重启、进程崩溃、磁盘不足、来源冲突 | todo |
-| P2-06 | 事件循环/队列/持久化/回执/空间指标；P2 | 大报告/慢WS不违反时序；包清单同步 | todo |
+| P2-01 | 持久任务与追加迁移；P1 | a7e70a4；空库/前版旧库/备份恢复及状态持久化已测；全套与复验差异见P2记录 | implemented |
+| P2-02 | 原任务路由兼容、新/api/jobs与权限；P2-01 | a7e70a4；本人/管理员、分页、旧入口、显式重试及生成类型已测试 | implemented |
+| P2-03 | 可序列化报告快照；P2-01 | a7e70a4；版本/水位/绑定/日志证据固定；渲染无事务及修订冲突已测试 | implemented |
+| P2-04 | SmdRender单worker及冻结；P2-03 | a7e70a4；真实三格式/串行/环境白名单；冻结三格式本机自检通过，完整安装待CI | implemented |
+| P2-05 | interrupted/核验/归档/显式重试；P2-02—04 | a7e70a4；重启、子进程失败/超时、低空间、来源冲突、下载摘要及实际归档已测 | implemented |
+| P2-06 | 事件循环/队列/持久化/回执/空间指标；P2 | a7e70a4；指标权限/未知值及包清单已测；2万采样PDF时最大回执127.7ms，完整安装待CI | implemented |
 | P3-01 | 登录/初始改密/会话/路由TS；P2 | 失效、强制改密、角色边界 | todo |
 | P3-02 | 当前试验/H/配方/能力/完成/复位；P3-01 | 与后端许可一致，受控停止例外保留 | todo |
 | P3-03 | 报警发生实例/命令结果与对账；P3-02 | 消除未确认/未知/回读状态不混淆 | todo |
@@ -72,4 +72,6 @@
 
 P0-01—04：实施提交 `cd5138522498073080d97959ec0da5fdcffb6956`，[草稿 PR98](https://github.com/kevinalliswell/smd-web-hmi/pull/98)，基线 `main@3b1552d7656fdee7df4beba3b4a05fbde485d5c9`。验证、未验及遗留事项均见[P0记录](../docs/verification/2026-10-22-tauri-p0.md)。可运行交付是 `tools/modernization/baseline.py`，不包含新桌面样包。下一入口 `P1-00`，随后 `P1-01/P1-03`；分支从本P0分支依赖创建，P0未合并前PR基线保持 `codex/tauri-p0`。
 
-P1 进行中：[草稿 PR99](https://github.com/kevinalliswell/smd-web-hmi/pull/99)。首批前端 `c811d70`，Tauri/构建链 `f02e11f`，Rust检查修复 `787f2e4`，依赖审计修复 `006d50e`，隔离自检 `c1c219e`；分支 `8bc8e8c` 的Windows原生/样包构建及本机共存渲染自检通过。样包、提交、SHA与限制详见验证记录。后续入口为 **P1-06完整安装回归结果与WebView2交互验证**，并补P1-01/02/05验收；在本阶段退出前不进入P2。桌面UI工具初始化失败，强制终止本机隔离进程被自动审批拒绝，未完成项目按证据保留。本次新增验收记录先本地提交，待进行中的CI39892534425结束再推送，避免取消该完整回归。
+P1 进行中：[草稿 PR99](https://github.com/kevinalliswell/smd-web-hmi/pull/99)。首批前端 `c811d70`，Tauri/构建链 `f02e11f`，Rust检查修复 `787f2e4`，依赖审计修复 `006d50e`，隔离自检 `c1c219e`；分支 `8bc8e8c` 的Windows原生/样包构建及本机共存渲染自检通过；CI39892534425最终八项全部成功。样包、提交、SHA与限制详见验证记录。P1-01/02/05/06人工交互及生命周期缺口保留，桌面UI工具初始化失败、故障测试自动审批拒绝的历史见记录。用户现已明确授权继续P2，故在保留缺口的前提下依赖P1分支推进，不自动视为P1已验收。
+
+P2 当前入口：完成本轮全量回归和故障复验、提交并创建以 `codex/tauri-p1` 为基线的草稿PR，取得Windows CI及样包证据；不自动进入P3。验证以[P2记录](../docs/verification/2026-10-23-tauri-p2.md)为准。
