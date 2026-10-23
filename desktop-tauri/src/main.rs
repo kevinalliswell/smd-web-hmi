@@ -184,8 +184,14 @@ fn run(self_check: bool) -> Result<(), Box<dyn std::error::Error>> {
     std::env::set_var("WEBVIEW2_BROWSER_EXECUTABLE_FOLDER", runtime);
     std::env::remove_var("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS");
     std::env::remove_var("WEBVIEW2_RELEASE_CHANNEL_PREFERENCE");
-    let profile = PathBuf::from(std::env::var_os("LOCALAPPDATA").ok_or("缺少 LOCALAPPDATA")?)
-        .join("SmdHmi/TauriWebView2");
+    // A render probe must never reuse a logged-in profile or short-circuit via
+    // the ordinary window's single-instance handoff (which exits successfully).
+    let profile = if self_check {
+        std::env::temp_dir().join(format!("SmdHmi-TauriSelfCheck-{}", std::process::id()))
+    } else {
+        PathBuf::from(std::env::var_os("LOCALAPPDATA").ok_or("缺少 LOCALAPPDATA")?)
+            .join("SmdHmi/TauriWebView2")
+    };
     let state = ShellState {
         data_root: data_root()?,
         origin: Mutex::new(None),
@@ -194,8 +200,11 @@ fn run(self_check: bool) -> Result<(), Box<dyn std::error::Error>> {
         connecting: AtomicBool::new(false),
         self_check,
     };
-    tauri::Builder::default()
-        .plugin(tauri_plugin_single_instance::init(|app, _, _| {
+    let builder = tauri::Builder::default();
+    let builder = if self_check {
+        builder
+    } else {
+        builder.plugin(tauri_plugin_single_instance::init(|app, _, _| {
             // Ignore incoming arguments: a second process can only activate the window.
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.unminimize();
@@ -203,6 +212,8 @@ fn run(self_check: bool) -> Result<(), Box<dyn std::error::Error>> {
                 let _ = window.set_focus();
             }
         }))
+    };
+    builder
         .manage(state)
         .invoke_handler(tauri::generate_handler![
             diagnostic_status,
