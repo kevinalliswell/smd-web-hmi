@@ -44,7 +44,7 @@ export interface DeviceSnapshot {
   control_ready?: boolean
   last_update?: string | null
   system?: {
-    current_state?: string
+    current_state?: string | null
     operation_state?: 'idle' | 'running' | 'fault' | 'terminal' | 'unknown'
     protocol_version?: string
     can_activate_recipe?: boolean
@@ -61,12 +61,20 @@ export interface DeviceSnapshot {
   _hostcomm?: { protocol_version?: string; capabilities?: string[] }
   alarm?: { ack_required?: boolean | null; latched_alarm_count?: number | null }
   _v2?: { recovery?: RecoverySummary | null; alarms_reconciled?: boolean; status?: Record<string, unknown>; telemetry?: Record<string, unknown>; profile?: Record<string, unknown>; channel_quality?: Record<string, unknown> }
-  state_machine?: { current_state?: string; test_id?: string; run_id?: string; stage_index?: number | null; measurement_complete?: boolean; safe_complete?: boolean; outcome?: string }
-  temperature?: Record<string, unknown>
-  measurement?: Record<string, unknown>
-  gas?: Record<string, unknown>
-  safety?: Record<string, unknown>
+  state_machine?: { current_state?: string | null; test_id?: string | null; run_id?: string | null; stage_index?: number | null; measurement_complete?: boolean; safe_complete?: boolean; outcome?: string | null }
+  temperature?: { furnace_pv_deg_c?: number | null; furnace_sv_deg_c?: number | null; furnace_pv_valid?: SignalFlag }
+  measurement?: { burden_temp_deg_c?: number | null; burden_temp_valid?: SignalFlag; drip_weight_g?: number | null; drip_weight_valid?: SignalFlag; balance_stable?: SignalFlag; delta_p_pa?: number | null; delta_p_valid?: SignalFlag; displacement_mm?: number | null; displacement_valid?: SignalFlag }
+  gas?: { n2_pv_l_min?: number | null; n2_sp_l_min?: number | null; co_pv_l_min?: number | null; co_sp_l_min?: number | null; n2_status?: string; co_status?: string }
+  safety?: Partial<Record<'safety_relay_allowed' | 'emergency_stop' | 'co_alarm_l1' | 'co_alarm_l2' | 'exhaust_ok' | 'overtemp_alarm', SignalFlag>>
 }
+export type SignalFlag = boolean | 0 | 1 | null
+export type UserRole = 'observer' | 'operator' | 'admin' | 'maintainer'
+export type LoginRequest = components['schemas']['LoginRequest']
+// These endpoints currently publish unstructured OpenAPI responses. Keep the
+// consumed fields explicit and validate them until response models are added.
+export interface LoginSession { token: string; role: UserRole; display_name: string | null; must_change_password: boolean; expires_at?: string }
+export interface CurrentUser { username: string; role: UserRole; must_change_password: boolean }
+export interface AlarmNotification { alarm_id: number; alarm_code: string; level: number; text?: string | null; occur_time: string; ack_operator?: string | null; ack_time?: string | null }
 export interface MaintenanceState {
   state: 'idle' | 'prepared' | 'claimed'
   target_version?: string

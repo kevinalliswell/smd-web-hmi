@@ -1,15 +1,17 @@
+import type { DeviceSnapshot } from '../api/contracts'
 import { appCompatibility } from '@/utils/appVersion'
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 
 export const useDeviceStore = defineStore('device', () => {
-  const snapshot = ref({})
-  const commQuality = ref('offline') // online / degraded / offline
+  const snapshot = ref<DeviceSnapshot>({})
+  const commQuality = ref<'online' | 'degraded' | 'offline'>('offline') // online / degraded / offline
+  const commReason = ref('')
   const backendConnected = ref(false)
-  const lastUpdate = ref(null)
+  const lastUpdate = ref<string | null>(null)
   const snapshotRevision = ref(0)
   const dataStale = ref(true)
-  let receivedAt = null
+  let receivedAt: number | null = null
   const isFresh = computed(() => commQuality.value === 'online' && !dataStale.value && snapshot.value?.control_ready !== false)
 
   const currentState = computed(() => snapshot.value?.state_machine?.current_state || snapshot.value?.system?.current_state || '—')
@@ -28,13 +30,13 @@ export const useDeviceStore = defineStore('device', () => {
   const canAckRun = computed(() => isV2.value && !appCompatibility.mismatch && isFresh.value && snapshot.value?.system?.can_ack_run === true)
   const canAckAlarm = computed(() => !isV2.value || (!appCompatibility.mismatch && isFresh.value && snapshot.value?.system?.can_ack_alarm === true))
   const canResetFault = computed(() => isV2.value && !appCompatibility.mismatch && isFresh.value && snapshot.value?.system?.can_reset_fault === true)
-  function supportsCommand(command) {
+  function supportsCommand(command: string) {
     return !isV2.value || ['start_test', 'stop_test', 'ack_run', 'ack_alarm', 'reset_fault'].includes(command)
   }
   const canStopTest = computed(() => snapshot.value?.system?.can_stop_test === true)
   const safetyOk = computed(() => !!snapshot.value?.safety?.safety_relay_allowed)
 
-  function updateSnapshot(data) {
+  function updateSnapshot(data: DeviceSnapshot) {
     snapshot.value = data || {}
     if (data?.comm_quality) commQuality.value = data.comm_quality
     lastUpdate.value = data?.last_update || new Date().toISOString()
@@ -47,18 +49,20 @@ export const useDeviceStore = defineStore('device', () => {
     dataStale.value = receivedAt === null || now - receivedAt > 5000 || commQuality.value !== 'online' || snapshot.value?.data_fresh === false
   }
 
-  function setCommQuality(status) {
+  function setCommQuality(status: 'online' | 'degraded' | 'offline', reason = '') {
     commQuality.value = status
+    commReason.value = reason
     checkFreshness()
   }
 
-  function setBackendConnected(connected) {
+  function setBackendConnected(connected: boolean) {
     backendConnected.value = connected
   }
 
   return {
     snapshot,
     commQuality,
+    commReason,
     backendConnected,
     lastUpdate,
     snapshotRevision,

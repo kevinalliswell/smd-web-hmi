@@ -1,4 +1,4 @@
-// @ts-check
+// Checked by tsconfig.api.json; command migration follows the overview slice.
 import apiClient from './client'
 import { apiErrorDetails } from './errors'
 /** @typedef {import('./contracts').OperationResult} OperationResult */

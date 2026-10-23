@@ -11,7 +11,7 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "vue-tsc -p tsconfig.api.json --noEmit",
+    "typecheck": "vue-tsc -p tsconfig.api.json --noEmit && vue-tsc -p tsconfig.overview.json --noEmit",
     "types:generate": "openapi-typescript src/api/generated/openapi.json -o src/api/generated/schema.d.ts",
     "types:check": "openapi-typescript src/api/generated/openapi.json -o src/api/generated/schema.d.ts --check",
     "api:schema": "python scripts/export-openapi.py"

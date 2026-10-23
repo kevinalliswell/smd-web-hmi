@@ -5,6 +5,7 @@ import { useDeviceStore } from '@/stores/device'
 import { useAlarmsStore } from '@/stores/alarms'
 import { useTestStore } from '@/stores/test'
 import { fetchStatus } from '@/api/status'
+import { parseRealtimeMessage } from '@/api/realtime'
 
 let socket = null
 let reconnectDelay = 1000
@@ -42,7 +43,7 @@ export function useWebSocket() {
         alarms.ackAlarm(msg.data.alarm_id, msg.data.ack_operator, msg.data.ack_time)
         break
       case 'comm_status':
-        device.setCommQuality(msg.data.status)
+        device.setCommQuality(msg.data.status, msg.data.reason)
         break
       case 'state_change':
         if (test.currentTest) test.currentTest.state = msg.data.to_state
@@ -101,7 +102,8 @@ export function useWebSocket() {
     activeSocket.onmessage = (ev) => {
       if (socket !== activeSocket) return
       try {
-        const message = JSON.parse(ev.data)
+        const message = parseRealtimeMessage(ev.data)
+        if (!message) return
         if (message.type === 'auth_ok') onAuthenticated()
         else if (authenticated) dispatch(message, () => socket === activeSocket && authenticated)
       } catch {

@@ -27,6 +27,7 @@
   },
   "include": [
     "src/api/*.js",
+    "src/api/*.ts",
     "src/api/*.d.ts",
     "src/api/generated/*.d.ts"
   ],

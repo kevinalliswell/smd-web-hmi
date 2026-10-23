@@ -81,6 +81,27 @@ describe('useWebSocket 链路状态', () => {
     expect(device.backendConnected).toBe(false)
     expect(device.commQuality).toBe('offline')
   })
+  it('does not refresh data or grant permissions for malformed and unknown frames', async () => {
+    useAuthStore().token = 'jwt-token'
+    const device = useDeviceStore()
+    const connection = useWebSocket()
+    connection.connect()
+    const socket = FakeWebSocket.instances[0]
+    socket.readyState = FakeWebSocket.OPEN
+    socket.onmessage({ data: JSON.stringify({ type: 'auth_ok' }) })
+    await flushPromises()
+    const revision = device.snapshotRevision
+    for (const message of [
+      { type: 'comm_status', data: { status: 'connected' } },
+      { type: 'status_update', data: { comm_quality: 'online', system: { can_start_test: 'true' } } },
+      { type: 'future_status', data: { comm_quality: 'online', control_ready: true } },
+    ]) socket.onmessage({ data: JSON.stringify(message) })
+    expect(device.snapshotRevision).toBe(revision)
+    expect(device.commQuality).toBe('degraded')
+    expect(device.canStartTest).toBe(false)
+    connection.disconnect()
+  })
+
   it('reloads persisted alarms after the device resynchronization event, without adding wire UUIDs as local alarms', async () => {
     useAuthStore().token = 'jwt-token'
     const connection = useWebSocket()

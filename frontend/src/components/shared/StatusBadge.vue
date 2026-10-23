@@ -1,9 +1,11 @@
-<script setup>
-defineProps({
-  ok: { type: Boolean, default: null },
-  label: { type: String, default: '' },
-  okText: { type: String, default: '正常' },
-  failText: { type: String, default: '异常' },
+<script setup lang="ts">
+withDefaults(defineProps<{
+  ok?: boolean | null
+  label?: string
+  okText?: string
+  failText?: string
+}>(), {
+  ok: null, label: '', okText: '正常', failText: '异常',
 })
 </script>
 

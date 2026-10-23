@@ -6,6 +6,7 @@ import { useDeviceStore } from '@/stores/device'
 import { useChart } from '@/composables/useChart'
 import { getChartTheme, withAlpha } from '@/utils/chartTheme'
 import { formatTime } from '@/utils/dateTime'
+import { finiteValue } from '@/utils/measurementQuality'
 
 const props = defineProps({
   maxPoints: { type: Number, default: 180 }, // 滚动窗口（约 30 min @ 10s 粒度）
@@ -53,7 +54,9 @@ watch(snapshotRevision, () => {
   if (previousTime !== null && time - previousTime > 5000) chart.push(formatTime(previousTime + 1), [null, null], props.maxPoints)
   previousTime = time
   const t = formatTime(lastUpdate.value)
-  chart.push(t, dataStale.value ? [null, null] : [furnacePV.value, furnaceSV.value], props.maxPoints)
+  const valid = device.snapshot.temperature?.furnace_pv_valid
+  const pv = valid === false || valid === 0 ? null : finiteValue(furnacePV.value)
+  chart.push(t, dataStale.value ? [null, null] : [pv, finiteValue(furnaceSV.value)], props.maxPoints)
 })
 
 watch(dataStale, (stale) => {
@@ -65,7 +68,7 @@ onBeforeUnmount(() => chart.destroy())
 
 <template>
   <div class="chart-wrap">
-    <canvas ref="canvas" />
+    <canvas ref="canvas" role="img" aria-label="实时炉温趋势：实线为 PV，虚线为 SV；断连和过期区间不连线。" />
   </div>
 </template>
 
