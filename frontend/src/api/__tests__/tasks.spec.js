@@ -2,6 +2,10 @@ import { describe, expect, it } from 'vitest'
 import { waitForTask } from '@/api/tasks'
 
 describe('后台任务轮询', () => {
+  it('中断为终态且保留任务 ID 可供重新查询', async () => {
+    await expect(waitForTask(async () => ({ status: 'interrupted' }), 'durable-id'))
+      .rejects.toMatchObject({ taskId: 'durable-id', status: 'interrupted' })
+  })
   it('等待 pending/running 并返回 completed 结果', async () => {
     const states = [
       { status: 'pending' },

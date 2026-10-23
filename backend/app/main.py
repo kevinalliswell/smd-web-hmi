@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import re
 import sys
+import time
 import uuid
 from contextlib import asynccontextmanager, nullcontext
 
@@ -27,6 +28,7 @@ from app.api.routes import (
     commands,
     control,
     experiment_review,
+    jobs,
     logs,
     maintenance,
     parameters,
@@ -51,9 +53,11 @@ from app.hostcomm.v2_transport import V2TransportError
 from app.services.background_jobs import background_jobs
 from app.services.cache import status_cache
 from app.services.gateway_lease import GatewayLease
+from app.services.job_store import interrupt_unfinished
 from app.services.local_maintenance import LocalMaintenanceBridge
 from app.services.maintenance_service import MaintenanceBlockedError, maintenance_manager
 from app.services.operations import OperationError, recover_interrupted_operations
+from app.services.runtime_metrics import runtime_metrics
 from app.services.sampling_health import sampling_health
 from app.services.state_policy import enrich_status_snapshot
 from app.services.test_runtime import active_test
@@ -134,6 +138,7 @@ async def _persist_snapshot(payload: dict) -> None:
     """
     from app.services import logging_service
 
+    started = time.monotonic()
     test_id = active_test.active_test_id
     payload = dict(payload, _hmi={"persistence_failures": sampling_health.consecutive_write_failures})
     try:
@@ -163,6 +168,7 @@ async def _persist_snapshot(payload: dict) -> None:
         if should_alarm:
             await _broadcast_sampling_alarm(active=True, test_id=test_id)
     else:
+        runtime_metrics.persisted(started)
         if sampling_health.record_success():
             await _broadcast_sampling_alarm(active=False)
 
@@ -334,6 +340,8 @@ async def lifespan(app: FastAPI):
                 await assert_schema_current()
             maintenance_manager.configure_upgrade(settings.maintenance_file)
             await _seed_admin()
+            await interrupt_unfinished(get_sessionmaker())
+            await runtime_metrics.start()
             async with get_sessionmaker()() as session:
                 await recover_interrupted_operations(session)
             await _reconcile_test_runtime()
@@ -375,6 +383,7 @@ async def lifespan(app: FastAPI):
                     await recovery_worker.close()
                 await maintenance_manager.stop()
                 await background_jobs.shutdown()
+                await runtime_metrics.close()
                 await dispose_engine()
                 logger.info("app.stopped")
 
@@ -443,6 +452,7 @@ def create_app() -> FastAPI:
         tests,
         alarms,
         parameters,
+        jobs,
         logs,
         reports,
         run_recoveries,

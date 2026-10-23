@@ -279,12 +279,18 @@ class V2Client:
             self._source_recovery_pending = False
 
     async def _on_message(self, frame):
+        from app.services.runtime_metrics import runtime_metrics
+
         kind = frame["type"]
         if kind == "log_chunk":
+            started = time.monotonic()
             ack = await self.logs.append_chunk(frame)
+            runtime_metrics.persisted(started)
             await self.transport.send("log_ack", ack)
         elif kind in {"telemetry", "event"}:
+            started = time.monotonic()
             await self.logs.ingest_live(frame)
+            runtime_metrics.persisted(started)
             if kind == "telemetry":
                 previous = self._telemetry_frame
                 if (

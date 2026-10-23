@@ -51,6 +51,7 @@ try {
     Invoke-Checked (Join-Path $Stage 'SmdService/SmdService.exe') @('--migrate')
     Invoke-Checked (Join-Path $Stage 'SmdService/SmdService.exe') @('--self-check')
     Invoke-Checked (Join-Path $Stage 'SmdUpdate/SmdUpdate.exe') @('--self-check')
+    Invoke-Checked (Join-Path $Stage 'SmdRender/SmdRender.exe') @('--self-check')
     Invoke-Checked (Join-Path $Stage 'SmdDesktop/SmdDesktop.exe') @('--self-check')
     if (-not (Test-Path (Join-Path $Smoke 'smd.db'))) { throw 'Frozen migration did not create configured DB' }
 } finally { Remove-Item Env:SMD_DATA_ROOT -ErrorAction SilentlyContinue }
