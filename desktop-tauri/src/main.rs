@@ -327,27 +327,6 @@ fn callback_install_failed() {
     native_error("无法安装页面加载诊断回调，请关闭窗口并联系维护人员。");
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    #[test]
-    fn bundled_ipc_cannot_be_claimed_by_remote_navigation() {
-        for input in [
-            "http://tauri.localhost:8000/",
-            "https://tauri.localhost.evil/",
-            "http://localhost/",
-            "http://tauri.localhost/login",
-            "http://user@tauri.localhost/",
-            "http://tauri.localhost/?url=https://evil",
-        ] {
-            assert!(!local_diagnostics(&input.parse().unwrap()));
-        }
-        assert!(local_diagnostics(
-            &"http://tauri.localhost/index.html".parse().unwrap()
-        ));
-    }
-}
-
 #[cfg(windows)]
 fn native_retry(message: &str) -> bool {
     use windows_sys::Win32::UI::WindowsAndMessaging::{
@@ -392,4 +371,25 @@ fn native_error(message: &str) {
 #[cfg(not(windows))]
 fn native_error(message: &str) {
     eprintln!("{message}");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn bundled_ipc_cannot_be_claimed_by_remote_navigation() {
+        for input in [
+            "http://tauri.localhost:8000/",
+            "https://tauri.localhost.evil/",
+            "http://localhost/",
+            "http://tauri.localhost/login",
+            "http://user@tauri.localhost/",
+            "http://tauri.localhost/?url=https://evil",
+        ] {
+            assert!(!local_diagnostics(&input.parse().unwrap()));
+        }
+        assert!(local_diagnostics(
+            &"http://tauri.localhost/index.html".parse().unwrap()
+        ));
+    }
 }
